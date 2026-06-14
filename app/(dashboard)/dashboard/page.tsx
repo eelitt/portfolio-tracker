@@ -6,6 +6,7 @@ import RefreshButton from './RefreshButton'
 import TransactionTable from './TransactionTable'
 import ExportButton from './ExportButton'
 import ExportHoldingsButton from './ExportHoldingsButton'
+import AllocationPie from './AllocationPie'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -18,15 +19,24 @@ export default async function DashboardPage() {
   const holdings = calculateHoldings(transactions || [])
 
   // Fetch current prices
-  const prices = await getPricesForHoldings(holdings)
+ const priceData = await getPricesForHoldings(holdings)
+ console.log('Price data for holdings:', priceData) // Debug log
 
-  // Calculate enriched holdings with live data
+  // Calculate enriched holdings with live data + 24h change
   const enrichedHoldings = holdings.map((holding) => {
-    const currentPrice = prices[holding.symbol] ?? 0
+    const raw = priceData[holding.symbol]
+    const data = raw && typeof raw === 'object' 
+      ? raw 
+      : { price: 0, change24h: null as number | null }
+
+    const currentPrice = data.price
     const marketValue = holding.quantity * currentPrice
     const unrealizedPnl = marketValue - holding.totalCost
     const unrealizedPnlPercent =
       holding.totalCost > 0 ? (unrealizedPnl / holding.totalCost) * 100 : 0
+
+    const change24h = data.change24h ?? 0
+    const position24hChange = marketValue * (change24h / 100)
 
     return {
       ...holding,
@@ -34,15 +44,21 @@ export default async function DashboardPage() {
       marketValue,
       unrealizedPnl,
       unrealizedPnlPercent,
+      change24h,
+      position24hChange,
     }
   })
 
-  const totalMarketValue = enrichedHoldings.reduce(
-    (sum, h) => sum + h.marketValue,
-    0
-  )
+  const totalMarketValue = enrichedHoldings.reduce((sum, h) => sum + h.marketValue, 0)
   const totalCost = enrichedHoldings.reduce((sum, h) => sum + h.totalCost, 0)
   const totalUnrealizedPnl = totalMarketValue - totalCost
+
+  //  Portfolio 24h Change ===
+  const total24hChange = enrichedHoldings.reduce((sum, h) => sum + h.position24hChange, 0)
+  const previousTotalValue = totalMarketValue - total24hChange
+  const total24hChangePercent = previousTotalValue > 0 
+    ? (total24hChange / previousTotalValue) * 100 
+    : 0
 
   return (
     <div className="max-w-5xl mx-auto p-8">
@@ -51,8 +67,8 @@ export default async function DashboardPage() {
         <RefreshButton />
       </div>
 
-      {/* Portfolio Summary */}
-      <div className="mb-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+     {/* Portfolio Summary */}
+      <div className="mb-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border rounded-lg p-4">
           <div className="text-sm text-gray-500">Total Market Value</div>
           <div className="text-2xl font-semibold">
@@ -70,6 +86,22 @@ export default async function DashboardPage() {
           <div className={`text-2xl font-semibold ${totalUnrealizedPnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             ${totalUnrealizedPnl.toFixed(2)}
           </div>
+        </div>
+
+        {/* NEW 24h Change Card */}
+      {/* 24h Change Card */}
+        <div className="bg-white border rounded-lg p-4">
+          <div className="text-sm text-gray-500">24h Change</div>
+          {totalMarketValue > 0 ? (
+            <div className={`text-2xl font-semibold ${total24hChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              ${total24hChange.toFixed(2)}
+              <span className="text-base ml-1">({total24hChangePercent.toFixed(2)}%)</span>
+            </div>
+          ) : (
+            <div className="text-2xl font-semibold text-gray-400">
+              — <span className="text-base">(No price data)</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -116,7 +148,11 @@ export default async function DashboardPage() {
           <p className="text-gray-500">No holdings yet. Add your first transaction below.</p>
         )}
       </div>
-
+{/* Allocation Pie Chart */}
+      <div className="mb-10">
+        <h2 className="text-xl font-semibold mb-4">Allocation</h2>
+        <AllocationPie enrichedHoldings={enrichedHoldings} />
+      </div>
       {/* Add Transaction */}
       <AddTransactionForm />
 
