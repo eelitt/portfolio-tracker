@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { calculateHoldings, type Transaction } from './calculatePortfolio'
+import { calculateHoldings, enrichHoldings, type Transaction} from './calculatePortfolio'
+import { Holding, EnrichedHolding } from './types'
 
 describe('calculateHoldings', () => {
   it('should return empty array when no transactions', () => {
@@ -113,5 +114,194 @@ describe('calculateHoldings', () => {
 
     const holdings = calculateHoldings(transactions)
     expect(holdings).toHaveLength(2)
+  })
+})
+
+describe('enrichHoldings', () => {
+  const mockHoldings: Holding[] = [
+    {
+      symbol: 'AAPL',
+      asset_type: 'stock',
+      quantity: 10,
+      avgCost: 150,
+      totalCost: 1500,
+      realizedPnl: 0,
+    },
+    {
+      symbol: 'BTC',
+      asset_type: 'crypto',
+      quantity: 0.5,
+      avgCost: 60000,
+      totalCost: 30000,
+      realizedPnl: 0,
+    },
+  ]
+
+  it('should enrich holdings with price data correctly', () => {
+    const priceData = {
+      AAPL: { price: 180, change24h: 2.5 },
+      BTC: { price: 65000, change24h: -1.2 },
+    }
+
+    const enriched = enrichHoldings(mockHoldings, priceData)
+
+    expect(enriched).toHaveLength(2)
+
+    // AAPL checks
+    expect(enriched[0].currentPrice).toBe(180)
+    expect(enriched[0].marketValue).toBe(1800)
+    expect(enriched[0].unrealizedPnl).toBe(300)
+    expect(enriched[0].unrealizedPnlPercent).toBe(20)
+    expect(enriched[0].change24h).toBe(2.5)
+    expect(enriched[0].position24hChange).toBe(45) // 1800 * 0.025
+
+    // BTC checks
+    expect(enriched[1].currentPrice).toBe(65000)
+    expect(enriched[1].marketValue).toBe(32500)
+    expect(enriched[1].unrealizedPnl).toBe(2500)
+    expect(enriched[1].unrealizedPnlPercent).toBeCloseTo(8.333, 2)
+  })
+
+  it('should handle missing price data gracefully', () => {
+    const priceData = {
+      AAPL: { price: 180, change24h: 2.5 },
+      // BTC is missing
+    }
+
+    const enriched = enrichHoldings(mockHoldings, priceData)
+
+    expect(enriched[1].currentPrice).toBe(0)
+    expect(enriched[1].marketValue).toBe(0)
+    expect(enriched[1].unrealizedPnl).toBe(-30000)
+    expect(enriched[1].unrealizedPnlPercent).toBe(-100)
+    expect(enriched[1].change24h).toBe(0)
+    expect(enriched[1].position24hChange).toBe(0)
+  })
+
+  it('should handle zero totalCost correctly', () => {
+    const holdingsWithZeroCost: Holding[] = [
+      {
+        symbol: 'TSLA',
+        asset_type: 'stock',
+        quantity: 5,
+        avgCost: 0,
+        totalCost: 0,
+        realizedPnl: 0,
+      },
+    ]
+
+    const priceData = {
+      TSLA: { price: 250, change24h: 5 },
+    }
+
+    const enriched = enrichHoldings(holdingsWithZeroCost, priceData)
+
+    expect(enriched[0].unrealizedPnlPercent).toBe(0)
+    expect(enriched[0].unrealizedPnl).toBe(1250)
+  })
+
+  it('should return empty array when given empty holdings', () => {
+    const enriched = enrichHoldings([], {})
+    expect(enriched).toEqual([])
+  })
+
+  it('should calculate negative 24h change correctly', () => {
+    const priceData = {
+      AAPL: { price: 140, change24h: -5 },
+    }
+
+    const enriched = enrichHoldings(mockHoldings, priceData)
+    // Market value = 10 * 140 = 1400
+  // position24hChange = 1400 * (-5/100) = -70
+    expect(enriched[0].position24hChange).toBe(-70) 
+  })
+})
+
+describe('enrichHoldings - Edge Cases', () => {
+  const baseHolding: Holding = {
+    symbol: 'SOL',
+    asset_type: 'crypto',
+    quantity: 2.5,
+    avgCost: 100,
+    totalCost: 250,
+    realizedPnl: 0,
+  }
+
+  it('should handle null change24h correctly', () => {
+    const priceData = {
+      SOL: { price: 150, change24h: null },
+    }
+
+    const enriched = enrichHoldings([baseHolding], priceData)
+
+    expect(enriched[0].change24h).toBe(0)
+    expect(enriched[0].position24hChange).toBe(0)
+    expect(enriched[0].currentPrice).toBe(150)
+    expect(enriched[0].marketValue).toBe(375)
+  })
+
+  it('should handle very small quantities (crypto precision)', () => {
+  const smallHolding: Holding = {
+    symbol: 'SHIB',
+    asset_type: 'crypto',
+    quantity: 0.00001234,
+    avgCost: 0.00001,
+    totalCost: 0.0000000001234,
+    realizedPnl: 0,
+  }
+
+  const priceData = {
+    SHIB: { price: 0.000025, change24h: 12.5 },
+  }
+
+  const enriched = enrichHoldings([smallHolding], priceData)
+
+  // Correct calculations:
+  // marketValue     = 0.00001234 * 0.000025 = 3.085e-10
+  // unrealizedPnl   = 3.085e-10 - 1.234e-10 = 1.851e-10
+
+  expect(enriched[0].marketValue).toBeCloseTo(3.085e-10, 15)
+  expect(enriched[0].unrealizedPnl).toBeCloseTo(1.851e-10, 15)
+})
+
+  it('should handle large price movements', () => {
+    const holding: Holding = {
+      symbol: 'NVDA',
+      asset_type: 'stock',
+      quantity: 5,
+      avgCost: 400,
+      totalCost: 2000,
+      realizedPnl: 0,
+    }
+
+    const priceData = {
+      NVDA: { price: 1200, change24h: 45 }, // +45% in a day
+    }
+
+    const enriched = enrichHoldings([holding], priceData)
+
+    expect(enriched[0].marketValue).toBe(6000)
+    expect(enriched[0].unrealizedPnl).toBe(4000)
+    expect(enriched[0].unrealizedPnlPercent).toBe(200)
+    expect(enriched[0].position24hChange).toBe(2700) // 6000 * 0.45
+  })
+
+  it('should handle mixed holdings with some missing prices', () => {
+    const holdings: Holding[] = [
+      { symbol: 'AAPL', asset_type: 'stock', quantity: 10, avgCost: 150, totalCost: 1500, realizedPnl: 0 },
+      { symbol: 'MSFT', asset_type: 'stock', quantity: 5, avgCost: 300, totalCost: 1500, realizedPnl: 0 },
+    ]
+
+    const priceData = {
+      AAPL: { price: 180, change24h: 3 },
+      // MSFT is missing
+    }
+
+    const enriched = enrichHoldings(holdings, priceData)
+
+    expect(enriched).toHaveLength(2)
+    expect(enriched[0].currentPrice).toBe(180)
+    expect(enriched[1].currentPrice).toBe(0)
+    expect(enriched[1].marketValue).toBe(0)
   })
 })

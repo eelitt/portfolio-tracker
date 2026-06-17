@@ -28,7 +28,7 @@ describe('priceService', () => {
       })
 
       const price = await getCryptoPrice('BTC')
-      expect(price).toBe(65000)
+      expect(price?.price).toBe(65000)
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('bitcoin'),
         expect.any(Object)
@@ -74,9 +74,9 @@ describe('priceService', () => {
       const prices = await getPricesForHoldings(holdings)
 
       expect(prices).toEqual({
-        BTC: 62000,
-        ETH: 2800,
-      })
+    BTC: { price: 62000, change24h: null },
+    ETH: { price: 2800, change24h: null },
+  })
     })
 
     it('should return empty object when no valid prices are fetched', async () => {

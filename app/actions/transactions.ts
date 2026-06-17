@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { transactionSchema } from '@/lib/schemas'
 import { revalidatePath } from 'next/cache'
+import { getCurrentUser } from './users'
 
 export type ActionState = {
   error?: string | Record<string, string[]>
@@ -53,6 +54,20 @@ export async function createTransaction(
 
 export async function deleteTransaction(transactionId: string) {
   const supabase = await createClient()
+  const user = await getCurrentUser()
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+  // verify ownership
+  const { data: transaction } = await supabase
+    .from('transactions')
+    .select('user_id')
+    .eq('id', transactionId)
+    .single()
+
+    if (!transaction || transaction.user_id !== user.id) {
+    return { error: 'Unauthorized' }
+  }
 
   const { error } = await supabase
     .from('transactions')
@@ -72,6 +87,22 @@ export async function updateTransaction(
   formData: FormData
 ) {
   const supabase = await createClient()
+ const user = await getCurrentUser()
+ 
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+
+  // verify ownership
+  const { data: transaction } = await supabase
+    .from('transactions')
+    .select('user_id')
+    .eq('id', transactionId)
+    .single()
+
+    if (!transaction || transaction.user_id !== user.id) {
+    return { error: 'Unauthorized' }
+  }
 
   const rawData = {
     symbol: formData.get('symbol'),
@@ -101,4 +132,24 @@ export async function updateTransaction(
 
   revalidatePath('/dashboard')
   return { success: true }
+}
+
+export async function getUserTransactions() {
+  const user = await getCurrentUser()
+  if (!user) return []
+
+  const supabase = await createClient()
+
+  const { data: transactions, error } = await supabase
+    .from('transactions')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('executed_at', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching transactions:', error)
+    return []
+  }
+
+  return transactions || []
 }

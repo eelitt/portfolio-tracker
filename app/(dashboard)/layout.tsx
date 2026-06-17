@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Navbar from './Navbar'
+import { Toaster } from 'sonner'
 
 export default async function DashboardLayout({
   children,
@@ -20,6 +21,7 @@ export default async function DashboardLayout({
       <main className="max-w-6xl mx-auto px-6 py-8">
         {children}
       </main>
+      <Toaster position="top-right" richColors closeButton />
     </div>
   )
 }

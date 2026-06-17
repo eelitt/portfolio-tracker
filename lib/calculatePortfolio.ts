@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { Holding, EnrichedHolding } from './types'
 
 // Minimal Transaction type for calculations
 export const TransactionSchema = z.object({
@@ -12,15 +13,6 @@ export const TransactionSchema = z.object({
 })
 
 export type Transaction = z.infer<typeof TransactionSchema>
-
-export interface Holding {
-  symbol: string
-  asset_type: 'stock' | 'crypto'
-  quantity: number
-  avgCost: number
-  totalCost: number
-  realizedPnl: number
-}
 
 export function calculateHoldings(transactions: Transaction[]): Holding[] {
   // Group transactions by symbol
@@ -81,4 +73,35 @@ export function calculateHoldings(transactions: Transaction[]): Holding[] {
   }
 
   return holdings
+}
+
+export function enrichHoldings(
+  holdings: Holding[],
+  priceData: Record<string, { price: number; change24h: number | null }>
+): EnrichedHolding[] {
+  return holdings.map((holding) => {
+    const raw = priceData[holding.symbol]
+    const data = raw && typeof raw === 'object'
+      ? raw
+      : { price: 0, change24h: null as number | null }
+
+    const currentPrice = data.price ?? 0
+    const marketValue = holding.quantity * currentPrice
+    const unrealizedPnl = marketValue - holding.totalCost
+    const unrealizedPnlPercent =
+      holding.totalCost > 0 ? (unrealizedPnl / holding.totalCost) * 100 : 0
+
+    const change24h = data.change24h ?? 0
+    const position24hChange = marketValue * (change24h / 100)
+
+    return {
+      ...holding,
+      currentPrice,
+      marketValue,
+      unrealizedPnl,
+      unrealizedPnlPercent,
+      change24h,
+      position24hChange,
+    }
+  })
 }

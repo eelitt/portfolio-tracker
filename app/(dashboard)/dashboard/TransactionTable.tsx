@@ -3,48 +3,57 @@
 import { deleteTransaction } from '@/app/actions/transactions'
 import { toast } from 'sonner'
 import { useState } from 'react'
-import EditTransactionModal from './EditTransactionModal'
+import TransactionModal from './TransactionModal'
+import { Pencil, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import DeleteTransactionModal from './DeleteTransactionModal'
+import { Transaction } from '@/lib/types'
 
-interface Transaction {
-  id: string
-  symbol: string
-  asset_type: string
-  action: string
-  quantity: number
-  unit_price: number
-  executed_at: string
-  notes?: string
-}
 
 interface TransactionTableProps {
   transactions: Transaction[]
 }
 
 export default function TransactionTable({ transactions }: TransactionTableProps) {
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
+const [deletingTransaction, setDeletingTransaction] = useState<Transaction | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
-const [editingTransaction, setEditingTransaction] = useState<any>(null)
-const [isModalOpen, setIsModalOpen] = useState(false)
+  const handleEdit = (tx: Transaction) => {
+    setEditingTransaction(tx)
+  }
 
-const handleEdit = (tx: any) => {
-  setEditingTransaction(tx)
-  setIsModalOpen(true)
-}
+  const closeEditModal = () => {
+    setEditingTransaction(null)
+  }
 
-const closeModal = () => {
-  setIsModalOpen(false)
-  setEditingTransaction(null)
-}
-  const handleDelete = async (id: string, symbol: string) => {
-    if (!confirm(`Delete transaction for ${symbol}?`)) return
+  const openDeleteModal = (tx: Transaction) => {
+    setDeletingTransaction(tx)
+  }
 
+  const closeDeleteModal = () => {
+    setDeletingTransaction(null)
+  }
+
+  // Actual delete logic
+  const handleDeleteConfirm = async (id: string) => {
+  setIsDeleting(true)
+
+  try {
     const result = await deleteTransaction(id)
 
     if (result?.error) {
       toast.error(result.error)
     } else {
-      toast.success('Transaction deleted')
+      toast.success('Transaction deleted successfully')
+      closeDeleteModal()
     }
+  } catch (error) {
+    toast.error('Something went wrong while deleting')
+  } finally {
+    setIsDeleting(false)
   }
+}
 
   if (transactions.length === 0) {
     return <p className="text-gray-500">No transactions yet.</p>
@@ -70,10 +79,10 @@ const closeModal = () => {
             <tr key={tx.id} className="hover:bg-gray-50">
               <td className="px-4 py-3 text-sm text-gray-600">
                 {new Date(tx.executed_at).toLocaleDateString('fi-FI', {
-  year: 'numeric',
-  month: 'short',
-  day: 'numeric'
-})}
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric'
+                })}
               </td>
               <td className="px-4 py-3 font-medium">{tx.symbol}</td>
               <td className="px-4 py-3 text-sm capitalize">{tx.asset_type}</td>
@@ -89,29 +98,47 @@ const closeModal = () => {
               <td className="px-4 py-3 text-sm text-gray-500 truncate max-w-[200px]">
                 {tx.notes || '-'}
               </td>
-              <td className="px-4 py-3 text-right space-x-3">
-                <button
-    onClick={() => handleEdit(tx)}
-    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-  >
-    Edit
-  </button>
-                <button
-                  onClick={() => handleDelete(tx.id, tx.symbol)}
-                  className="text-red-600 hover:text-red-800 text-sm font-medium"
-                >
-                  Delete
-                </button>
+              <td className="px-4 py-3 text-right">
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleEdit(tx)}
+                    className="h-8 w-8 text-blue-600 hover:bg-blue-600 hover:text-white transition-all active:scale-95"
+                    aria-label="Edit transaction"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => openDeleteModal(tx)}
+                    className="h-8 w-8 text-red-600 hover:bg-red-600 hover:text-white transition-all active:scale-95"
+                    aria-label="Delete transaction"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <EditTransactionModal
-  transaction={editingTransaction}
-  isOpen={isModalOpen}
-  onClose={closeModal}
-/>
+
+      {/* Merged Transaction Modal for editing */}
+      <TransactionModal 
+        transaction={editingTransaction} 
+        onClose={closeEditModal} 
+      />
+
+      <DeleteTransactionModal
+        transaction={deletingTransaction}
+        isOpen={!!deletingTransaction}
+        onClose={closeDeleteModal}
+        onConfirm={handleDeleteConfirm}
+        isPending={isDeleting}
+      />
     </div>
   )
 }
