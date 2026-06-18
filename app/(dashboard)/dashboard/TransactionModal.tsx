@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dialog'
 import AddTransactionForm from './AddTransactionForm'
 import { Button } from '@/components/ui/button'
-import { Plus, Pencil } from 'lucide-react'
+import { Plus, Pencil, Loader2 } from 'lucide-react'
 import { updateTransaction } from '@/app/actions/transactions'
 import { toast } from 'sonner'
 import { Transaction } from '@/lib/types'
@@ -63,7 +63,7 @@ useEffect(() => {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger || (
-          <Button className="flex items-center gap-2 bg-black hover:bg-green-800 text-white">
+          <Button className="flex items-center gap-2 bg-black hover:bg-green-800 text-white mb-3">
             <Plus className="h-4 w-4" />
             Add Transaction
           </Button>
@@ -159,9 +159,16 @@ useEffect(() => {
               <Button
                 type="submit"
                 disabled={isPending}
-                className="flex-1 bg-black hover:bg-green-800 text-white"
+                className="flex-1 flex items-center justify-center gap-2 bg-black hover:bg-green-800 text-white disabled:opacity-70 transition-colors"
               >
-                {isPending ? 'Saving...' : 'Save Changes'}
+                {isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
               </Button>
             </div>
           </form>

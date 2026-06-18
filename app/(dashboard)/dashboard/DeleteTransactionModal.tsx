@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Transaction } from '@/lib/types'
+import { Loader2 } from 'lucide-react'
 
 interface DeleteTransactionModalProps {
   transaction: Transaction | null
@@ -87,9 +88,16 @@ export default function DeleteTransactionModal({
             variant="destructive"
             onClick={() => onConfirm(transaction.id)}
             disabled={isPending}
-            className="flex-1 hover:bg-red-500 hover:text-white"
+            className="flex-1 flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white disabled:opacity-70 transition-colors"
           >
-            {isPending ? 'Deleting...' : 'Delete Transaction'}
+            {isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Deleting...
+              </>
+            ) : (
+              'Delete Transaction'
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

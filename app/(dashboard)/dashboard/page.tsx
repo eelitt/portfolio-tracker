@@ -1,4 +1,3 @@
-
 import { calculateHoldings, enrichHoldings } from '@/lib/calculatePortfolio'
 import { getPricesForHoldings } from '@/lib/priceService'
 import { Card, CardContent } from '@/components/ui/card'
@@ -20,13 +19,20 @@ const user = await getCurrentUser()
     redirect('/login') // extra safety
   }
 
-  const transactions = await getUserTransactions()
+  
+  let transactions: any[] = []
+  let holdings: any[] = []
+  let priceData: Record<string, { price: number; change24h: number | null }> = {}
+  let fetchError: string | null = null
 
-  const holdings = calculateHoldings(transactions || [])
-
-  // Fetch current prices
- const priceData = await getPricesForHoldings(holdings)
- console.log('Price data for holdings:', priceData) // Debug log
+  try {
+    transactions = await getUserTransactions()
+    holdings = calculateHoldings(transactions || [])
+    priceData = await getPricesForHoldings(holdings)
+  } catch (error) {
+    console.error('Dashboard data fetch error:', error)
+    fetchError = 'Failed to load your portfolio data. Please try refreshing the page.'
+  }
 
   // Calculate enriched holdings with live data + 24h change
   const enrichedHoldings = enrichHoldings(holdings, priceData)
@@ -43,14 +49,26 @@ const user = await getCurrentUser()
     : 0
 
   return (
+    
     <div className="max-w-5xl mx-auto p-8">
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex justify-between items-end mb-8">
         <h1 className="text-3xl font-bold">Portfolio Tracker</h1>
-        <div className="flex items-center gap-3">
-        <TransactionModal />
-        <RefreshButton />
-        </div>       
+        
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-3">
+            <TransactionModal />
+            <RefreshButton />
+          </div>
+        </div>
       </div>
+      
+{/* Price Warning Banner - Only shown when there is a problem */}
+      {!fetchError && holdings.length > 0 && Object.keys(priceData).length < holdings.length && (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          Live prices loaded for <span className="font-medium">{Object.keys(priceData).length}</span> of <span className="font-medium">{holdings.length}</span> holdings.
+          Some data may be outdated.
+        </div>
+      )}
 
      {/* Portfolio Summary */}
 <div className="mb-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -157,4 +175,3 @@ const user = await getCurrentUser()
     </div>
   )
 }
-
