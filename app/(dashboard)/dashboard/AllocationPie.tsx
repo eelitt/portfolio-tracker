@@ -1,5 +1,13 @@
 'use client'
 
+/**
+ * AllocationPie
+ *
+ * Renders a donut chart showing portfolio allocation by current market value.
+ * Uses Recharts. Falls back to a friendly message when there is no positive
+ * market value data (e.g. during price loading failures).
+ */
+
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 
 interface AllocationPieProps {
@@ -14,7 +22,7 @@ export default function AllocationPie({ enrichedHoldings }: AllocationPieProps) 
 
   if (!enrichedHoldings || enrichedHoldings.length === 0 || !hasPositiveValues) {
     return (
-      <div className="bg-white border rounded-lg p-6 text-center text-gray-500">
+      <div className="bg-card border rounded-lg p-6 text-center text-muted-foreground">
         No allocation data available.<br />
         <span className="text-sm">Live prices may be temporarily unavailable.</span>
       </div>
@@ -29,7 +37,7 @@ export default function AllocationPie({ enrichedHoldings }: AllocationPieProps) 
   const COLORS = ['#334155', '#475569', '#64748b', '#94a3b8', '#cbd5e1']
 
   return (
-    <div className="bg-white border rounded-lg p-6 h-80">
+    <div className="bg-card border rounded-lg p-6 h-80">
       <ResponsiveContainer width="100%" height={320}>
         <PieChart>
           <Pie

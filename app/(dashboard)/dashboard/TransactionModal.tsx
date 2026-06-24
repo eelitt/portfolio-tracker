@@ -63,7 +63,7 @@ useEffect(() => {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger || (
-          <Button className="flex items-center gap-2 bg-black hover:bg-green-800 text-white mb-3">
+          <Button className="flex items-center gap-2 mb-3" variant="default">
             <Plus className="h-4 w-4" />
             Add Transaction
           </Button>
@@ -71,7 +71,7 @@ useEffect(() => {
       </DialogTrigger>
 
       <DialogContent
-        className="sm:max-w-[520px] bg-white shadow-xl rounded-xl p-6 border border-gray-200 ring-0"
+        className="sm:max-w-[520px] shadow-xl rounded-xl p-6 border ring-0"
         aria-describedby={undefined}
       >
         <DialogHeader>
@@ -159,7 +159,7 @@ useEffect(() => {
               <Button
                 type="submit"
                 disabled={isPending}
-                className="flex-1 flex items-center justify-center gap-2 bg-black hover:bg-green-800 text-white disabled:opacity-70 transition-colors"
+                variant="default"
               >
                 {isPending ? (
                   <>

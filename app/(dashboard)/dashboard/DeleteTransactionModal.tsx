@@ -37,7 +37,7 @@ export default function DeleteTransactionModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[420px] bg-white shadow-xl rounded-xl border border-gray-200 ring-0">
+      <DialogContent className="sm:max-w-[420px] shadow-xl rounded-xl border ring-0">
         <DialogHeader>
           <DialogTitle>Delete Transaction</DialogTitle>
           <DialogDescription>

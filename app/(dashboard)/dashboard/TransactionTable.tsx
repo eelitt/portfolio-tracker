@@ -1,5 +1,16 @@
 'use client'
 
+/**
+ * TransactionTable
+ *
+ * Displays the user's transaction history in a table.
+ * Provides edit (opens unified TransactionModal in edit mode) and delete actions.
+ * Delete uses a confirmation modal.
+ *
+ * This is a client component because it needs local state for the edit/delete modals
+ * and calls server actions.
+ */
+
 import { deleteTransaction } from '@/app/actions/transactions'
 import { toast } from 'sonner'
 import { useState } from 'react'
@@ -62,7 +73,7 @@ const [deletingTransaction, setDeletingTransaction] = useState<Transaction | nul
   return (
     <div className="overflow-x-auto border rounded-lg">
       <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
+        <thead className="bg-muted/50">
           <tr>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Symbol</th>
@@ -74,9 +85,9 @@ const [deletingTransaction, setDeletingTransaction] = useState<Transaction | nul
             <th className="px-4 py-3"></th>
           </tr>
         </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
+        <tbody className="bg-background divide-y divide-border">
           {transactions.map((tx) => (
-            <tr key={tx.id} className="hover:bg-gray-50">
+            <tr key={tx.id} className="hover:bg-muted/50">
               <td className="px-4 py-3 text-sm text-gray-600">
                 {new Date(tx.executed_at).toLocaleDateString('fi-FI', {
                   year: 'numeric',

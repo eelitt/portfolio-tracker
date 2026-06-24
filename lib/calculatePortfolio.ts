@@ -1,7 +1,23 @@
 import { z } from 'zod'
 import { Holding, EnrichedHolding } from './types'
 
-// Minimal Transaction type for calculations
+/**
+ * This module contains the core domain logic for the portfolio tracker.
+ *
+ * - calculateHoldings: Reduces a list of buy/sell transactions into current
+ *   positions using the weighted average cost method.
+ * - enrichHoldings: Combines calculated holdings with live price data to
+ *   produce market values, unrealized P&L, and 24h change impact.
+ *
+ * All calculations are pure functions (easy to test) and defensive
+ * (handle out-of-order txs, partial sells, crypto precision, etc.).
+ */
+
+/**
+ * Zod schema + inferred type used for validating transactions before
+ * running the holding calculations. (Separate from the full DB Transaction
+ * type in lib/types.ts which includes id and notes.)
+ */
 export const TransactionSchema = z.object({
   id: z.string().optional(),
   symbol: z.string(),
@@ -14,8 +30,23 @@ export const TransactionSchema = z.object({
 
 export type Transaction = z.infer<typeof TransactionSchema>
 
+/**
+ * Calculates current holdings from a list of transactions.
+ *
+ * Uses the **weighted average cost** method:
+ * - Buys increase quantity and add to the total cost basis.
+ * - Sells reduce quantity using the *current* average cost at the time of sale.
+ * - Realized P&L is recorded for every sell (even if the position is not fully closed).
+ * - Fully closed positions are dropped from the result.
+ *
+ * Transactions are sorted by date per symbol so the logic is order-independent
+ * on the input array.
+ *
+ * Supports fractional quantities (crypto) and uses 8 decimal places for
+ * precision on holdings.
+ */
 export function calculateHoldings(transactions: Transaction[]): Holding[] {
-  // Group transactions by symbol
+  // Group all transactions by symbol so we can calculate each position independently.
   const grouped = new Map<string, Transaction[]>()
 
   for (const tx of transactions) {
@@ -28,7 +59,8 @@ export function calculateHoldings(transactions: Transaction[]): Holding[] {
   const holdings: Holding[] = []
 
   for (const [symbol, txs] of grouped) {
-    // Sort by date to process in chronological order
+    // Sort chronologically. This makes the algorithm robust even if the
+    // caller passes transactions in arbitrary order (e.g. from DB without ORDER BY).
     const sortedTxs = [...txs].sort(
       (a, b) => new Date(a.executed_at).getTime() - new Date(b.executed_at).getTime()
     )
@@ -44,6 +76,7 @@ export function calculateHoldings(transactions: Transaction[]): Holding[] {
         quantity += tx.quantity
       } else if (tx.action === 'sell') {
         if (quantity > 0) {
+          // Use the *current* average cost for this sell (weighted average method).
           const avgCost = totalCost / quantity
           const sellValue = tx.quantity * tx.unit_price
           const costBasis = tx.quantity * avgCost
@@ -53,13 +86,14 @@ export function calculateHoldings(transactions: Transaction[]): Holding[] {
           quantity -= tx.quantity
           totalCost -= costBasis
 
-          // Prevent negative quantity
+          // Defensive clamps — we never want negative holdings in the result.
           if (quantity < 0) quantity = 0
           if (totalCost < 0) totalCost = 0
         }
       }
     }
 
+    // Only emit a holding if the user still has a position open.
     if (quantity > 0) {
       holdings.push({
         symbol,
@@ -75,12 +109,24 @@ export function calculateHoldings(transactions: Transaction[]): Holding[] {
   return holdings
 }
 
+/**
+ * Takes calculated holdings and attaches live market data.
+ *
+ * For each holding we compute:
+ * - currentPrice + marketValue
+ * - unrealizedPnl (absolute and percentage)
+ * - position24hChange = how much this position contributed to the portfolio's 24h move
+ *
+ * Missing price data is handled gracefully (price falls back to 0, percentages become 0 or -100%).
+ * This allows the UI to still render holdings even when some tickers fail to price.
+ */
 export function enrichHoldings(
   holdings: Holding[],
   priceData: Record<string, { price: number; change24h: number | null }>
 ): EnrichedHolding[] {
   return holdings.map((holding) => {
     const raw = priceData[holding.symbol]
+    // Guard against missing or malformed price data from the service.
     const data = raw && typeof raw === 'object'
       ? raw
       : { price: 0, change24h: null as number | null }

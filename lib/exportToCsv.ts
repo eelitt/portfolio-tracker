@@ -1,10 +1,20 @@
+/**
+ * Client-side CSV export helpers.
+ *
+ * These run in the browser, build a Blob, and trigger a download.
+ * They are intentionally simple (no server round-trip for exports).
+ */
+
+/**
+ * Exports the full transaction history as CSV.
+ * Columns: Date, Symbol, Type, Action, Quantity, Price, Total Value, Notes
+ */
 export function exportTransactionsToCsv(transactions: any[]) {
   if (!transactions || transactions.length === 0) {
     alert('No transactions to export')
     return
   }
 
-  // CSV Header
   const headers = [
     'Date',
     'Symbol',
@@ -16,7 +26,6 @@ export function exportTransactionsToCsv(transactions: any[]) {
     'Notes',
   ]
 
-  // Convert transactions to CSV rows
   const rows = transactions.map((tx) => {
     const totalValue = (tx.quantity * tx.unit_price).toFixed(2)
     const date = new Date(tx.executed_at).toISOString().split('T')[0]
@@ -33,13 +42,11 @@ export function exportTransactionsToCsv(transactions: any[]) {
     ]
   })
 
-  // Combine header + rows
   const csvContent = [
     headers.join(','),
     ...rows.map((row) => row.join(',')),
   ].join('\n')
 
-  // Create downloadable file
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
   const link = document.createElement('a')
   const url = URL.createObjectURL(blob)
@@ -49,10 +56,12 @@ export function exportTransactionsToCsv(transactions: any[]) {
   link.click()
 
   URL.revokeObjectURL(url)
-
-  
 }
 
+/**
+ * Exports the current computed holdings snapshot as CSV.
+ * Includes live price columns (Current Price, Market Value, Unrealized P&L, etc.)
+ */
 export function exportHoldingsToCsv(holdings: any[]) {
   if (!holdings || holdings.length === 0) {
     alert('No holdings to export')

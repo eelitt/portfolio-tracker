@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatDistanceToNow } from 'date-fns'
+import { Button } from '@/components/ui/button'
 
 export default function RefreshButton() {
   const router = useRouter()
@@ -40,10 +41,10 @@ export default function RefreshButton() {
 
   return (
     <div className="flex flex-col items-center">
-      <button
+      <Button
         onClick={handleRefresh}
         disabled={isPending}
-        className="flex items-center justify-center gap-2 px-4 py-2 bg-black text-white rounded hover:bg-gray-800 disabled:opacity-70 transition-colors"
+        variant="default"
       >
         {isPending ? (
           <>
@@ -53,9 +54,9 @@ export default function RefreshButton() {
         ) : (
           'Refresh Prices'
         )}
-      </button>
+      </Button>
       
-      <div className="text-[10px] text-gray-500 mt-1">
+      <div className="text-[10px] text-muted-foreground mt-1">
         Updated {relativeTime}
       </div>
     </div>

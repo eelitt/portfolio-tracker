@@ -1,10 +1,19 @@
 'use client'
 
+/**
+ * AddTransactionForm
+ *
+ * Form for creating new buy/sell transactions.
+ * Uses React 19 useActionState + Server Action.
+ * Shows toasts on success/error and calls onSuccess callback (used to close the modal).
+ */
+
 import { useActionState } from 'react'
 import { createTransaction, type ActionState } from '@/app/actions/transactions'
 import { Toaster, toast } from 'sonner'
 import { useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 const initialState: ActionState = { error: undefined, success: false }
 interface AddTransactionFormProps {
@@ -43,10 +52,11 @@ export default function AddTransactionForm({ onSuccess }: AddTransactionFormProp
           <input name="unit_price" type="number" step="any" placeholder="Price per unit" className="border p-2 rounded" required />
           <input name="executed_at" type="date" className="border p-2 rounded" required defaultValue={new Date().toISOString().split('T')[0]} />
           <input name="notes" placeholder="Notes (optional)" className="border p-2 rounded md:col-span-2" />
-         <button 
+         <Button 
             type="submit" 
             disabled={isPending} 
-            className="md:col-span-2 flex items-center justify-center gap-2 bg-black text-white py-2.5 rounded disabled:opacity-70 transition-colors"
+            className="md:col-span-2"
+            variant="default"
           >
             {isPending ? (
               <>
@@ -56,7 +66,7 @@ export default function AddTransactionForm({ onSuccess }: AddTransactionFormProp
             ) : (
               'Add Transaction'
             )}
-          </button>
+          </Button>
         </form>
     </>
   )

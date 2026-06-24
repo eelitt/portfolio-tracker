@@ -1,5 +1,13 @@
 import { z } from 'zod'
 
+/**
+ * Zod schema used for validating user input when creating or editing transactions.
+ *
+ * - Runs on the server inside the Server Actions.
+ * - Coerces strings from FormData into numbers.
+ * - Symbol is uppercased for consistency.
+ * - Used by createTransaction and updateTransaction.
+ */
 export const transactionSchema = z.object({
   symbol: z.string().min(1, 'Symbol is required').toUpperCase(),
   asset_type: z.enum(['stock', 'crypto']),
@@ -11,3 +19,10 @@ export const transactionSchema = z.object({
 })
 
 export type TransactionFormData = z.infer<typeof transactionSchema>
+
+export const goalSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  target_amount: z.coerce.number().positive('Target must be greater than 0'),
+})
+
+export type GoalFormData = z.infer<typeof goalSchema>

@@ -1,0 +1,219 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { getUserGoals, createGoal, updateGoal, deleteGoal, getCurrentPortfolioValue } from '@/app/actions/goals'
+import { Goal } from '@/lib/types'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
+
+export default function GoalsSidebar() {
+  const [isOpen, setIsOpen] = useState(false)
+  const [goals, setGoals] = useState<Goal[]>([])
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editing, setEditing] = useState<Goal | null>(null)
+  const [name, setName] = useState('')
+  const [target, setTarget] = useState('')
+  const [portfolioValue, setPortfolioValue] = useState(0)
+
+  const loadGoals = async () => {
+    const data = await getUserGoals()
+    setGoals(data)
+  }
+
+  const loadPortfolioValue = async () => {
+    const val = await getCurrentPortfolioValue()
+    setPortfolioValue(val)
+  }
+
+  useEffect(() => {
+    loadGoals()
+    loadPortfolioValue()
+
+    const handleToggle = () => {
+      const open = localStorage.getItem('goalsSidebarOpen') === 'true'
+      setIsOpen(open)
+      if (open) {
+        loadGoals()
+        loadPortfolioValue()
+      }
+    }
+    window.addEventListener('goals-sidebar-toggle', handleToggle)
+
+    const initial = localStorage.getItem('goalsSidebarOpen') === 'true'
+    setIsOpen(initial)
+    if (initial) {
+      loadGoals()
+      loadPortfolioValue()
+    }
+
+    return () => window.removeEventListener('goals-sidebar-toggle', handleToggle)
+  }, [])
+
+  const openAdd = () => {
+    setEditing(null)
+    setName('')
+    setTarget('')
+    setDialogOpen(true)
+  }
+
+  const openEdit = (goal: Goal) => {
+    setEditing(goal)
+    setName(goal.name)
+    setTarget(goal.target_amount.toString())
+    setDialogOpen(true)
+  }
+
+  const closeDialog = () => {
+    setDialogOpen(false)
+    setEditing(null)
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const formData = new FormData()
+    formData.set('name', name)
+    formData.set('target_amount', target)
+
+    let result
+    if (editing) {
+      result = await updateGoal(editing.id, formData)
+    } else {
+      result = await createGoal(null as any, formData)
+    }
+
+    if (result?.error) {
+      const msg = typeof result.error === 'string' ? result.error : 'Failed to save goal'
+      toast.error(msg)
+    } else {
+      toast.success(editing ? 'Goal updated' : 'Goal added')
+      closeDialog()
+      loadGoals()
+      loadPortfolioValue()
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    const result = await deleteGoal(id)
+    if (result?.error) {
+      toast.error(result.error)
+    } else {
+      toast.success('Goal deleted')
+      loadGoals()
+      loadPortfolioValue()
+    }
+  }
+
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed right-0 top-16 bottom-0 w-80 bg-card border-l shadow-lg z-40 overflow-y-auto p-4">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold">Investing Goals</h2>
+        <Button size="sm" onClick={openAdd}>
+          <Plus className="h-4 w-4" />
+        </Button>
+      </div>
+      <div className="text-sm text-muted-foreground mb-3">
+        Current portfolio: ${portfolioValue.toFixed(2)}
+      </div>
+
+      {goals.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          No goals yet. Add your first investing goal to track progress.
+        </p>
+      )}
+
+      <div className="space-y-3">
+        {goals.map((goal) => {
+          const current = portfolioValue
+          const pct = goal.target_amount > 0
+            ? Math.min(100, Math.round((current / goal.target_amount) * 100))
+            : 0
+          return (
+            <div key={goal.id} className="border rounded p-3">
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="font-medium">{goal.name}</div>
+                  <div className="text-xs text-muted-foreground">
+                    ${current.toFixed(2)} / ${goal.target_amount}
+                  </div>
+                </div>
+                <div className="flex gap-1">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6"
+                    onClick={() => openEdit(goal)}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6"
+                    onClick={() => handleDelete(goal.id)}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+              <div className="mt-2 h-2 bg-muted rounded overflow-hidden">
+                <div
+                  className="h-2 bg-primary rounded"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <div className="text-[10px] text-right mt-0.5 text-muted-foreground">
+                {pct}%
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <Dialog open={dialogOpen} onOpenChange={(o) => {
+        setDialogOpen(o)
+        if (!o) setEditing(null)
+      }}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>{editing ? 'Edit Goal' : 'New Investing Goal'}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Name (e.g. Retirement)"
+              className="w-full border p-2 rounded"
+              required
+            />
+            <input
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              type="number"
+              step="any"
+              placeholder="Target amount"
+              className="w-full border p-2 rounded"
+              required
+            />
+            <div className="flex gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} className="flex-1">
+                Cancel
+              </Button>
+              <Button type="submit" className="flex-1">
+                {editing ? 'Save Changes' : 'Add Goal'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
