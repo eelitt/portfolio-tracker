@@ -75,7 +75,7 @@ export default async function HoldingsSection() {
       </div>
 
       {/* Allocation Pie Chart (by current market value) */}
-      <div className="mb-10">
+      <div className="mb-10 mt-5">
         <h2 className="text-xl font-semibold mb-4">Allocation</h2>
         <AllocationPie enrichedHoldings={data.enrichedHoldings} />
       </div>

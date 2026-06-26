@@ -50,4 +50,9 @@ export interface Goal {
   id: string
   name: string
   target_amount: number
+  notes?: string                    // Optional notes (e.g. "Invest €300/month")
+  is_completed: boolean             // Controls visibility
+  completed_at?: string             // When it was marked as completed
+  created_at: string
+  updated_at: string
 }

@@ -5,6 +5,7 @@ import { goalSchema } from '@/lib/schemas'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from './users'
 import { getPortfolioData } from '@/lib/portfolioData'
+import { Goal } from '@/lib/types'
 
 export type ActionState = {
   error?: string | Record<string, string[]>
@@ -20,6 +21,8 @@ export async function createGoal(
   const rawData = {
     name: formData.get('name'),
     target_amount: formData.get('target_amount'),
+    notes: formData.get('notes'),
+    is_completed: formData.get('is_completed') === 'true',
   }
 
   const result = goalSchema.safeParse(rawData)
@@ -35,10 +38,14 @@ export async function createGoal(
     return { error: 'Not authenticated' }
   }
 
-  const { error } = await supabase.from('goals').insert({
-    ...result.data,
-    user_id: user.id,
-  })
+  const insertData: any = { ...result.data, user_id: user.id }
+
+  // If marking as completed on create, set completed_at
+  if (insertData.is_completed && !insertData.completed_at) {
+    insertData.completed_at = new Date().toISOString()
+  }
+
+  const { error } = await supabase.from('goals').insert(insertData)
 
   if (error) {
     return { error: error.message }
@@ -92,7 +99,7 @@ export async function updateGoal(
   // verify ownership
   const { data: goal } = await supabase
     .from('goals')
-    .select('user_id')
+    .select('user_id, is_completed, completed_at')
     .eq('id', goalId)
     .single()
 
@@ -103,6 +110,8 @@ export async function updateGoal(
   const rawData = {
     name: formData.get('name'),
     target_amount: formData.get('target_amount'),
+    notes: formData.get('notes'),
+    is_completed: formData.get('is_completed') === 'true',
   }
 
   // Reuse the same Zod schema 
@@ -112,9 +121,18 @@ export async function updateGoal(
     return { error: result.error.flatten().fieldErrors }
   }
 
+  const updateData: any = { ...result.data, updated_at: new Date().toISOString() }
+
+  // Set completed_at only if becoming completed now (was not before)
+  if (updateData.is_completed && !goal.is_completed) {
+    updateData.completed_at = new Date().toISOString()
+  } else if (!updateData.is_completed) {
+    updateData.completed_at = null
+  }
+
   const { error } = await supabase
     .from('goals')
-    .update(result.data)
+    .update(updateData)
     .eq('id', goalId)
 
   if (error) {
@@ -133,7 +151,7 @@ export async function getUserGoals() {
 
   const { data: goals, error } = await supabase
     .from('goals')
-    .select('id, name, target_amount')
+    .select('id, name, target_amount, notes, is_completed, completed_at, created_at, updated_at')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
 
@@ -142,7 +160,7 @@ export async function getUserGoals() {
     return []
   }
 
-  return goals || []
+  return (goals || []) as Goal[]
 }
 
 export async function getCurrentPortfolioValue(): Promise<number> {

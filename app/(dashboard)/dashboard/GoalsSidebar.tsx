@@ -20,6 +20,8 @@ export default function GoalsSidebar() {
   const [editing, setEditing] = useState<Goal | null>(null)
   const [name, setName] = useState('')
   const [target, setTarget] = useState('')
+  const [notes, setNotes] = useState('')
+  const [isCompleted, setIsCompleted] = useState(false)
   const [portfolioValue, setPortfolioValue] = useState(0)
 
   const loadGoals = async () => {
@@ -60,6 +62,8 @@ export default function GoalsSidebar() {
     setEditing(null)
     setName('')
     setTarget('')
+    setNotes('')
+    setIsCompleted(false)
     setDialogOpen(true)
   }
 
@@ -67,6 +71,8 @@ export default function GoalsSidebar() {
     setEditing(goal)
     setName(goal.name)
     setTarget(goal.target_amount.toString())
+    setNotes(goal.notes || '')
+    setIsCompleted(goal.is_completed || false)
     setDialogOpen(true)
   }
 
@@ -80,6 +86,8 @@ export default function GoalsSidebar() {
     const formData = new FormData()
     formData.set('name', name)
     formData.set('target_amount', target)
+    formData.set('notes', notes)
+    formData.set('is_completed', isCompleted ? 'true' : 'false')
 
     let result
     if (editing) {
@@ -113,7 +121,7 @@ export default function GoalsSidebar() {
   if (!isOpen) return null
 
   return (
-    <div className="fixed right-0 top-16 bottom-0 w-80 bg-card border-l shadow-lg z-40 overflow-y-auto p-4">
+    <div className="fixed right-0 top-16 bottom-0 w-80 bg-muted shadow-xl z-40 overflow-y-auto p-4">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">Investing Goals</h2>
         <Button size="sm" onClick={openAdd}>
@@ -130,20 +138,31 @@ export default function GoalsSidebar() {
         </p>
       )}
 
-      <div className="space-y-3">
+      <div className="space-y-3 bg-card shadow-lg">
         {goals.map((goal) => {
           const current = portfolioValue
           const pct = goal.target_amount > 0
             ? Math.min(100, Math.round((current / goal.target_amount) * 100))
             : 0
+          const isDone = goal.is_completed
           return (
-            <div key={goal.id} className="border rounded p-3">
+            <div key={goal.id} className={`border rounded p-3 ${isDone ? 'opacity-60' : ''}`}>
               <div className="flex justify-between items-start">
                 <div>
-                  <div className="font-medium">{goal.name}</div>
+                  <div className={`font-medium ${isDone ? 'line-through' : ''}`}>
+                    {goal.name} {isDone && '✓'}
+                  </div>
                   <div className="text-xs text-muted-foreground">
                     ${current.toFixed(2)} / ${goal.target_amount}
                   </div>
+                  {goal.notes && (
+                    <div className="text-xs text-muted-foreground mt-1 italic">{goal.notes}</div>
+                  )}
+                  {goal.completed_at && (
+                    <div className="text-[10px] text-green-600 mt-0.5">
+                      Completed {new Date(goal.completed_at).toLocaleDateString()}
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-1">
                   <Button
@@ -164,15 +183,19 @@ export default function GoalsSidebar() {
                   </Button>
                 </div>
               </div>
-              <div className="mt-2 h-2 bg-muted rounded overflow-hidden">
-                <div
-                  className="h-2 bg-primary rounded"
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <div className="text-[10px] text-right mt-0.5 text-muted-foreground">
-                {pct}%
-              </div>
+              {!isDone && (
+                <>
+                  <div className="mt-2 h-2 bg-muted rounded overflow-hidden">
+                    <div
+                      className="h-2 bg-primary rounded"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <div className="text-[10px] text-right mt-0.5 text-muted-foreground">
+                    {pct}%
+                  </div>
+                </>
+              )}
             </div>
           )
         })}
@@ -203,6 +226,20 @@ export default function GoalsSidebar() {
               className="w-full border p-2 rounded"
               required
             />
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Notes (e.g. Invest €300/month)"
+              className="w-full border p-2 rounded h-20"
+            />
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={isCompleted}
+                onChange={(e) => setIsCompleted(e.target.checked)}
+              />
+              Mark as completed
+            </label>
             <div className="flex gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} className="flex-1">
                 Cancel

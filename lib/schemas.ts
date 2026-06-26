@@ -23,6 +23,8 @@ export type TransactionFormData = z.infer<typeof transactionSchema>
 export const goalSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   target_amount: z.coerce.number().positive('Target must be greater than 0'),
+  notes: z.string().optional(),
+  is_completed: z.coerce.boolean().default(false),
 })
 
 export type GoalFormData = z.infer<typeof goalSchema>
