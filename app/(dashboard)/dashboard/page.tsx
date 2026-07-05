@@ -2,7 +2,7 @@ import RefreshButton from './RefreshButton'
 import TransactionModal from './TransactionModal'
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/app/actions/users'
-import { Suspense } from 'react'
+import { Suspense, type ComponentType } from 'react'
 import SummarySkeleton from '../SummarySkeleton'
 import HoldingsSkeleton from '../HoldingsSkeleton'
 import SummarySection from './SummarySection'
@@ -19,6 +19,14 @@ export default async function DashboardPage() {
     redirect('/login') // extra safety
   }
 
+  const hasAiKey = !!process.env.XAI_API_KEY
+
+  let AIInsightsButton: ComponentType<any> | null = null
+  if (hasAiKey) {
+    const mod = await import('./AIInsightsButton')
+    AIInsightsButton = mod.default
+  }
+
   return (
     <div className="max-w-5xl mx-auto p-8">
       <div className="flex justify-between items-end mb-8">
@@ -28,6 +36,7 @@ export default async function DashboardPage() {
           <div className="flex items-center gap-3">
             <TransactionModal />
             <RefreshButton />
+            {AIInsightsButton && <AIInsightsButton />}
           </div>
         </div>
       </div>

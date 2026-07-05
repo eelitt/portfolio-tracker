@@ -27,9 +27,19 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  let user = null
+
+  try {
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser()
+    user = authUser
+  } catch (error) {
+    // Supabase is unreachable (network/DNS issue, outage, etc.)
+    // Allow login/signup pages to render their own error UI.
+    // For other pages, redirect to login (where the unavailable message will be shown).
+    console.error('Supabase connection failed in middleware:', error)
+  }
 
   if (
     !user &&
