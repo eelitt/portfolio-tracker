@@ -52,6 +52,11 @@ export default function GoalsSidebar() {
     }
     window.addEventListener('goals-sidebar-toggle', handleToggle)
 
+    const handlePortfolioUpdate = () => {
+      loadPortfolioValue()
+    }
+    window.addEventListener('portfolio-updated', handlePortfolioUpdate)
+
     const initial = localStorage.getItem('goalsSidebarOpen') === 'true'
     setIsOpen(initial)
     if (initial) {
@@ -59,7 +64,10 @@ export default function GoalsSidebar() {
       loadPortfolioValue()
     }
 
-    return () => window.removeEventListener('goals-sidebar-toggle', handleToggle)
+    return () => {
+      window.removeEventListener('goals-sidebar-toggle', handleToggle)
+      window.removeEventListener('portfolio-updated', handlePortfolioUpdate)
+    }
   }, [])
 
   const openAdd = () => {

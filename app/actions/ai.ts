@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from './users'
 
 /**
  * AI-related Supabase database actions.
@@ -73,4 +74,17 @@ export async function getLatestAIInsight(
     result: data.result,
     createdAt: data.created_at,
   }
+}
+
+/**
+ * Convenience wrapper that gets the current user and retrieves their
+ * latest stored AI insight for a feature type (without triggering generation).
+ * Returns the same shape as getLatestAIInsight or null.
+ */
+export async function getLatestAIInsightForCurrentUser(
+  featureType: string
+): Promise<{ result: Record<string, any>; createdAt: string } | null> {
+  const user = await getCurrentUser()
+  if (!user) return null
+  return getLatestAIInsight(user.id, featureType)
 }

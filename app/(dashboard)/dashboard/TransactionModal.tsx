@@ -55,6 +55,7 @@ useEffect(() => {
       toast.error(typeof result.error === 'string' ? result.error : 'Failed to update')
     } else {
       toast.success('Transaction updated')
+      window.dispatchEvent(new CustomEvent('portfolio-updated'))
       handleClose()
     }
   }

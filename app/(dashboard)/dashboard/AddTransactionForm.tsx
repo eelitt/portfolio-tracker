@@ -26,6 +26,7 @@ export default function AddTransactionForm({ onSuccess }: AddTransactionFormProp
   useEffect(() => {
     if (state.success) {
       toast.success('Transaction added successfully')
+      window.dispatchEvent(new CustomEvent('portfolio-updated'))
       onSuccess?.()
     }
     if (state.error) {

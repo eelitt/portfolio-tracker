@@ -35,6 +35,7 @@ export default function RefreshButton() {
       setLastUpdatedTime(now)
       setRelativeTime(formatDistanceToNow(now, { addSuffix: true }))
       setIsPending(false)
+      window.dispatchEvent(new CustomEvent('portfolio-updated'))
       toast.success('Prices refreshed')
     }, 600)
   }

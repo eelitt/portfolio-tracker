@@ -57,6 +57,7 @@ const [deletingTransaction, setDeletingTransaction] = useState<Transaction | nul
       toast.error(result.error)
     } else {
       toast.success('Transaction deleted successfully')
+      window.dispatchEvent(new CustomEvent('portfolio-updated'))
       closeDeleteModal()
     }
   } catch (error) {
