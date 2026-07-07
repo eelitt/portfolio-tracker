@@ -6,15 +6,26 @@ import {
   getLastAICallTime,
   updateLastAICallTime,
   saveAIInsight,
+  getLatestAIInsight,
 } from './ai'
+import { computePortfolioHash } from '@/lib/calculatePortfolio'
+import { aiInsightsSchema } from '@/lib/schemas'
 
 export type AIInsightsResult =
-  | { insights: string; error?: undefined }
+  | { insights: string[]; cachedAt?: string; message?: string; error?: undefined }
   | { error: string; insights?: undefined }
+
+// Helper to support old string results in DB
+function normalizeInsights(insights: any): string[] {
+  if (Array.isArray(insights)) return insights
+  if (typeof insights === 'string') return insights.split('\n').map(s => s.trim()).filter(Boolean)
+  return []
+}
 
 /**
  * Server Action for generating AI insights.
  * Handles auth, rate limiting (60s per user), and delegates persistence to ai.ts.
+ * When rate limit is active, returns the latest cached result (if any) instead of an error.
  */
 export async function generateAIInsights(
   featureType: string = 'portfolio_insights'
@@ -37,39 +48,61 @@ export async function generateAIInsights(
     return { error: 'AI service is not configured.' }
   }
 
-  // Rate limiting: 60s cooldown per user
-  const lastCall = await getLastAICallTime(user.id)
-  if (lastCall) {
-    const secondsSince = (Date.now() - lastCall.getTime()) / 1000
-    if (secondsSince < 60) {
-      const wait = Math.ceil(60 - secondsSince)
-      return { error: `Please wait ${wait} more second${wait > 1 ? 's' : ''} before requesting another AI insight.` }
-    }
-  }
-
   const summary = buildPortfolioSummary(data)
 
   try {
+    const currentHash = computePortfolioHash(data.transactions)
+    const cached = await getLatestAIInsight(user.id, featureType)
+
+    // If portfolio data is identical to last analysis → serve cached (preferred over error)
+    if (cached?.result?.portfolioHash === currentHash) {
+      return {
+        insights: normalizeInsights(cached.result.insights),
+        cachedAt: cached.createdAt,
+        message: 'Showing previous analysis (portfolio unchanged)',
+      }
+    }
+
+    // Rate limiting (60s cooldown). If we have a cached result (even if data changed), return it.
+    const lastCall = await getLastAICallTime(user.id)
+    if (lastCall) {
+      const secondsSince = (Date.now() - lastCall.getTime()) / 1000
+      if (secondsSince < 60) {
+        if (cached) {
+          return {
+            insights: normalizeInsights(cached.result.insights),
+            cachedAt: cached.createdAt,
+            message: 'Showing cached result (rate limited)',
+          }
+        }
+        const wait = Math.ceil(60 - secondsSince)
+        return { error: `Please wait ${wait} seconds before requesting new insights.` }
+      }
+    }
+
     // Dynamic imports so the AI SDK is only loaded server-side when the action is invoked
-    const { generateText } = await import('ai')
+    const { generateObject } = await import('ai')
     const { xai } = await import('@ai-sdk/xai')
 
-    const { text } = await generateText({
+    const { object } = await generateObject({
       model: xai('grok-4.3'),
-      system: `You are a professional, neutral financial analyst. 
-Provide a concise (4-7 sentence) objective review of the portfolio.
-Cover: overall size and performance, concentration/diversification, stock vs crypto mix, notable positions.
-Be factual and cautious. Do not recommend buying or selling any specific asset.
-Do not give personalized financial advice.`,
-      prompt: `Here is the user's current portfolio data:\n\n${summary}\n\nProvide your brief analysis now.`,
-      maxTokens: 600,
+      schema: aiInsightsSchema,
+      system: `You are a professional financial analyst. 
+Analyze the user's portfolio and return maximum 6 concise bullet points.
+Keep language simple and easy to understand. Avoid jargon.`,
+      prompt: `Portfolio data:\n\n${summary}`,
+      maxTokens: 500,
     })
 
-    // Persist result and update cooldown (delegated to ai.ts)
-    await saveAIInsight(user.id, featureType, { insights: text })
+    // Persist result (with hash for future change detection) and update cooldown
+    const resultToStore: Record<string, any> = {
+      insights: object.insights,
+      portfolioHash: currentHash,
+    }
+    await saveAIInsight(user.id, featureType, resultToStore)
     await updateLastAICallTime(user.id)
 
-    return { insights: text }
+    return { insights: object.insights }
   } catch (e) {
     console.error('AI insights error', e)
     return { error: 'Failed to generate insights. Please try again later.' }

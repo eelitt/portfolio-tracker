@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function GoalsSidebar() {
@@ -44,6 +44,10 @@ export default function GoalsSidebar() {
       if (open) {
         loadGoals()
         loadPortfolioValue()
+      } else {
+        // close any open inner dialog when sidebar is closed externally
+        setDialogOpen(false)
+        setEditing(null)
       }
     }
     window.addEventListener('goals-sidebar-toggle', handleToggle)
@@ -77,6 +81,13 @@ export default function GoalsSidebar() {
   }
 
   const closeDialog = () => {
+    setDialogOpen(false)
+    setEditing(null)
+  }
+
+  const closeSidebar = () => {
+    localStorage.setItem('goalsSidebarOpen', 'false')
+    setIsOpen(false)
     setDialogOpen(false)
     setEditing(null)
   }
@@ -123,7 +134,18 @@ export default function GoalsSidebar() {
   return (
     <div className="fixed right-0 top-16 bottom-0 w-80 bg-muted dark:bg-slate-800 shadow-xl z-40 overflow-y-auto p-4">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">Investing Goals</h2>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={closeSidebar}
+            className="group h-8 w-8 hover:bg-destructive/10 hover:text-destructive transition-all duration-200"
+            aria-label="Close goals sidebar"
+          >
+            <X className="h-4 w-4 transition-transform group-hover:scale-110" />
+          </Button>
+          <h2 className="text-lg font-semibold">Investing Goals</h2>
+        </div>
         <Button size="sm" onClick={openAdd}>
           <Plus className="h-4 w-4" />
         </Button>

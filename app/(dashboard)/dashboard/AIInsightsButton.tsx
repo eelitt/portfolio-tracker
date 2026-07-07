@@ -14,7 +14,7 @@ import { toast } from 'sonner'
 
 export default function AIInsightsButton() {
   const [isPending, startTransition] = useTransition()
-  const [insights, setInsights] = useState<string | null>(null)
+  const [insights, setInsights] = useState<string[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
 
@@ -28,8 +28,9 @@ export default function AIInsightsButton() {
         setDialogOpen(true)
       } else if ('insights' in result && result.insights) {
         setError(null)
-        setInsights(result.insights)
+        setInsights(Array.isArray(result.insights) ? result.insights : [result.insights].filter(Boolean))
         setDialogOpen(true)
+        // Note: legacy button does not currently show cachedAt banner
       }
     })
   }
@@ -76,9 +77,9 @@ export default function AIInsightsButton() {
             </div>
           ) : insights ? (
             <div className="space-y-4">
-              <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-                {insights}
-              </div>
+              <ul className="list-disc pl-5 space-y-1 text-sm leading-relaxed text-foreground">
+                {insights.map((point, i) => <li key={i}>{point}</li>)}
+              </ul>
 
               <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
                 <strong>Disclaimer:</strong> This AI-generated analysis is for

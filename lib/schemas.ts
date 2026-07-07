@@ -28,3 +28,15 @@ export const goalSchema = z.object({
 })
 
 export type GoalFormData = z.infer<typeof goalSchema>
+
+/**
+ * Zod schema for structured AI output (used with generateObject).
+ * 
+ * Forces the model to return a clean array of bullet points (max 6).
+ * Used by generateAIInsights for reliable, parseable results.
+ */
+export const aiInsightsSchema = z.object({
+  insights: z.array(z.string()).max(6),
+})
+
+export type AIInsights = z.infer<typeof aiInsightsSchema>

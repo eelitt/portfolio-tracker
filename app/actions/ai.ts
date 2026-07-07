@@ -46,3 +46,31 @@ export async function saveAIInsight(
     result
   })
 }
+
+/**
+ * Retrieves the latest stored AI insight for a user and specific feature type.
+ * Returns { result, createdAt } or null if none exists.
+ * createdAt can be used to display cache age.
+ */
+export async function getLatestAIInsight(
+  userId: string,
+  featureType: string
+): Promise<{ result: Record<string, any>; createdAt: string } | null> {
+  const supabase = await createClient()
+
+  const { data } = await supabase
+    .from('user_ai_insights')
+    .select('result, created_at')
+    .eq('user_id', userId)
+    .eq('feature_type', featureType)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (!data) return null
+
+  return {
+    result: data.result,
+    createdAt: data.created_at,
+  }
+}

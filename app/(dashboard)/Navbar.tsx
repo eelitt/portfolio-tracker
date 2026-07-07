@@ -60,8 +60,11 @@ export default function Navbar({ user, hasAiKey = true }: NavbarProps) {
     window.dispatchEvent(new CustomEvent('goals-sidebar-toggle'))
   }
 
-  const openAIInsights = () => {
-    window.dispatchEvent(new CustomEvent('open-ai-insights'))
+  const toggleAIInsights = () => {
+    const currentlyOpen = localStorage.getItem('aiInsightsSidebarOpen') === 'true'
+    const newOpen = !currentlyOpen
+    localStorage.setItem('aiInsightsSidebarOpen', newOpen.toString())
+    window.dispatchEvent(new CustomEvent('ai-insights-toggle'))
   }
 
   const handleLogout = async () => {
@@ -116,9 +119,9 @@ export default function Navbar({ user, hasAiKey = true }: NavbarProps) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={openAIInsights}
+              onClick={toggleAIInsights}
               className="flex items-center gap-2"
-              aria-label="Open AI Insights panel"
+              aria-label="Toggle AI Insights sidebar"
             >
               <Sparkles className="h-4 w-4" />
               AI Insights

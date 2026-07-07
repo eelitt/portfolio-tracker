@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { createHash } from 'crypto'
 import { Holding, EnrichedHolding } from './types'
 
 /**
@@ -150,4 +151,31 @@ export function enrichHoldings(
       position24hChange,
     }
   })
+}
+
+/**
+ * Computes a stable hash of the portfolio based on its transactions.
+ * Used to detect whether the underlying portfolio data has changed
+ * since the last AI analysis (prices are ignored because they are volatile).
+ *
+ * The hash is based on a canonical serialization of the transactions
+ * (sorted by executed_at + id, using the fields that affect holdings calculation).
+ */
+export function computePortfolioHash(transactions: Transaction[]): string {
+  if (!transactions || transactions.length === 0) {
+    return 'empty'
+  }
+
+  // Canonical sort for determinism (same as calculateHoldings does internally)
+  const sorted = [...transactions].sort((a, b) => {
+    const timeDiff = new Date(a.executed_at).getTime() - new Date(b.executed_at).getTime()
+    if (timeDiff !== 0) return timeDiff
+    return (a.id || '').localeCompare(b.id || '')
+  })
+
+  const repr = sorted
+    .map(t => `${t.id || ''}|${t.symbol}|${t.action}|${t.quantity.toFixed(8)}|${t.unit_price.toFixed(2)}|${t.executed_at}`)
+    .join(';')
+
+  return createHash('sha256').update(repr).digest('hex').slice(0, 16)
 }
