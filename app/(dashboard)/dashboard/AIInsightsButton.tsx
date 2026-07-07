@@ -20,7 +20,7 @@ export default function AIInsightsButton() {
 
   const handleClick = () => {
     startTransition(async () => {
-      const result = await generateAIInsights()
+      const result = await generateAIInsights('portfolio_insights')
       if ('error' in result && result.error) {
         toast.error(result.error)
         setError(result.error)

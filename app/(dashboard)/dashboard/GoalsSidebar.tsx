@@ -121,7 +121,7 @@ export default function GoalsSidebar() {
   if (!isOpen) return null
 
   return (
-    <div className="fixed right-0 top-16 bottom-0 w-80 bg-muted shadow-xl z-40 overflow-y-auto p-4">
+    <div className="fixed right-0 top-16 bottom-0 w-80 bg-muted dark:bg-slate-800 shadow-xl z-40 overflow-y-auto p-4">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">Investing Goals</h2>
         <Button size="sm" onClick={openAdd}>

@@ -2,21 +2,30 @@
 
 import { getCurrentUser } from './users'
 import { getPortfolioData, type PortfolioData } from '@/lib/portfolioData'
+import {
+  getLastAICallTime,
+  updateLastAICallTime,
+  saveAIInsight,
+} from './ai'
 
 export type AIInsightsResult =
   | { insights: string; error?: undefined }
   | { error: string; insights?: undefined }
 
 /**
- * Single Server Action for v1 AI Portfolio Insights.
- * Fetches live portfolio data (reusing existing cached logic), builds a compact summary,
- * calls xAI Grok via Vercel AI SDK, and returns the analysis text.
- * No persistence, no streaming.
+ * Server Action for generating AI insights.
+ * Handles auth, rate limiting (60s per user), and delegates persistence to ai.ts.
  */
-export async function generateAIInsights(): Promise<AIInsightsResult> {
+export async function generateAIInsights(
+  featureType: string = 'portfolio_insights'
+): Promise<AIInsightsResult> {
   const user = await getCurrentUser()
   if (!user) {
     return { error: 'Not authenticated' }
+  }
+
+  if (featureType !== 'portfolio_insights') {
+    return { error: 'This AI feature is not implemented yet.' }
   }
 
   const data = await getPortfolioData()
@@ -26,6 +35,16 @@ export async function generateAIInsights(): Promise<AIInsightsResult> {
 
   if (!process.env.XAI_API_KEY) {
     return { error: 'AI service is not configured.' }
+  }
+
+  // Rate limiting: 60s cooldown per user
+  const lastCall = await getLastAICallTime(user.id)
+  if (lastCall) {
+    const secondsSince = (Date.now() - lastCall.getTime()) / 1000
+    if (secondsSince < 60) {
+      const wait = Math.ceil(60 - secondsSince)
+      return { error: `Please wait ${wait} more second${wait > 1 ? 's' : ''} before requesting another AI insight.` }
+    }
   }
 
   const summary = buildPortfolioSummary(data)
@@ -45,6 +64,11 @@ Do not give personalized financial advice.`,
       prompt: `Here is the user's current portfolio data:\n\n${summary}\n\nProvide your brief analysis now.`,
       maxTokens: 600,
     })
+
+    // Persist result and update cooldown (delegated to ai.ts)
+    await saveAIInsight(user.id, featureType, { insights: text })
+    await updateLastAICallTime(user.id)
+
     return { insights: text }
   } catch (e) {
     console.error('AI insights error', e)

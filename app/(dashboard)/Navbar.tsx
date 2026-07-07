@@ -12,14 +12,15 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { LogOut, Sun, Moon, Target } from 'lucide-react'
+import { LogOut, Sun, Moon, Target, Sparkles } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 interface NavbarProps {
   user: any
+  hasAiKey?: boolean
 }
 
-export default function Navbar({ user }: NavbarProps) {
+export default function Navbar({ user, hasAiKey = true }: NavbarProps) {
   const router = useRouter()
   const supabase = createClient()
 
@@ -59,6 +60,10 @@ export default function Navbar({ user }: NavbarProps) {
     window.dispatchEvent(new CustomEvent('goals-sidebar-toggle'))
   }
 
+  const openAIInsights = () => {
+    window.dispatchEvent(new CustomEvent('open-ai-insights'))
+  }
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/login')
@@ -69,7 +74,7 @@ export default function Navbar({ user }: NavbarProps) {
   const userName = user?.email?.split('@')[0] || 'User'
 
   return (
-    <nav className="bg-background shadow-md sticky top-0 z-50">
+    <nav className="bg-background dark:bg-slate-900 shadow-md sticky top-0 z-50">
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo */}
         <Link href="/dashboard" className="font-semibold text-2xl tracking-tight">
@@ -105,6 +110,20 @@ export default function Navbar({ user }: NavbarProps) {
               <Moon className="h-4 w-4" />
             )}
           </Button>
+
+          {/* AI Insights */}
+          {hasAiKey && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={openAIInsights}
+              className="flex items-center gap-2"
+              aria-label="Open AI Insights panel"
+            >
+              <Sparkles className="h-4 w-4" />
+              AI Insights
+            </Button>
+          )}
 
           {/* Goals sidebar toggle */}
           <Button
