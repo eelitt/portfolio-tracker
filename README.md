@@ -15,9 +15,9 @@
 - Transaction history with CSV export (transactions + current holdings)
 - Private per-user data only
 
-## 🤖 AI Insights — Responsible xAI Integration (Standout Feature)
+## 🤖 AI Insights — xAI Integration
 
-The **"AI Insights"** button in the navbar opens a fixed left sidebar (same pattern as Goals). Portfolio Analysis is fully implemented; the other cards are clearly marked placeholders.
+The **"AI Insights"** button in the navbar opens a fixed left sidebar. Portfolio Analysis is fully implemented.
 
 - **Smart cost controls**:
   - Portfolio hash (`computePortfolioHash` — SHA-256 over canonical transactions) skips the API entirely when data is unchanged
