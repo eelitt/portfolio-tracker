@@ -1,13 +1,10 @@
 import { getPortfolioData } from '@/lib/portfolioData'
-import ExportButton from './ExportButton'
-import ExportHoldingsButton from './ExportHoldingsButton'
 import TransactionTable from './TransactionTable'
+import { formatCurrency } from '@/lib/currency'
 
 /**
  * Async Server Component for the full transaction history section.
- * Includes both export buttons (transactions + current holdings snapshot)
- * because the data needed for the holdings export lives in the same
- * cached payload.
+ * Exports have been moved to the user dropdown (navbar) for a cleaner interface.
  */
 export default async function TransactionHistorySection() {
   const data = await getPortfolioData()
@@ -20,16 +17,28 @@ export default async function TransactionHistorySection() {
     )
   }
 
+  // Pre-format dates on the server for stable hydration (avoids locale formatting differences
+  // between Node.js and the browser in the client component).
+  const transactionsWithFormattedDate = data.transactions.map((tx) => ({
+    ...tx,
+    formattedDate: new Date(tx.executed_at).toLocaleDateString('fi-FI', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    }),
+  }))
+
   return (
     <div className="mt-10">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-semibold">Transaction History</h2>
-        <div className="flex gap-2">
-          <ExportButton transactions={data.transactions} />
-          <ExportHoldingsButton holdings={data.enrichedHoldings} />
-        </div>
+        {/* Exports are now available in the user dropdown menu (top right) */}
       </div>
-      <TransactionTable transactions={data.transactions} />
+      <TransactionTable 
+        transactions={transactionsWithFormattedDate} 
+        preferredCurrency={data.preferredCurrency}
+        usdToPreferredRate={data.usdToPreferredRate}
+      />
     </div>
   )
 }

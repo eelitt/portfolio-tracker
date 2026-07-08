@@ -9,11 +9,13 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import AddTransactionForm from './AddTransactionForm'
+import SymbolSelect from './SymbolSelect'
 import { Button } from '@/components/ui/button'
 import { Plus, Pencil, Loader2 } from 'lucide-react'
 import { updateTransaction } from '@/app/actions/transactions'
 import { toast } from 'sonner'
 import { Transaction } from '@/lib/types'
+import type { AssetType } from '@/lib/types'
 
 interface TransactionModalProps {
   transaction?: Transaction | null
@@ -28,11 +30,26 @@ export default function TransactionModal({
 }: TransactionModalProps) {
   const [open, setOpen] = useState(false)
   const [isPending, setIsPending] = useState(false)
-useEffect(() => {
-  if (transaction) {
-    setOpen(true)
-  }
-}, [transaction])
+
+  // Controlled state for the dependent asset + symbol fields in edit mode.
+  const [editAssetType, setEditAssetType] = useState<AssetType>('stock')
+  const [editSymbol, setEditSymbol] = useState('')
+
+  // For cash we hide action and unit_price in the UI.
+  // We still track them for submission (cash always uses buy + price 1).
+  const [editAction, setEditAction] = useState<'buy' | 'sell'>('buy')
+  const [editUnitPrice, setEditUnitPrice] = useState<number>(1)
+
+  useEffect(() => {
+    if (transaction) {
+      setOpen(true)
+      setEditAssetType(transaction.asset_type as AssetType)
+      setEditSymbol(transaction.symbol)
+      setEditAction(transaction.action as 'buy' | 'sell')
+      setEditUnitPrice(transaction.unit_price)
+    }
+  }, [transaction])
+
   const isEdit = !!transaction
   const title = isEdit ? 'Edit Transaction' : 'Add New Transaction'
 
@@ -62,18 +79,31 @@ useEffect(() => {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger || (
-          <Button className="flex items-center gap-2 mb-3" variant="default">
-            <Plus className="h-4 w-4" />
-            Add Transaction
-          </Button>
-        )}
-      </DialogTrigger>
+      {/* Only render the trigger (the "Add Transaction" button) for the standalone add case.
+          The edit instance (inside TransactionTable) passes the `transaction` prop (null or value)
+          and we never want to render a trigger button for it, because that button lives in the
+          transaction history area and would receive focus on close, causing the page to scroll down. */}
+      {transaction === undefined && (
+        <DialogTrigger asChild>
+          {trigger || (
+            <Button className="flex items-center gap-2 mb-3" variant="default">
+              <Plus className="h-4 w-4" />
+              Add Transaction
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
 
       <DialogContent
         className="sm:max-w-[520px] shadow-xl rounded-xl p-6 border ring-0"
         aria-describedby={undefined}
+        onCloseAutoFocus={(e) => {
+          // For the edit instance we open programmatically from holdings cards,
+          // avoid any scroll-to-focus behavior that could jump the viewport
+          // down to the transaction history area on close.
+          // Focus will naturally be restored to the card that was clicked.
+          e.preventDefault();
+        }}
       >
         <DialogHeader>
           <DialogTitle className="text-xl">{title}</DialogTitle>
@@ -83,33 +113,52 @@ useEffect(() => {
           // EDIT MODE
           <form onSubmit={handleEditSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <input
-                name="symbol"
-                defaultValue={transaction.symbol}
-                className="border p-2 rounded"
-                required
-              />
               <select
                 name="asset_type"
-                defaultValue={transaction.asset_type}
+                value={editAssetType}
+                onChange={(e) => {
+                  const newType = e.target.value as AssetType
+                  setEditAssetType(newType)
+                  setEditSymbol('') // reset symbol when type changes
+                  if (newType === 'cash') {
+                    setEditAction('buy')
+                    setEditUnitPrice(1)
+                  }
+                }}
                 className="border p-2 rounded"
                 required
               >
                 <option value="stock">Stock</option>
+                <option value="etf">ETF / Index Fund</option>
                 <option value="crypto">Crypto</option>
+                <option value="cash">Cash / Savings</option>
               </select>
+
+              <SymbolSelect
+                assetType={editAssetType}
+                value={editSymbol}
+                onChange={setEditSymbol}
+                className="border p-2 rounded"
+                preserveSymbolForEdit={transaction.symbol}
+                required
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <select
-                name="action"
-                defaultValue={transaction.action}
-                className="border p-2 rounded"
-                required
-              >
-                <option value="buy">Buy</option>
-                <option value="sell">Sell</option>
-              </select>
+              {editAssetType !== 'cash' ? (
+                <select
+                  name="action"
+                  value={editAction}
+                  onChange={(e) => setEditAction(e.target.value as 'buy' | 'sell')}
+                  className="border p-2 rounded"
+                  required
+                >
+                  <option value="buy">Buy</option>
+                  <option value="sell">Sell</option>
+                </select>
+              ) : (
+                <input type="hidden" name="action" value={editAction} />
+              )}
               <input
                 name="quantity"
                 type="number"
@@ -120,16 +169,21 @@ useEffect(() => {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <input
-                name="unit_price"
-                type="number"
-                step="any"
-                defaultValue={transaction.unit_price}
-                className="border p-2 rounded"
-                required
-              />
-            </div>
+            {editAssetType !== 'cash' ? (
+              <div className="grid grid-cols-2 gap-4">
+                <input
+                  name="unit_price"
+                  type="number"
+                  step="any"
+                  value={editUnitPrice}
+                  onChange={(e) => setEditUnitPrice(parseFloat(e.target.value) || 1)}
+                  className="border p-2 rounded"
+                  required
+                />
+              </div>
+            ) : (
+              <input type="hidden" name="unit_price" value={editUnitPrice} />
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <input

@@ -1,6 +1,6 @@
 import { getPortfolioData } from '@/lib/portfolioData'
-import { Card, CardContent } from '@/components/ui/card'
 import AllocationPie from './AllocationPie'
+import HoldingsGrid from './HoldingsGrid'
 
 /**
  * Async Server Component that renders the current holdings grid
@@ -22,62 +22,24 @@ export default async function HoldingsSection() {
 
   return (
     <>
-      {/* Individual holding cards (one per symbol with live price + P&L) */}
+      {/* Individual holding cards (one per symbol with live price + P&L) - clickable to add tx for that holding */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {data.enrichedHoldings.map((holding) => (
-          <Card key={holding.symbol}>
-            <CardContent className="p-4">
-              <div className="flex justify-between">
-                <div>
-                  <div className="font-semibold text-lg">{holding.symbol}</div>
-                  <div className="text-sm text-gray-500 capitalize">
-                    {holding.asset_type}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="font-medium">{holding.quantity}</div>
-                  <div className="text-xs text-muted-foreground">
-                    @ ${holding.avgCost.toFixed(2)}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span>Current Price</span>
-                  <span>${holding.currentPrice.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Market Value</span>
-                  <span>${holding.marketValue.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between font-medium">
-                  <span>Unrealized P&amp;L</span>
-                  <span
-                    className={
-                      holding.unrealizedPnl >= 0 ? 'text-green-600' : 'text-red-600'
-                    }
-                  >
-                    ${holding.unrealizedPnl.toFixed(2)} (
-                    {holding.unrealizedPnlPercent.toFixed(1)}%)
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-        {/* Empty state only appears after data has loaded (not during skeleton) */}
-        {data.enrichedHoldings.length === 0 && (
-          <div className="col-span-full text-gray-500 py-4">
-            No holdings yet. Add your first transaction to get started.
-          </div>
-        )}
+        <HoldingsGrid
+          holdings={data.enrichedHoldings}
+          transactions={data.transactions}
+          preferredCurrency={data.preferredCurrency}
+          usdToPreferredRate={data.usdToPreferredRate}
+        />
       </div>
 
       {/* Allocation Pie Chart (by current market value) */}
       <div className="mb-10 mt-5">
         <h2 className="text-xl font-semibold mb-4">Allocation</h2>
-        <AllocationPie enrichedHoldings={data.enrichedHoldings} />
+        <AllocationPie 
+          enrichedHoldings={data.enrichedHoldings} 
+          preferredCurrency={data.preferredCurrency}
+          usdToPreferredRate={data.usdToPreferredRate}
+        />
       </div>
     </>
   )

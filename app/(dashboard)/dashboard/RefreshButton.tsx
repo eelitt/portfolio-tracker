@@ -10,14 +10,20 @@ import { Button } from '@/components/ui/button'
 export default function RefreshButton() {
   const router = useRouter()
   const [isPending, setIsPending] = useState(false)
-  const [lastUpdatedTime, setLastUpdatedTime] = useState<Date>(new Date())
+  const [lastUpdatedTime, setLastUpdatedTime] = useState<Date | null>(null)
+  const [relativeTime, setRelativeTime] = useState<string>('just now')
+
+  // Set initial client-side time after hydration to avoid mismatch
+  useEffect(() => {
+    const now = new Date()
+    setLastUpdatedTime(now)
+    setRelativeTime(formatDistanceToNow(now, { addSuffix: true }))
+  }, [])
 
   // Update relative time every 30 seconds
-  const [relativeTime, setRelativeTime] = useState(
-    formatDistanceToNow(lastUpdatedTime, { addSuffix: true })
-  )
-
   useEffect(() => {
+    if (!lastUpdatedTime) return
+
     const interval = setInterval(() => {
       setRelativeTime(formatDistanceToNow(lastUpdatedTime, { addSuffix: true }))
     }, 30000)

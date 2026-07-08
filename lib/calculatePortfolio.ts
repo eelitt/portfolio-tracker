@@ -22,11 +22,12 @@ import { Holding, EnrichedHolding } from './types'
 export const TransactionSchema = z.object({
   id: z.string().optional(),
   symbol: z.string(),
-  asset_type: z.enum(['stock', 'crypto']),
+  asset_type: z.enum(['stock', 'etf', 'crypto', 'cash']),
   action: z.enum(['buy', 'sell']),
   quantity: z.number().positive(),
   unit_price: z.number().positive(),
   executed_at: z.string(),
+  currency: z.enum(['USD', 'EUR']).optional(),
 })
 
 export type Transaction = z.infer<typeof TransactionSchema>
@@ -108,13 +109,15 @@ export function calculateHoldings(transactions: Transaction[]): Holding[] {
     const finalQty = Number(quantity.toFixed(8))
     if (finalQty > 0) {
       const finalCost = Number(totalCost.toFixed(8))
+      const firstTx = sortedTxs[0]
       holdings.push({
         symbol,
-        asset_type: sortedTxs[0].asset_type,
+        asset_type: firstTx.asset_type,
         quantity: finalQty,
         avgCost: Number((finalCost / finalQty).toFixed(8)),
         totalCost: finalCost,
         realizedPnl: Number(realizedPnl.toFixed(2)),
+        ...(firstTx.asset_type === 'cash' && firstTx.currency ? { currency: firstTx.currency } : {}),
       })
     }
   }

@@ -14,7 +14,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { transactionSchema } from '@/lib/schemas'
 import { revalidatePath } from 'next/cache'
-import { getCurrentUser } from './users'
+import { getCurrentUser, getCurrentUserProfile } from './users'
+import { getPortfolioData } from '@/lib/portfolioData'
 
 /** Shape returned by mutation actions to the client (used with useActionState). */
 export type ActionState = {
@@ -55,8 +56,17 @@ export async function createTransaction(
     return { error: 'Not authenticated' }
   }
 
+  let insertData: any = { ...result.data }
+
+  // For cash transactions, record the currency it was entered in (the user's preferred at creation time)
+  // so that we can correctly convert the value if the user later changes their preferred currency.
+  if (insertData.asset_type === 'cash') {
+    const profile = await getCurrentUserProfile()
+    insertData.currency = profile?.preferredCurrency || 'USD'
+  }
+
   const { error } = await supabase.from('transactions').insert({
-    ...result.data,
+    ...insertData,
     user_id: user.id,
   })
 
@@ -120,7 +130,7 @@ export async function updateTransaction(
   // verify ownership (defense-in-depth in addition to Supabase RLS)
   const { data: transaction } = await supabase
     .from('transactions')
-    .select('user_id')
+    .select('user_id, asset_type, currency')
     .eq('id', transactionId)
     .single()
 
@@ -145,9 +155,22 @@ export async function updateTransaction(
     return { error: result.error.flatten().fieldErrors }
   }
 
+  let updateData: any = { ...result.data }
+
+  // For cash, preserve the original denomination currency (don't change it just because preference changed)
+  if (updateData.asset_type === 'cash') {
+    if (transaction.asset_type === 'cash' && transaction.currency) {
+      updateData.currency = transaction.currency
+    } else {
+      // newly becoming cash or no previous currency
+      const profile = await getCurrentUserProfile()
+      updateData.currency = profile?.preferredCurrency || 'USD'
+    }
+  }
+
   const { error } = await supabase
     .from('transactions')
-    .update(result.data)
+    .update(updateData)
     .eq('id', transactionId)
 
   if (error) {
@@ -183,4 +206,18 @@ export async function getUserTransactions() {
   }
 
   return transactions || []
+}
+
+/**
+ * Server actions for exports.
+ * Used by the user dropdown menu.
+ */
+export async function getTransactionsForExport() {
+  return await getUserTransactions()
+}
+
+export async function getHoldingsForExport() {
+  const data = await getPortfolioData()
+  if (data.error) return []
+  return data.enrichedHoldings
 }

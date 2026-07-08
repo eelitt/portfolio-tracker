@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { getUserGoals, createGoal, updateGoal, deleteGoal, getCurrentPortfolioValue } from '@/app/actions/goals'
+import { getCurrentUserProfile, type PreferredCurrency } from '@/app/actions/users'
+import { formatCurrency } from '@/lib/currency'
 import { Goal } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import {
@@ -23,6 +25,8 @@ export default function GoalsSidebar() {
   const [notes, setNotes] = useState('')
   const [isCompleted, setIsCompleted] = useState(false)
   const [portfolioValue, setPortfolioValue] = useState(0)
+  const [preferredCurrency, setPreferredCurrency] = useState<PreferredCurrency>('USD')
+  const [usdToPreferredRate, setUsdToPreferredRate] = useState(1)
 
   const loadGoals = async () => {
     const data = await getUserGoals()
@@ -34,9 +38,21 @@ export default function GoalsSidebar() {
     setPortfolioValue(val)
   }
 
+  const loadCurrencyPreference = async () => {
+    const profile = await getCurrentUserProfile()
+    if (profile) {
+      setPreferredCurrency(profile.preferredCurrency)
+      // For client side display, we use a simple rate fetch if needed
+      // Since portfolioValue is already converted in getPortfolioData, we just need symbol
+      // But for full accuracy we could fetch rate, here we rely on pre-converted value
+      setUsdToPreferredRate(1) // not used for display since value is pre-converted
+    }
+  }
+
   useEffect(() => {
     loadGoals()
     loadPortfolioValue()
+    loadCurrencyPreference()
 
     const handleToggle = () => {
       const open = localStorage.getItem('goalsSidebarOpen') === 'true'
@@ -44,6 +60,7 @@ export default function GoalsSidebar() {
       if (open) {
         loadGoals()
         loadPortfolioValue()
+        loadCurrencyPreference()
       } else {
         // close any open inner dialog when sidebar is closed externally
         setDialogOpen(false)
@@ -54,6 +71,7 @@ export default function GoalsSidebar() {
 
     const handlePortfolioUpdate = () => {
       loadPortfolioValue()
+      loadCurrencyPreference()
     }
     window.addEventListener('portfolio-updated', handlePortfolioUpdate)
 
@@ -62,6 +80,7 @@ export default function GoalsSidebar() {
     if (initial) {
       loadGoals()
       loadPortfolioValue()
+      loadCurrencyPreference()
     }
 
     return () => {
@@ -159,7 +178,7 @@ export default function GoalsSidebar() {
         </Button>
       </div>
       <div className="text-sm text-muted-foreground mb-3">
-        Current portfolio: ${portfolioValue.toFixed(2)}
+        Current portfolio: {formatCurrency(portfolioValue, preferredCurrency, 1)}
       </div>
 
       {goals.length === 0 && (
@@ -183,7 +202,7 @@ export default function GoalsSidebar() {
                     {goal.name} {isDone && '✓'}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    ${current.toFixed(2)} / ${goal.target_amount}
+                    {formatCurrency(current, preferredCurrency, 1)} / {formatCurrency(goal.target_amount, preferredCurrency, 1)}
                   </div>
                   {goal.notes && (
                     <div className="text-xs text-muted-foreground mt-1 italic">{goal.notes}</div>

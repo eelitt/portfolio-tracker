@@ -11,6 +11,9 @@ import {
 import { Button } from '@/components/ui/button'
 import { Transaction } from '@/lib/types'
 import { Loader2 } from 'lucide-react'
+import { getAssetTypeLabel } from '@/lib/utils'
+import { formatCurrency } from '@/lib/currency'
+import type { PreferredCurrency } from '@/app/actions/users'
 
 interface DeleteTransactionModalProps {
   transaction: Transaction | null
@@ -18,6 +21,8 @@ interface DeleteTransactionModalProps {
   onClose: () => void
   onConfirm: (id: string) => void
   isPending?: boolean
+  preferredCurrency?: PreferredCurrency
+  usdToPreferredRate?: number
 }
 
 export default function DeleteTransactionModal({
@@ -26,6 +31,8 @@ export default function DeleteTransactionModal({
   onClose,
   onConfirm,
   isPending = false,
+  preferredCurrency,
+  usdToPreferredRate,
 }: DeleteTransactionModalProps) {
   if (!transaction) return null
 
@@ -53,7 +60,7 @@ export default function DeleteTransactionModal({
           </div>
           <div className="flex justify-between mt-1">
             <span className="text-gray-600">Type</span>
-            <span className="capitalize">{transaction.asset_type}</span>
+            <span>{getAssetTypeLabel(transaction.asset_type)}</span>
           </div>
           <div className="flex justify-between mt-1">
             <span className="text-gray-600">Action</span>
@@ -67,11 +74,17 @@ export default function DeleteTransactionModal({
           </div>
           <div className="flex justify-between mt-1">
             <span className="text-gray-600">Price</span>
-            <span>${transaction.unit_price}</span>
+            <span>
+              {formatCurrency(
+                transaction.unit_price, 
+                preferredCurrency || 'USD', 
+                transaction.asset_type === 'cash' ? 1 : (usdToPreferredRate || 1)
+              )}
+            </span>
           </div>
           <div className="flex justify-between mt-1">
             <span className="text-gray-600">Date</span>
-            <span>{formattedDate}</span>
+            <span suppressHydrationWarning>{formattedDate}</span>
           </div>
         </div>
 
