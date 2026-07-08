@@ -1,93 +1,94 @@
 # Portfolio Tracker
 
-A clean, professional investment portfolio tracker built with Next.js. Record buy/sell transactions for stocks and crypto, automatically calculate holdings, cost basis, and P&L, and get **AI-powered portfolio insights** powered by xAI Grok.
+**Next.js** investment portfolio tracker. Users securely record stock and crypto buy/sell transactions; the app computes holdings, cost basis, and P&L in real time. Includes goals tracking and **AI portfolio analysis** powered by xAI Grok.
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
-![Supabase](https://img.shields.io/badge/Supabase-Auth%20%2B%20Postgres-green)
-![AI](https://img.shields.io/badge/AI-xAI%20Grok-purple)
+![Supabase](https://img.shields.io/badge/Supabase-Auth%20%2B%20RLS-green)
+![AI](https://img.shields.io/badge/AI-xAI%20Grok%20%2B%20Vercel%20SDK-purple)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)
 
-## ✨ Highlights
+## Core Features
 
-- **Transaction-based tracking** — Holdings, average cost, realized & unrealized P&L are automatically calculated from your buy/sell history.
-- **Live market data** — Real-time prices for stocks (Finnhub) and crypto (CoinGecko) with graceful fallback.
-- **Rich dashboard** — Portfolio value, 24h change, allocation pie chart, and detailed holdings view.
-- **AI Portfolio Insights** — One-click analysis of your portfolio using xAI Grok (optional feature).
-- **Privacy-first** — All data is private per user via Supabase Row Level Security. AI only receives an aggregated summary.
-- **Exportable** — Download transactions or current holdings as CSV.
+- Record buy/sell transactions for stocks (Finnhub) and crypto (CoinGecko)
+- Dashboard: total value, 24h change ($ + %), allocation pie chart, holdings table with cost basis and P&L
+- Goals sidebar with progress tracking
+- Transaction history with CSV export (transactions + current holdings)
+- Private per-user data only
 
-## 🤖 AI Portfolio Insights (xAI Grok)
+## 🤖 AI Insights — Responsible xAI Integration (Standout Feature)
 
-Click **"Get AI Insights"** on the dashboard to receive a concise, professional analysis of your current portfolio.
+The **"AI Insights"** button in the navbar opens a fixed left sidebar (same pattern as Goals). Portfolio Analysis is fully implemented; the other cards are clearly marked placeholders.
 
-The AI receives only a summarized snapshot (totals, 24h performance, top holdings, allocation, and P&L) — never your full transaction history. A clear disclaimer is always shown.
-
-The entire feature is **optional** and completely hidden when no `XAI_API_KEY` is configured.
+- **Smart cost controls**:
+  - Portfolio hash (`computePortfolioHash` — SHA-256 over canonical transactions) skips the API entirely when data is unchanged
+  - 60-second per-user cooldown (`profiles.last_ai_call_at`)
+- **Minimal data exposure** — only a compact summary (value, 24h %, top holdings + allocation & P&L) is ever sent. Raw transactions stay private.
+- **Structured & reliable** — Vercel AI SDK `generateObject` + Zod schema guarantees clean `insights: string[]` (≤6 bullets)
+- **Lean storage** — only the latest result per (user, feature_type) is kept via upsert in `user_ai_insights`
+- **Excellent UX** — "Last analyzed …", "UNUSED" ribbon on un-used features, loading states, cached banners, and a permanent disclaimer
 
 ## 🛠 Tech Stack
 
-- **Next.js 16** (App Router + Server Actions)
-- **Supabase** (Authentication + Postgres with Row Level Security)
-- **Vercel AI SDK** + **xAI Grok**
-- **Tailwind CSS** + **shadcn/ui**
-- **Recharts** (allocation pie chart)
-- **Zod** (validation)
-- **Sonner** (toast notifications)
+- **Next.js 16** (App Router, Server Actions, React Server Components, Suspense streaming)
+- **Supabase** — Auth, Postgres, Row Level Security (RLS)
+- **AI** — Vercel AI SDK + **xAI Grok** (`grok-4.3`) with structured outputs
+- **UI** — Tailwind CSS + shadcn/ui + Sonner + Lucide
+- **Charts** — Recharts
+- **Validation & Types** — Zod + TypeScript (strict)
+- **Testing** — Vitest (core portfolio calculations + price service)
+- **Deployment** — Vercel
+
+## Architecture Highlights
+
+- `transactions` table is the only source of truth
+- All holdings & summary logic lives in `lib/calculatePortfolio.ts` (pure functions, extensively tested)
+- Price fetching and AI generation are Server Actions (keys never reach the client)
+- Sidebars use localStorage + custom events for open/close coordination
+- Live updates: components listen for `'portfolio-updated'` after transaction changes
 
 ## 🚀 Getting Started
 
-### 1. Clone & Install
+### 1. Install
 
 ```bash
-git clone https://github.com/yourusername/portfolio-tracker
+git clone <your-repo>
 cd portfolio-tracker
 npm install
 ```
 
-### 2. Supabase Setup
+### 2. Supabase
 
-1. Create a new Supabase project.
-2. Run the required SQL (tables + RLS policies).
-3. Copy your project URL and anon key.
+Create a project and apply the schema (tables + RLS policies for `transactions`, `goals`, `profiles`, `user_ai_insights`, etc.).
 
-### 3. Environment Variables
+### 3. Environment
 
 Create `.env.local`:
 
 ```env
-# Supabase (required)
-NEXT_PUBLIC_SUPABASE_URL=your-project-url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 
-# Price APIs (optional but recommended)
-FINNHUB_API_KEY=your-finnhub-key
+# Optional but recommended
+FINNHUB_API_KEY=...
 
-# AI Insights (optional — hides the button when missing)
-XAI_API_KEY=your-xai-key
+# Optional — entire AI feature disappears when missing
+XAI_API_KEY=...
 ```
 
-### 4. Run the App
+### 4. Run
 
 ```bash
 npm run dev
 ```
 
-Open http://localhost:3000 and create an account.
-
-## 🤖 About the AI Feature
-
-The AI insights are designed to be:
-- **On-demand** — only generated when you click the button
-- **Lightweight** — sends a compact summary, not raw transactions
-- **Responsible** — always accompanied by a clear disclaimer
-- **Optional** — the entire feature disappears cleanly when not configured
-
-This makes it safe and practical even for users who don't want AI involvement.
+Sign up, add a few transactions, and explore the dashboard + AI Insights sidebar.
 
 ## 📦 Deployment
 
-Deploy easily on Vercel. Make sure to add the same environment variables (especially the Supabase and optional XAI keys).
+Deploy to Vercel. Add the same environment variables in the project settings. Preview deployments work out of the box.
 
 ## License
 
 MIT
 
+---
