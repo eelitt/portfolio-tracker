@@ -37,10 +37,17 @@ export function PortfolioAnalysisView({
         <span className="text-sm font-medium">Portfolio Analysis</span>
       </div>
 
-      {isLoading && (
+      {isLoading && !insights && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Analyzing your portfolio...
+          Loading previous analysis...
+        </div>
+      )}
+
+      {isLoading && insights && (
+        <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Re-analyzing...
         </div>
       )}
 

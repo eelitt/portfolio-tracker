@@ -5,11 +5,16 @@ import { getCurrentUser } from './users'
 
 /**
  * AI-related Supabase database actions.
- * These are used for rate limiting and storing the latest result per feature type.
+ * Used for rate limiting and storing the latest AI result per feature type.
  */
+
+// ============================================
+// RATE LIMITING (stored in profiles table)
+// ============================================
 
 export async function getLastAICallTime(userId: string): Promise<Date | null> {
   const supabase = await createClient()
+
   const { data: profile } = await supabase
     .from('profiles')
     .select('last_ai_call_at')
@@ -21,12 +26,27 @@ export async function getLastAICallTime(userId: string): Promise<Date | null> {
 
 export async function updateLastAICallTime(userId: string): Promise<void> {
   const supabase = await createClient()
+
   await supabase
     .from('profiles')
-    .update({ last_ai_call_at: new Date().toISOString() })
-    .eq('id', userId)
+    .upsert(
+      {
+        id: userId,
+        last_ai_call_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    )
 }
 
+// ============================================
+// AI INSIGHTS STORAGE (user_ai_insights table)
+// ============================================
+
+/**
+ * Save or update the latest AI result for a specific feature type.
+ * Uses upsert so we only keep the latest result per user + feature_type.
+ */
 export async function saveAIInsight(
   userId: string,
   featureType: string,
@@ -34,24 +54,21 @@ export async function saveAIInsight(
 ): Promise<void> {
   const supabase = await createClient()
 
-  // Keep only the latest per user per feature_type
-  await supabase
-    .from('user_ai_insights')
-    .delete()
-    .eq('user_id', userId)
-    .eq('feature_type', featureType)
-
-  await supabase.from('user_ai_insights').insert({
-    user_id: userId,
-    feature_type: featureType,
-    result
-  })
+  await supabase.from('user_ai_insights').upsert(
+    {
+      user_id: userId,
+      feature_type: featureType,
+      result,
+      created_at: new Date().toISOString(),
+    },
+    {
+      onConflict: 'user_id,feature_type',
+    }
+  )
 }
 
 /**
- * Retrieves the latest stored AI insight for a user and specific feature type.
- * Returns { result, createdAt } or null if none exists.
- * createdAt can be used to display cache age.
+ * Get the latest stored AI insight for a user and specific feature type.
  */
 export async function getLatestAIInsight(
   userId: string,
@@ -64,8 +81,6 @@ export async function getLatestAIInsight(
     .select('result, created_at')
     .eq('user_id', userId)
     .eq('feature_type', featureType)
-    .order('created_at', { ascending: false })
-    .limit(1)
     .maybeSingle()
 
   if (!data) return null
@@ -77,14 +92,13 @@ export async function getLatestAIInsight(
 }
 
 /**
- * Convenience wrapper that gets the current user and retrieves their
- * latest stored AI insight for a feature type (without triggering generation).
- * Returns the same shape as getLatestAIInsight or null.
+ * Convenience function: Get latest AI insight for the currently logged-in user.
  */
 export async function getLatestAIInsightForCurrentUser(
   featureType: string
 ): Promise<{ result: Record<string, any>; createdAt: string } | null> {
   const user = await getCurrentUser()
   if (!user) return null
+
   return getLatestAIInsight(user.id, featureType)
 }

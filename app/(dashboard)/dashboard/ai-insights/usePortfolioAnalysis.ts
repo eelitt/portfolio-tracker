@@ -25,10 +25,10 @@ export function usePortfolioAnalysis() {
 
   /**
    * Loads any previously saved analysis without calling the AI.
-   * If none exists, leaves the state empty so the caller can show a "start analysis" prompt.
+   * Shows a loading state while fetching from Supabase.
    */
   const loadInitialAnalysis = async () => {
-    setIsLoading(false)
+    setIsLoading(true)
     setError(null)
     reset()
 
@@ -40,13 +40,12 @@ export function usePortfolioAnalysis() {
           : [latest.result.insights].filter(Boolean)
         setInsights(insightsArr)
         setCachedAt(latest.createdAt)
-        return true // had previous
       }
     } catch {
-      // ignore - we'll just show the prompt to analyze
+      // ignore - we'll show the prompt to analyze after loading completes
+    } finally {
+      setIsLoading(false)
     }
-
-    return false // no previous analysis
   }
 
   /**

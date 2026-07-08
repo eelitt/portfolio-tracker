@@ -47,10 +47,17 @@ export type Transaction = z.infer<typeof TransactionSchema>
  * precision on holdings.
  */
 export function calculateHoldings(transactions: Transaction[]): Holding[] {
+  // Normalize to numbers in case DB returns numeric columns as strings.
+  const normalizedTxs = (transactions || []).map(tx => ({
+    ...tx,
+    quantity: Number(tx.quantity),
+    unit_price: Number(tx.unit_price),
+  }))
+
   // Group all transactions by symbol so we can calculate each position independently.
   const grouped = new Map<string, Transaction[]>()
 
-  for (const tx of transactions) {
+  for (const tx of normalizedTxs) {
     if (!grouped.has(tx.symbol)) {
       grouped.set(tx.symbol, [])
     }
@@ -78,13 +85,15 @@ export function calculateHoldings(transactions: Transaction[]): Holding[] {
       } else if (tx.action === 'sell') {
         if (quantity > 0) {
           // Use the *current* average cost for this sell (weighted average method).
+          // Only 'sell' up to what we currently hold (cap oversells).
+          const sellQ = Math.min(tx.quantity, quantity)
           const avgCost = totalCost / quantity
-          const sellValue = tx.quantity * tx.unit_price
-          const costBasis = tx.quantity * avgCost
+          const sellValue = sellQ * tx.unit_price
+          const costBasis = sellQ * avgCost
 
           realizedPnl += sellValue - costBasis
 
-          quantity -= tx.quantity
+          quantity -= sellQ
           totalCost -= costBasis
 
           // Defensive clamps — we never want negative holdings in the result.
@@ -94,14 +103,17 @@ export function calculateHoldings(transactions: Transaction[]): Holding[] {
       }
     }
 
-    // Only emit a holding if the user still has a position open.
-    if (quantity > 0) {
+    // Only emit a holding if the user still has a (rounded) position open.
+    // We round to 8 decimals (crypto precision) and drop if that rounds to zero.
+    const finalQty = Number(quantity.toFixed(8))
+    if (finalQty > 0) {
+      const finalCost = Number(totalCost.toFixed(8))
       holdings.push({
         symbol,
         asset_type: sortedTxs[0].asset_type,
-        quantity: Number(quantity.toFixed(8)), // handle crypto precision
-        avgCost: Number((totalCost / quantity).toFixed(8)),
-        totalCost: Number(totalCost.toFixed(8)),
+        quantity: finalQty,
+        avgCost: Number((finalCost / finalQty).toFixed(8)),
+        totalCost: finalCost,
         realizedPnl: Number(realizedPnl.toFixed(2)),
       })
     }
