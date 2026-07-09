@@ -18,14 +18,12 @@ interface Holding {
 
 interface HoldingsGridProps {
   holdings: Holding[]
-  transactions: any[]
   preferredCurrency: 'USD' | 'EUR'
   usdToPreferredRate: number
 }
 
 export default function HoldingsGrid({
   holdings,
-  transactions,
   preferredCurrency,
   usdToPreferredRate,
 }: HoldingsGridProps) {
@@ -37,23 +35,14 @@ export default function HoldingsGrid({
     )
   }
 
-  const openEditTransactionModalForHolding = (symbol: string, assetType: AssetType) => {
-    // Find transactions for this holding (same symbol and asset_type)
-    const relatedTxs = transactions.filter(
-      (tx: any) => tx.symbol === symbol && tx.asset_type === assetType
-    )
-    if (relatedTxs.length === 0) return
-
-    // Pick the most recent one (by executed_at) to open its edit modal
-    // This gives the user the edit transaction modal with details from a tx
-    // that contributes to this holding.
-    const latestTx = [...relatedTxs].sort((a, b) => 
-      new Date(b.executed_at).getTime() - new Date(a.executed_at).getTime()
-    )[0]
-
+  const openAddTransactionForHolding = (symbol: string, assetType: AssetType) => {
+    // Clicking a holding is a shortcut to *record a new transaction* for that position.
+    // We dispatch to the add flow (prefilled) so the user can easily sell (or buy more).
+    // This respects the architecture: holdings are always calculated from transactions.
+    // Editing specific past transactions remains available from the Transaction History table.
     window.dispatchEvent(
-      new CustomEvent('edit-transaction', {
-        detail: latestTx,
+      new CustomEvent('add-transaction', {
+        detail: { asset_type: assetType, symbol },
       })
     )
   }
@@ -63,7 +52,7 @@ export default function HoldingsGrid({
       {holdings.map((holding) => (
         <button
           key={holding.symbol}
-          onClick={() => openEditTransactionModalForHolding(holding.symbol, holding.asset_type)}
+          onClick={() => openAddTransactionForHolding(holding.symbol, holding.asset_type)}
           className="text-left w-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-xl hover:shadow-black/10 dark:hover:shadow-white/10 active:scale-[0.985]"
         >
           <Card className="h-full">

@@ -74,6 +74,32 @@ export async function createTransaction(
     return { error: error.message }
   }
 
+  // Automatically credit sale proceeds to the "Available Cash" holding.
+  // This keeps total portfolio value continuous: selling an asset increases cash by the same amount.
+  // We use a fixed symbol so all sell proceeds aggregate into one cash position.
+  // Currency is set to 'USD' (the currency in which asset prices are denominated).
+  if (result.data.action === 'sell' && result.data.asset_type !== 'cash') {
+    const proceeds = Number(result.data.quantity) * Number(result.data.unit_price)
+    if (proceeds > 0) {
+      const cashInsert = {
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'buy',
+        quantity: proceeds,
+        unit_price: 1,
+        executed_at: result.data.executed_at,
+        notes: `Proceeds from SELL ${result.data.quantity} ${result.data.symbol} @ ${result.data.unit_price}`,
+        currency: 'USD',
+        user_id: user.id,
+      }
+      const { error: cashError } = await supabase.from('transactions').insert(cashInsert)
+      if (cashError) {
+        // Do not fail the user's sell transaction. Cash credit is best-effort.
+        console.error('Auto cash credit for sell proceeds failed:', cashError.message)
+      }
+    }
+  }
+
   revalidatePath('/dashboard')
   return { success: true }
 }
@@ -148,7 +174,7 @@ export async function updateTransaction(
     notes: formData.get('notes'),
   }
 
-  // Reuse the same Zod schema we created earlier
+  // Reuse zod schema
   const result = transactionSchema.safeParse(rawData)
 
   if (!result.success) {

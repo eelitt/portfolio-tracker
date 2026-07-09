@@ -40,6 +40,15 @@ export default function TransactionModal({
   const [editAction, setEditAction] = useState<'buy' | 'sell'>('buy')
   const [editUnitPrice, setEditUnitPrice] = useState<number>(1)
 
+  // Prefill state used only by the add instance (when no transaction prop).
+  // Allows holdings cards to open the add form already filled for that symbol (default sell).
+  type AddPrefill = { assetType?: AssetType; symbol?: string; action?: 'buy' | 'sell' }
+  const [addPrefill, setAddPrefill] = useState<AddPrefill | null>(null)
+
+  // Key to force remount of AddTransactionForm on every new add open (normal or prefilled).
+  // This ensures initial* props are used fresh for state in the form.
+  const [addFormKey, setAddFormKey] = useState(0)
+
   useEffect(() => {
     if (transaction) {
       setOpen(true)
@@ -50,11 +59,38 @@ export default function TransactionModal({
     }
   }, [transaction])
 
+  // Listen for prefill requests from holdings cards (or other parts of UI).
+  // Only the add instance (no transaction prop) should respond.
+  useEffect(() => {
+    if (transaction !== undefined) return
+
+    const handleAddForHolding = (e: CustomEvent<{ asset_type?: AssetType; symbol?: string }>) => {
+      const d = e.detail || {}
+      if (!d.symbol) return
+      const isCash = d.asset_type === 'cash'
+      setAddPrefill({
+        assetType: d.asset_type,
+        symbol: d.symbol,
+        action: isCash ? 'buy' : 'sell',
+      })
+      setAddFormKey(k => k + 1)
+      setOpen(true)
+    }
+
+    window.addEventListener('add-transaction', handleAddForHolding as EventListener)
+    return () => window.removeEventListener('add-transaction', handleAddForHolding as EventListener)
+  }, [transaction])
+
   const isEdit = !!transaction
-  const title = isEdit ? 'Edit Transaction' : 'Add New Transaction'
+  const title = isEdit
+    ? 'Edit Transaction'
+    : addPrefill?.symbol
+      ? `Add Transaction for ${addPrefill.symbol}`
+      : 'Add New Transaction'
 
   const handleClose = () => {
     setOpen(false)
+    setAddPrefill(null)
     onClose?.()
   }
 
@@ -77,8 +113,16 @@ export default function TransactionModal({
     }
   }
 
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen)
+    if (!nextOpen) {
+      // Clear any prefill when the dialog closes (via X, outside click, cancel, etc.)
+      setAddPrefill(null)
+    }
+  }
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       {/* Only render the trigger (the "Add Transaction" button) for the standalone add case.
           The edit instance (inside TransactionTable) passes the `transaction` prop (null or value)
           and we never want to render a trigger button for it, because that button lives in the
@@ -86,7 +130,15 @@ export default function TransactionModal({
       {transaction === undefined && (
         <DialogTrigger asChild>
           {trigger || (
-            <Button className="flex items-center gap-2 mb-3" variant="default">
+            <Button
+              onClick={() => {
+                // Ensure we are doing a fresh normal add, not carrying over a holding prefill.
+                setAddPrefill(null)
+                setAddFormKey(k => k + 1)
+              }}
+              className="flex items-center gap-2 mb-3"
+              variant="default"
+            >
               <Plus className="h-4 w-4" />
               Add Transaction
             </Button>
@@ -98,10 +150,8 @@ export default function TransactionModal({
         className="sm:max-w-[520px] shadow-xl rounded-xl p-6 border ring-0"
         aria-describedby={undefined}
         onCloseAutoFocus={(e) => {
-          // For the edit instance we open programmatically from holdings cards,
-          // avoid any scroll-to-focus behavior that could jump the viewport
-          // down to the transaction history area on close.
-          // Focus will naturally be restored to the card that was clicked.
+          // For the edit instance (opened from Transaction History table),
+          // avoid scroll/focus side-effects.
           e.preventDefault();
         }}
       >
@@ -113,71 +163,90 @@ export default function TransactionModal({
           // EDIT MODE
           <form onSubmit={handleEditSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <select
-                name="asset_type"
-                value={editAssetType}
-                onChange={(e) => {
-                  const newType = e.target.value as AssetType
-                  setEditAssetType(newType)
-                  setEditSymbol('') // reset symbol when type changes
-                  if (newType === 'cash') {
-                    setEditAction('buy')
-                    setEditUnitPrice(1)
-                  }
-                }}
-                className="border p-2 rounded"
-                required
-              >
-                <option value="stock">Stock</option>
-                <option value="etf">ETF / Index Fund</option>
-                <option value="crypto">Crypto</option>
-                <option value="cash">Cash / Savings</option>
-              </select>
+              <div className="space-y-1">
+                <label htmlFor="edit-asset-type" className="text-sm font-medium">Asset Type</label>
+                <select
+                  id="edit-asset-type"
+                  name="asset_type"
+                  value={editAssetType}
+                  onChange={(e) => {
+                    const newType = e.target.value as AssetType
+                    setEditAssetType(newType)
+                    setEditSymbol('') // reset symbol when type changes
+                    if (newType === 'cash') {
+                      setEditAction('buy')
+                      setEditUnitPrice(1)
+                    }
+                  }}
+                  className="border p-2 rounded w-full"
+                  required
+                >
+                  <option value="stock">Stock</option>
+                  <option value="etf">ETF / Index Fund</option>
+                  <option value="crypto">Crypto</option>
+                  <option value="cash">Cash / Savings</option>
+                </select>
+              </div>
 
-              <SymbolSelect
-                assetType={editAssetType}
-                value={editSymbol}
-                onChange={setEditSymbol}
-                className="border p-2 rounded"
-                preserveSymbolForEdit={transaction.symbol}
-                required
-              />
+              <div className="space-y-1">
+                <label htmlFor="edit-symbol" className="text-sm font-medium">Symbol</label>
+                <SymbolSelect
+                  assetType={editAssetType}
+                  value={editSymbol}
+                  onChange={setEditSymbol}
+                  className="border p-2 rounded w-full"
+                  preserveSymbolForEdit={transaction.symbol}
+                  required
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              {editAssetType !== 'cash' ? (
-                <select
-                  name="action"
-                  value={editAction}
-                  onChange={(e) => setEditAction(e.target.value as 'buy' | 'sell')}
-                  className="border p-2 rounded"
+              <div className="space-y-1">
+                {editAssetType !== 'cash' ? (
+                  <>
+                    <label htmlFor="edit-action" className="text-sm font-medium">Action</label>
+                    <select
+                      id="edit-action"
+                      name="action"
+                      value={editAction}
+                      onChange={(e) => setEditAction(e.target.value as 'buy' | 'sell')}
+                      className="border p-2 rounded w-full"
+                      required
+                    >
+                      <option value="buy">Buy</option>
+                      <option value="sell">Sell</option>
+                    </select>
+                  </>
+                ) : (
+                  <input type="hidden" name="action" value={editAction} />
+                )}
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="edit-quantity" className="text-sm font-medium">Quantity</label>
+                <input
+                  id="edit-quantity"
+                  name="quantity"
+                  type="number"
+                  step="any"
+                  defaultValue={transaction.quantity}
+                  className="border p-2 rounded w-full"
                   required
-                >
-                  <option value="buy">Buy</option>
-                  <option value="sell">Sell</option>
-                </select>
-              ) : (
-                <input type="hidden" name="action" value={editAction} />
-              )}
-              <input
-                name="quantity"
-                type="number"
-                step="any"
-                defaultValue={transaction.quantity}
-                className="border p-2 rounded"
-                required
-              />
+                />
+              </div>
             </div>
 
             {editAssetType !== 'cash' ? (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label htmlFor="edit-unit-price" className="text-sm font-medium">Unit Price</label>
                 <input
+                  id="edit-unit-price"
                   name="unit_price"
                   type="number"
                   step="any"
                   value={editUnitPrice}
                   onChange={(e) => setEditUnitPrice(parseFloat(e.target.value) || 1)}
-                  className="border p-2 rounded"
+                  className="border p-2 rounded w-full"
                   required
                 />
               </div>
@@ -186,21 +255,29 @@ export default function TransactionModal({
             )}
 
             <div className="grid grid-cols-2 gap-4">
-              <input
-                name="executed_at"
-                type="date"
-                defaultValue={transaction.executed_at.split('T')[0]}
-                className="border p-2 rounded"
-                required
-              />
+              <div className="space-y-1">
+                <label htmlFor="edit-executed-at" className="text-sm font-medium">Executed At</label>
+                <input
+                  id="edit-executed-at"
+                  name="executed_at"
+                  type="date"
+                  defaultValue={transaction.executed_at.split('T')[0]}
+                  className="border p-2 rounded w-full"
+                  required
+                />
+              </div>
             </div>
 
-            <input
-              name="notes"
-              defaultValue={transaction.notes || ''}
-              placeholder="Notes (optional)"
-              className="border p-2 rounded w-full"
-            />
+            <div className="space-y-1">
+              <label htmlFor="edit-notes" className="text-sm font-medium">Notes</label>
+              <input
+                id="edit-notes"
+                name="notes"
+                defaultValue={transaction.notes || ''}
+                placeholder="Notes (optional)"
+                className="border p-2 rounded w-full"
+              />
+            </div>
 
             <div className="flex gap-3 pt-2">
               <Button
@@ -228,8 +305,14 @@ export default function TransactionModal({
             </div>
           </form>
         ) : (
-          // ADD MODE - reuse existing form
-          <AddTransactionForm onSuccess={handleClose} />
+          // ADD MODE - reuse existing form (may be prefilled when coming from a holding card)
+          <AddTransactionForm
+            key={addFormKey}
+            onSuccess={handleClose}
+            initialAssetType={addPrefill?.assetType}
+            initialSymbol={addPrefill?.symbol}
+            initialAction={addPrefill?.action}
+          />
         )}
       </DialogContent>
     </Dialog>

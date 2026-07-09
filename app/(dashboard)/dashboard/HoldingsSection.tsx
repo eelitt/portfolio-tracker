@@ -22,11 +22,11 @@ export default async function HoldingsSection() {
 
   return (
     <>
-      {/* Individual holding cards (one per symbol with live price + P&L) - clickable to add tx for that holding */}
+      {/* Individual holding cards (one per symbol with live price + P&L) - clickable to record a transaction (add/sell) for that holding */}
+      <h2 className="text-xl font-semibold mb-4">Holdings</h2>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <HoldingsGrid
           holdings={data.enrichedHoldings}
-          transactions={data.transactions}
           preferredCurrency={data.preferredCurrency}
           usdToPreferredRate={data.usdToPreferredRate}
         />

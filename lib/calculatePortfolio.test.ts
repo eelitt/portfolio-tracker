@@ -115,6 +115,27 @@ describe('calculateHoldings', () => {
     const holdings = calculateHoldings(transactions)
     expect(holdings).toHaveLength(2)
   })
+
+  it('should produce a cash holding (e.g. from sell proceeds) valued at face amount', () => {
+    // Simulates: buy AAPL, then sell it entirely → cash credited for proceeds
+    const transactions: Transaction[] = [
+      { symbol: 'AAPL', asset_type: 'stock', action: 'buy', quantity: 10, unit_price: 100, executed_at: '2025-01-01' },
+      { symbol: 'AAPL', asset_type: 'stock', action: 'sell', quantity: 10, unit_price: 135, executed_at: '2025-01-05' },
+      // Auto-generated cash credit (what the feature does on sell)
+      { symbol: 'Available Cash', asset_type: 'cash', action: 'buy', quantity: 1350, unit_price: 1, executed_at: '2025-01-05', currency: 'USD' },
+    ]
+
+    const holdings = calculateHoldings(transactions)
+    expect(holdings).toHaveLength(1)
+    const cash = holdings[0]
+    expect(cash.symbol).toBe('Available Cash')
+    expect(cash.asset_type).toBe('cash')
+    expect(cash.quantity).toBe(1350)
+    expect(cash.avgCost).toBe(1)
+    expect(cash.totalCost).toBe(1350)
+    // Realized P&L lives on the (now closed) stock position, not on cash
+    expect(cash.realizedPnl).toBe(0)
+  })
 })
 
 describe('enrichHoldings', () => {

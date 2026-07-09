@@ -20,19 +20,36 @@ import type { AssetType } from '@/lib/types'
 const initialState: ActionState = { error: undefined, success: false }
 interface AddTransactionFormProps {
   onSuccess?: () => void
+  /** When opened from a holding card, prefill the form to record a tx for that position. */
+  initialAssetType?: AssetType
+  initialSymbol?: string
+  /** Suggested starting action (e.g. 'sell' when coming from an open holding). Ignored for cash. */
+  initialAction?: 'buy' | 'sell'
 }
 
-export default function AddTransactionForm({ onSuccess }: AddTransactionFormProps) {
+export default function AddTransactionForm({
+  onSuccess,
+  initialAssetType,
+  initialSymbol,
+  initialAction,
+}: AddTransactionFormProps) {
   const [state, formAction, isPending] = useActionState(createTransaction, initialState)
 
   // Controlled state for the dependent asset_type + symbol pair.
   // Symbol options are provided by SymbolSelect based on the current asset type.
-  const [assetType, setAssetType] = useState<AssetType>('stock')
-  const [symbol, setSymbol] = useState('')
+  // Use initials when provided (e.g. clicking a holding to sell).
+  const [assetType, setAssetType] = useState<AssetType>(initialAssetType || 'stock')
+  const [symbol, setSymbol] = useState(initialSymbol || '')
+
+  // Controlled action so we can default to 'sell' when prefilled from a holding.
+  const [action, setAction] = useState<'buy' | 'sell'>(initialAction || 'buy')
 
   const handleAssetTypeChange = (newType: AssetType) => {
     setAssetType(newType)
     setSymbol('') // reset symbol when the category changes
+    if (newType === 'cash') {
+      setAction('buy')
+    }
   }
 
   useEffect(() => {
@@ -71,7 +88,13 @@ export default function AddTransactionForm({ onSuccess }: AddTransactionFormProp
           />
 
           {assetType !== 'cash' && (
-            <select name="action" className="border-gray-300 focus:border-gray-400 focus:ring-1 focus:ring-gray-200 p-2 rounded transition-colors" required>
+            <select
+              name="action"
+              value={action}
+              onChange={(e) => setAction(e.target.value as 'buy' | 'sell')}
+              className="border-gray-300 focus:border-gray-400 focus:ring-1 focus:ring-gray-200 p-2 rounded transition-colors"
+              required
+            >
               <option value="buy">Buy</option>
               <option value="sell">Sell</option>
             </select>
@@ -96,7 +119,7 @@ export default function AddTransactionForm({ onSuccess }: AddTransactionFormProp
               We treat cash additions as "buy" with unit price of 1. */}
           {assetType === 'cash' && (
             <>
-              <input type="hidden" name="action" value="buy" />
+              <input type="hidden" name="action" value={action} />
               <input type="hidden" name="unit_price" value="1" />
             </>
           )}
