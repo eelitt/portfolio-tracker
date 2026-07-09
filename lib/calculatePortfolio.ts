@@ -1,17 +1,6 @@
-import type { AssetType, TransactionAction } from '@/lib/types'
 import { createHash } from 'crypto'
-import { Holding, EnrichedHolding } from './types'
+import { Transaction, Holding, EnrichedHolding } from './types'
 
-export type Transaction = {
-  id?: string
-  symbol: string
-  asset_type: AssetType
-  action: TransactionAction
-  quantity: number
-  unit_price: number
-  executed_at: string
-  currency?: 'USD' | 'EUR'
-}
 
 /**
  * This module contains the core domain logic for the portfolio tracker.
