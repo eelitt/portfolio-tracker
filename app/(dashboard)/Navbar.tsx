@@ -12,15 +12,19 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { LogOut, Sun, Moon, Target, Sparkles } from 'lucide-react'
+import { LogOut, Sun, Moon, Target, Sparkles, DollarSign, Euro, Download } from 'lucide-react'
+import { getTransactionsForExport, getHoldingsForExport } from '@/app/actions/transactions'
+import { exportTransactionsToCsv, exportHoldingsToCsv } from '@/lib/exportToCsv'
 import { useState, useEffect } from 'react'
+import { updatePreferredCurrency, type PreferredCurrency } from '@/app/actions/users'
 
 interface NavbarProps {
   user: any
   hasAiKey?: boolean
+  preferredCurrency?: PreferredCurrency
 }
 
-export default function Navbar({ user, hasAiKey = true }: NavbarProps) {
+export default function Navbar({ user, hasAiKey = true, preferredCurrency = 'USD' }: NavbarProps) {
   const router = useRouter()
   const supabase = createClient()
 
@@ -71,6 +75,38 @@ export default function Navbar({ user, hasAiKey = true }: NavbarProps) {
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()
+  }
+
+  const [currentCurrency, setCurrentCurrency] = useState<PreferredCurrency>(
+    preferredCurrency || 'USD'
+  )
+
+  // Sync local state when the server prop changes (e.g. after refresh or currency update)
+  useEffect(() => {
+    if (preferredCurrency) {
+      setCurrentCurrency(preferredCurrency)
+    }
+  }, [preferredCurrency])
+
+  const handleCurrencyChange = async (newCurrency: PreferredCurrency) => {
+    if (newCurrency === currentCurrency) return
+
+    setCurrentCurrency(newCurrency)
+    await updatePreferredCurrency(newCurrency)
+    // Notify sidebars (goals etc.) to reload values in new currency
+    window.dispatchEvent(new CustomEvent('portfolio-updated'))
+    // Refresh to re-fetch server components with new currency
+    router.refresh()
+  }
+
+  const handleExportTransactions = async () => {
+    const txs = await getTransactionsForExport()
+    exportTransactionsToCsv(txs)
+  }
+
+  const handleExportHoldings = async () => {
+    const holdings = await getHoldingsForExport()
+    exportHoldingsToCsv(holdings)
   }
 
   const userInitials = user?.email?.[0]?.toUpperCase() || 'U'
@@ -157,6 +193,44 @@ export default function Navbar({ user, hasAiKey = true }: NavbarProps) {
               <div className="px-3 py-2 text-sm text-muted-foreground truncate">
                 {user?.email}
               </div>
+              <DropdownMenuSeparator />
+              
+              {/* Currency Toggle */}
+              <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                Display Currency
+              </div>
+              <DropdownMenuItem 
+                onClick={() => handleCurrencyChange('USD')}
+                className={`cursor-pointer ${currentCurrency === 'USD' ? 'bg-accent' : ''}`}
+              >
+                <DollarSign className="mr-2 h-4 w-4" />
+                USD (Dollar)
+                {currentCurrency === 'USD' && <span className="ml-auto text-xs">✓</span>}
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => handleCurrencyChange('EUR')}
+                className={`cursor-pointer ${currentCurrency === 'EUR' ? 'bg-accent' : ''}`}
+              >
+                <Euro className="mr-2 h-4 w-4" />
+                EUR (Euro)
+                {currentCurrency === 'EUR' && <span className="ml-auto text-xs">✓</span>}
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+
+              {/* Exports moved to user menu for a cleaner UI */}
+              <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                Export
+              </div>
+              <DropdownMenuItem onClick={handleExportTransactions} className="cursor-pointer">
+                <Download className="mr-2 h-4 w-4" />
+                Transactions (CSV)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportHoldings} className="cursor-pointer">
+                <Download className="mr-2 h-4 w-4" />
+                Current Holdings (CSV)
+              </DropdownMenuItem>
+
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleLogout}

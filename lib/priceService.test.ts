@@ -69,14 +69,16 @@ describe('priceService', () => {
         { symbol: 'BTC', asset_type: 'crypto' as const },
         { symbol: 'ETH', asset_type: 'crypto' as const },
         { symbol: 'AAPL', asset_type: 'stock' as const }, // will be skipped in mock
+        { symbol: 'USD', asset_type: 'cash' as const },   // cash always returns price 1, no network
       ]
 
       const prices = await getPricesForHoldings(holdings)
 
       expect(prices).toEqual({
-    BTC: { price: 62000, change24h: null },
-    ETH: { price: 2800, change24h: null },
-  })
+        BTC: { price: 62000, change24h: null },
+        ETH: { price: 2800, change24h: null },
+        USD: { price: 1, change24h: 0 },
+      })
     })
 
     it('should return empty object when no valid prices are fetched', async () => {

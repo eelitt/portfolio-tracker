@@ -1,5 +1,6 @@
 import { getPortfolioData } from '@/lib/portfolioData'
 import { Card, CardContent } from '@/components/ui/card'
+import { formatCurrency } from '@/lib/currency'
 
 /**
  * Async Server Component for the top portfolio summary.
@@ -40,7 +41,7 @@ export default async function SummarySection() {
           <CardContent className="p-4">
             <div className="text-sm text-muted-foreground">Total Market Value</div>
             <div className="text-2xl font-semibold">
-              ${data.totalMarketValue.toFixed(2)}
+              {formatCurrency(data.totalMarketValue, data.preferredCurrency, 1)}
             </div>
           </CardContent>
         </Card>
@@ -49,7 +50,7 @@ export default async function SummarySection() {
           <CardContent className="p-4">
             <div className="text-sm text-muted-foreground">Total Cost Basis</div>
             <div className="text-2xl font-semibold">
-              ${data.totalCost.toFixed(2)}
+              {formatCurrency(data.totalCost, data.preferredCurrency, 1)}
             </div>
           </CardContent>
         </Card>
@@ -62,7 +63,7 @@ export default async function SummarySection() {
                 data.totalUnrealizedPnl >= 0 ? 'text-green-600' : 'text-red-600'
               }`}
             >
-              ${data.totalUnrealizedPnl.toFixed(2)}
+              {formatCurrency(data.totalUnrealizedPnl, data.preferredCurrency, 1)}
             </div>
           </CardContent>
         </Card>
@@ -76,7 +77,7 @@ export default async function SummarySection() {
                   data.total24hChange >= 0 ? 'text-green-600' : 'text-red-600'
                 }`}
               >
-                ${data.total24hChange.toFixed(2)}
+                {formatCurrency(data.total24hChange, data.preferredCurrency, 1)}
                 <span className="text-base ml-1">
                   ({data.total24hChangePercent.toFixed(2)}%)
                 </span>

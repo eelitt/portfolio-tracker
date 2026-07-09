@@ -13,19 +13,30 @@
 
 import { deleteTransaction } from '@/app/actions/transactions'
 import { toast } from 'sonner'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import TransactionModal from './TransactionModal'
 import { Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import DeleteTransactionModal from './DeleteTransactionModal'
 import { Transaction } from '@/lib/types'
+import { getAssetTypeLabel } from '@/lib/utils'
+import { formatCurrency, getAmountInUsd } from '@/lib/currency'
+import type { PreferredCurrency } from '@/app/actions/users'
 
 
 interface TransactionTableProps {
-  transactions: Transaction[]
+  transactions: (Transaction & { formattedDate?: string })[]
+  preferredCurrency?: PreferredCurrency
+  usdToPreferredRate?: number
+  usdToEurRate?: number
 }
 
-export default function TransactionTable({ transactions }: TransactionTableProps) {
+export default function TransactionTable({ 
+  transactions, 
+  preferredCurrency = 'USD', 
+  usdToPreferredRate = 1,
+  usdToEurRate = 0.92
+}: TransactionTableProps) {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
 const [deletingTransaction, setDeletingTransaction] = useState<Transaction | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -37,6 +48,20 @@ const [deletingTransaction, setDeletingTransaction] = useState<Transaction | nul
   const closeEditModal = () => {
     setEditingTransaction(null)
   }
+
+  // Listen for edit requests from other parts of the UI (e.g. clicking a holding card)
+  useEffect(() => {
+    const handleEditTransaction = (e: CustomEvent<Transaction>) => {
+      const tx = e.detail
+      if (tx) {
+        setEditingTransaction(tx)
+      }
+    }
+    window.addEventListener('edit-transaction', handleEditTransaction as EventListener)
+    return () => {
+      window.removeEventListener('edit-transaction', handleEditTransaction as EventListener)
+    }
+  }, [])
 
   const openDeleteModal = (tx: Transaction) => {
     setDeletingTransaction(tx)
@@ -88,25 +113,46 @@ const [deletingTransaction, setDeletingTransaction] = useState<Transaction | nul
         </thead>
         <tbody className="bg-background divide-y divide-border">
           {transactions.map((tx) => (
-            <tr key={tx.id} className="hover:bg-muted/50">
+            <tr key={tx.id!} className="hover:bg-muted/50">
               <td className="px-4 py-3 text-sm text-gray-600">
-                {new Date(tx.executed_at).toLocaleDateString('fi-FI', {
+                {tx.formattedDate ?? new Date(tx.executed_at).toLocaleDateString('fi-FI', {
                   year: 'numeric',
                   month: 'short',
                   day: 'numeric'
                 })}
               </td>
               <td className="px-4 py-3 font-medium">{tx.symbol}</td>
-              <td className="px-4 py-3 text-sm capitalize">{tx.asset_type}</td>
+              <td className="px-4 py-3 text-sm">{getAssetTypeLabel(tx.asset_type)}</td>
               <td className="px-4 py-3">
                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                  tx.action === 'buy' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                  (tx.action === 'buy' || tx.action === 'inflow') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                 }`}>
                   {tx.action.toUpperCase()}
                 </span>
               </td>
-              <td className="px-4 py-3 text-right font-mono">{tx.quantity}</td>
-              <td className="px-4 py-3 text-right font-mono">${tx.unit_price}</td>
+              <td className="px-4 py-3 text-right font-mono">
+                {(() => {
+                  if (tx.asset_type === 'cash') {
+                    const txCurr = (tx.currency as PreferredCurrency) || 'USD'
+                    const trueEurRate = usdToEurRate || 0.92
+                    const usdEq = getAmountInUsd(tx.quantity, txCurr, trueEurRate)
+                    return formatCurrency(usdEq, preferredCurrency, usdToPreferredRate)
+                  }
+                  return tx.quantity
+                })()}
+              </td>
+              <td className="px-4 py-3 text-right font-mono">
+                {(() => {
+                  if (tx.asset_type === 'cash') {
+                    // cash unit price is always 1 (in its own currency); show raw
+                    return formatCurrency(tx.unit_price, preferredCurrency, 1)
+                  }
+                  const txCurr = (tx.currency as PreferredCurrency) || 'USD'
+                  const trueEurRate = usdToEurRate || 0.92
+                  const usdEq = getAmountInUsd(tx.unit_price, txCurr, trueEurRate)
+                  return formatCurrency(usdEq, preferredCurrency, usdToPreferredRate)
+                })()}
+              </td>
               <td className="px-4 py-3 text-sm text-gray-500 truncate max-w-[200px]">
                 {tx.notes || '-'}
               </td>
@@ -150,6 +196,9 @@ const [deletingTransaction, setDeletingTransaction] = useState<Transaction | nul
         onClose={closeDeleteModal}
         onConfirm={handleDeleteConfirm}
         isPending={isDeleting}
+        preferredCurrency={preferredCurrency}
+        usdToPreferredRate={usdToPreferredRate}
+        usdToEurRate={usdToEurRate}
       />
     </div>
   )

@@ -1,5 +1,7 @@
 'use server'
 
+import { getCryptoId } from './symbols'
+
 /**
  * Price fetching service.
  *
@@ -7,8 +9,10 @@
  * Server Components / Server Actions and use Next.js fetch caching
  * (revalidate: 60).
  *
- * Stock prices come from Finnhub (requires FINNHUB_API_KEY).
- * Crypto is limited to a hardcoded list via CoinGecko (no API key needed).
+ * Stock / ETF prices come from Finnhub (requires FINNHUB_API_KEY).
+ * Crypto prices come from CoinGecko using the curated list in lib/symbols/cryptos.json
+ * (the "id" field supplies the CoinGecko slug; no API key needed).
+ * Cash is always valued at 1 with 0 change.
  *
  * The import of `unstable_cache` is currently unused (fetch options provide
  * the caching we need).
@@ -52,26 +56,13 @@ export async function getStockPrice(symbol: string): Promise<{ price: number; ch
 // ==================== CRYPTO (CoinGecko) ====================
 
 /**
- * Fetches price for a supported crypto symbol.
+ * Fetches price for a crypto symbol present in lib/symbols/cryptos.json.
  *
- * Only a small curated list is supported because CoinGecko's free tier
- * works best with well-known ids and we map tickers manually.
- * Unknown symbols return null immediately (no network call).
+ * The CoinGecko id is looked up dynamically via getCryptoId().
+ * Unknown symbols (not present in the curated list) return null immediately.
  */
 export async function getCryptoPrice(symbol: string): Promise<{ price: number; change24h: number | null } | null> {
-  // Hardcoded mapping of common ticker → CoinGecko id.
-  // Extend this map when you want to support more cryptos.
-  const cryptoMap: Record<string, string> = {
-    BTC: 'bitcoin',
-    ETH: 'ethereum',
-    SOL: 'solana',
-    ADA: 'cardano',
-    XRP: 'ripple',
-    DOGE: 'dogecoin',
-    CHAINLINK: 'chainlink',
-  }
-
-  const id = cryptoMap[symbol.toUpperCase()]
+  const id = getCryptoId(symbol)
   if (!id) return null
 
   try {
@@ -107,15 +98,22 @@ export async function getCryptoPrice(symbol: string): Promise<{ price: number; c
  * show the rest of the portfolio).
  */
 export async function getPricesForHoldings(
-  holdings: { symbol: string; asset_type: 'stock' | 'crypto' }[]
+  holdings: { symbol: string; asset_type: 'stock' | 'etf' | 'crypto' | 'cash' }[]
 ): Promise<Record<string, { price: number; change24h: number | null }>> {
   const priceData: Record<string, { price: number; change24h: number | null }> = {}
 
   const promises = holdings.map(async (holding) => {
-    const result =
-      holding.asset_type === 'stock'
-        ? await getStockPrice(holding.symbol)
-        : await getCryptoPrice(holding.symbol)
+    let result: { price: number; change24h: number | null } | null = null
+
+    if (holding.asset_type === 'crypto') {
+      result = await getCryptoPrice(holding.symbol)
+    } else if (holding.asset_type === 'cash') {
+      // Cash / savings has no market price — always valued at face value (1.0)
+      result = { price: 1, change24h: 0 }
+    } else {
+      // 'stock' and 'etf' (index funds) both use stock market data (Finnhub)
+      result = await getStockPrice(holding.symbol)
+    }
 
     if (result && result.price !== null) {
       priceData[holding.symbol] = result

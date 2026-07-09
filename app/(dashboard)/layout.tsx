@@ -4,6 +4,7 @@ import Navbar from './Navbar'
 import GoalsSidebar from './dashboard/GoalsSidebar'
 import AIInsightsPanel from './dashboard/AIInsightsPanel'
 import { Toaster } from 'sonner'
+import { getCurrentUserProfile } from '@/app/actions/users'
 
 export default async function DashboardLayout({
   children,
@@ -17,11 +18,16 @@ export default async function DashboardLayout({
     redirect('/login')
   }
 
+  const profile = await getCurrentUserProfile()
   const hasAiKey = !!process.env.XAI_API_KEY
 
   return (
     <div className="min-h-screen bg-muted dark:bg-background">
-      <Navbar user={user} hasAiKey={hasAiKey} />
+      <Navbar 
+        user={user} 
+        hasAiKey={hasAiKey} 
+        preferredCurrency={profile?.preferredCurrency || 'USD'} 
+      />
       <main className="max-w-6xl mx-auto px-6 py-8">
         {children}
       </main>

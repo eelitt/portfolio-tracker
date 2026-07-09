@@ -9,15 +9,23 @@
  */
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
+import { formatCurrency } from '@/lib/currency'
+import type { PreferredCurrency } from '@/app/actions/users'
 
 interface AllocationPieProps {
   enrichedHoldings: Array<{
     symbol: string
     marketValue: number
   }>
+  preferredCurrency?: PreferredCurrency
+  usdToPreferredRate?: number
 }
 
-export default function AllocationPie({ enrichedHoldings }: AllocationPieProps) {
+export default function AllocationPie({ 
+  enrichedHoldings, 
+  preferredCurrency, 
+  usdToPreferredRate 
+}: AllocationPieProps) {
   const hasPositiveValues = enrichedHoldings.some(h => h.marketValue > 0)
 
   if (!enrichedHoldings || enrichedHoldings.length === 0 || !hasPositiveValues) {
@@ -59,7 +67,14 @@ export default function AllocationPie({ enrichedHoldings }: AllocationPieProps) 
             ))}
           </Pie>
           <Tooltip 
-            formatter={(value: any) => [`$${Number(value).toFixed(2)}`, 'Value']} 
+            formatter={(value: any) => [
+              formatCurrency(
+                Number(value), 
+                preferredCurrency || 'USD', 
+                1
+              ), 
+              'Value'
+            ]} 
           />
         </PieChart>
       </ResponsiveContainer>

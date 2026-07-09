@@ -10,6 +10,8 @@ import {
 } from './ai'
 import { computePortfolioHash } from '@/lib/calculatePortfolio'
 import { aiInsightsSchema } from '@/lib/schemas'
+import { getCurrentUserProfile } from './users'
+import { formatCurrency } from '@/lib/currency'
 
 export type AIInsightsResult =
   | { insights: string[]; cachedAt?: string; message?: string; error?: undefined }
@@ -48,7 +50,7 @@ export async function generateAIInsights(
     return { error: 'AI service is not configured.' }
   }
 
-  const summary = buildPortfolioSummary(data)
+  const summary = await buildPortfolioSummary(data)
 
   try {
     const currentHash = computePortfolioHash(data.transactions)
@@ -109,7 +111,11 @@ Keep language simple and easy to understand. Avoid jargon.`,
   }
 }
 
-function buildPortfolioSummary(data: PortfolioData): string {
+async function buildPortfolioSummary(data: PortfolioData): Promise<string> {
+  const profile = await getCurrentUserProfile()
+  const currency = profile?.preferredCurrency || 'USD'
+  const rate = data.usdToPreferredRate || 1
+
   const {
     totalMarketValue,
     total24hChange,
@@ -117,8 +123,10 @@ function buildPortfolioSummary(data: PortfolioData): string {
     enrichedHoldings,
   } = data
 
-  let s = `Total Market Value: $${totalMarketValue.toFixed(2)}\n`
-  s += `24h Change: $${total24hChange.toFixed(2)} (${total24hChangePercent.toFixed(2)}%)\n`
+  const fmt = (n: number) => formatCurrency(n, currency, 1)
+
+  let s = `Total Market Value: ${fmt(totalMarketValue)}\n`
+  s += `24h Change: ${fmt(total24hChange)} (${total24hChangePercent.toFixed(2)}%)\n`
   s += `Number of holdings: ${enrichedHoldings.length}\n`
 
   if (enrichedHoldings.length === 0) return s
@@ -135,15 +143,16 @@ function buildPortfolioSummary(data: PortfolioData): string {
       totalMarketValue > 0
         ? ((h.marketValue / totalMarketValue) * 100).toFixed(1)
         : '0'
-    s += `- ${h.symbol} (${h.asset_type}): $${h.marketValue.toFixed(0)} (${pct}%), `
-    s += `PnL: $${h.unrealizedPnl.toFixed(0)} (${h.unrealizedPnlPercent.toFixed(1)}%)\n`
+    const typeLabel = h.asset_type === 'etf' ? 'ETF' : h.asset_type === 'cash' ? 'Cash' : h.asset_type
+    s += `- ${h.symbol} (${typeLabel}): ${fmt(h.marketValue)} (${pct}%), `
+    s += `PnL: ${fmt(h.unrealizedPnl)} (${h.unrealizedPnlPercent.toFixed(1)}%)\n`
   }
 
   if (sorted.length > 8) {
     const restValue = sorted
       .slice(8)
       .reduce((sum, h) => sum + h.marketValue, 0)
-    s += `- and ${sorted.length - 8} others: $${restValue.toFixed(0)}\n`
+    s += `- and ${sorted.length - 8} others: ${fmt(restValue)}\n`
   }
 
   return s

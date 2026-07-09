@@ -7,16 +7,28 @@
  * - EnrichedHolding: Holding + live market data (used for UI cards, pie, exports, 24h change).
  */
 
+/**
+ * Supported asset types for transactions.
+ * - stock: individual company shares
+ * - etf: ETFs and index funds (priced via stock APIs)
+ * - crypto: cryptocurrencies
+ * - cash: savings, cash holdings, money market (face value, no market price)
+ */
+export type AssetType = 'stock' | 'etf' | 'crypto' | 'cash'
+
+export type TransactionAction = 'buy' | 'sell' | 'inflow' | 'outflow'
+
 /** A single buy or sell transaction recorded by the user. */
 export interface Transaction {
-  id: string
+  id?: string
   symbol: string
-  asset_type: 'stock' | 'crypto'
-  action: 'buy' | 'sell'
+  asset_type: AssetType
+  action: TransactionAction
   quantity: number
   unit_price: number
   executed_at: string
   notes?: string
+  currency?: 'USD' | 'EUR'   // currency in which the unit_price (assets) or quantity (cash) was denominated at entry time
 }
 
 /**
@@ -26,11 +38,12 @@ export interface Transaction {
  */
 export interface Holding {
   symbol: string
-  asset_type: 'stock' | 'crypto'
+  asset_type: AssetType
   quantity: number
   avgCost: number
   totalCost: number
   realizedPnl: number
+  currency?: 'USD' | 'EUR'   // currency in which unit prices / costs were denominated (assets or cash)
 }
 
 /**

@@ -14,7 +14,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { transactionSchema } from '@/lib/schemas'
 import { revalidatePath } from 'next/cache'
-import { getCurrentUser } from './users'
+import { getCurrentUser, getCurrentUserProfile } from './users'
+import { getPortfolioData } from '@/lib/portfolioData'
 
 /** Shape returned by mutation actions to the client (used with useActionState). */
 export type ActionState = {
@@ -55,13 +56,55 @@ export async function createTransaction(
     return { error: 'Not authenticated' }
   }
 
+  let insertData: any = { ...result.data }
+
+  // Record the currency the unit_price (or cash amount) was entered in, using the user's
+  // preferred currency at the time of the transaction. This allows correct conversions
+  // even if the user later changes their preferred currency.
+  // Legacy non-cash transactions without currency are treated as USD downstream.
+  if (!insertData.currency) {
+    const profile = await getCurrentUserProfile()
+    insertData.currency = profile?.preferredCurrency || 'USD'
+  }
+
+  // Cash quantities are always in 2 decimal places (fiat)
+  if (insertData.asset_type === 'cash') {
+    insertData.quantity = Number(Number(insertData.quantity).toFixed(2))
+  }
+
   const { error } = await supabase.from('transactions').insert({
-    ...result.data,
+    ...insertData,
     user_id: user.id,
   })
 
   if (error) {
     return { error: error.message }
+  }
+
+  // Automatically credit sale proceeds to the "Available Cash" holding.
+  // The cash credit uses action 'inflow' and the *same currency* as the sell.
+
+  if (result.data.action === 'sell' && result.data.asset_type !== 'cash') {
+    const proceeds = Number(result.data.quantity) * Number(result.data.unit_price)
+    if (proceeds > 0) {
+      const sellCurrency = insertData.currency || 'USD'
+      const cashInsert = {
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'inflow',
+        quantity: Number(proceeds.toFixed(2)),
+        unit_price: 1,
+        executed_at: result.data.executed_at,
+        notes: `Proceeds from SELL ${result.data.quantity} ${result.data.symbol} @ ${result.data.unit_price}`,
+        currency: sellCurrency,
+        user_id: user.id,
+      }
+      const { error: cashError } = await supabase.from('transactions').insert(cashInsert)
+      if (cashError) {
+        // Do not fail the user's sell transaction. Cash credit is best-effort.
+        console.error('Auto cash credit for sell proceeds failed:', cashError.message)
+      }
+    }
   }
 
   revalidatePath('/dashboard')
@@ -120,7 +163,7 @@ export async function updateTransaction(
   // verify ownership (defense-in-depth in addition to Supabase RLS)
   const { data: transaction } = await supabase
     .from('transactions')
-    .select('user_id')
+    .select('user_id, asset_type, currency')
     .eq('id', transactionId)
     .single()
 
@@ -138,16 +181,33 @@ export async function updateTransaction(
     notes: formData.get('notes'),
   }
 
-  // Reuse the same Zod schema we created earlier
+  // Reuse zod schema
   const result = transactionSchema.safeParse(rawData)
 
   if (!result.success) {
     return { error: result.error.flatten().fieldErrors }
   }
 
+  let updateData: any = { ...result.data }
+
+  // Preserve the original entry currency if this transaction already had one recorded
+  // (so historical prices stay denominated in the currency they were entered in).
+  // If no previous currency (legacy non-cash tx or type change), record current preferred.
+  if (transaction.currency) {
+    updateData.currency = transaction.currency
+  } else if (!updateData.currency) {
+    const profile = await getCurrentUserProfile()
+    updateData.currency = profile?.preferredCurrency || 'USD'
+  }
+
+  // Cash quantities are always in 2 decimal places (fiat)
+  if ((updateData.asset_type || transaction.asset_type) === 'cash' && updateData.quantity != null) {
+    updateData.quantity = Number(Number(updateData.quantity).toFixed(2))
+  }
+
   const { error } = await supabase
     .from('transactions')
-    .update(result.data)
+    .update(updateData)
     .eq('id', transactionId)
 
   if (error) {
@@ -183,4 +243,18 @@ export async function getUserTransactions() {
   }
 
   return transactions || []
+}
+
+/**
+ * Server actions for exports.
+ * Used by the user dropdown menu.
+ */
+export async function getTransactionsForExport() {
+  return await getUserTransactions()
+}
+
+export async function getHoldingsForExport() {
+  const data = await getPortfolioData()
+  if (data.error) return []
+  return data.enrichedHoldings
 }

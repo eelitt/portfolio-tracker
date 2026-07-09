@@ -11,6 +11,9 @@ import {
 import { Button } from '@/components/ui/button'
 import { Transaction } from '@/lib/types'
 import { Loader2 } from 'lucide-react'
+import { getAssetTypeLabel } from '@/lib/utils'
+import { formatCurrency, getAmountInUsd } from '@/lib/currency'
+import type { PreferredCurrency } from '@/app/actions/users'
 
 interface DeleteTransactionModalProps {
   transaction: Transaction | null
@@ -18,6 +21,9 @@ interface DeleteTransactionModalProps {
   onClose: () => void
   onConfirm: (id: string) => void
   isPending?: boolean
+  preferredCurrency?: PreferredCurrency
+  usdToPreferredRate?: number
+  usdToEurRate?: number
 }
 
 export default function DeleteTransactionModal({
@@ -26,6 +32,9 @@ export default function DeleteTransactionModal({
   onClose,
   onConfirm,
   isPending = false,
+  preferredCurrency,
+  usdToPreferredRate,
+  usdToEurRate,
 }: DeleteTransactionModalProps) {
   if (!transaction) return null
 
@@ -53,25 +62,45 @@ export default function DeleteTransactionModal({
           </div>
           <div className="flex justify-between mt-1">
             <span className="text-gray-600">Type</span>
-            <span className="capitalize">{transaction.asset_type}</span>
+            <span>{getAssetTypeLabel(transaction.asset_type)}</span>
           </div>
           <div className="flex justify-between mt-1">
             <span className="text-gray-600">Action</span>
-            <span className={transaction.action === 'buy' ? 'text-green-600' : 'text-red-600'}>
+            <span className={(transaction.action === 'buy' || transaction.action === 'inflow') ? 'text-green-600' : 'text-red-600'}>
               {transaction.action.toUpperCase()}
             </span>
           </div>
           <div className="flex justify-between mt-1">
             <span className="text-gray-600">Quantity</span>
-            <span>{transaction.quantity}</span>
+            <span>
+              {(() => {
+                if (transaction.asset_type === 'cash') {
+                  const txCurr = (transaction.currency as any) || 'USD'
+                  const trueEurRate = usdToEurRate || 0.92
+                  const usdEq = getAmountInUsd(transaction.quantity, txCurr, trueEurRate)
+                  return formatCurrency(usdEq, preferredCurrency || 'USD', usdToPreferredRate || 1)
+                }
+                return transaction.quantity
+              })()}
+            </span>
           </div>
           <div className="flex justify-between mt-1">
             <span className="text-gray-600">Price</span>
-            <span>${transaction.unit_price}</span>
+            <span>
+              {(() => {
+                if (transaction.asset_type === 'cash') {
+                  return formatCurrency(transaction.unit_price, preferredCurrency || 'USD', 1)
+                }
+                const txCurr = (transaction.currency as any) || 'USD'
+                const trueEurRate = usdToEurRate || 0.92
+                const usdEq = getAmountInUsd(transaction.unit_price, txCurr, trueEurRate)
+                return formatCurrency(usdEq, preferredCurrency || 'USD', usdToPreferredRate || 1)
+              })()}
+            </span>
           </div>
           <div className="flex justify-between mt-1">
             <span className="text-gray-600">Date</span>
-            <span>{formattedDate}</span>
+            <span suppressHydrationWarning>{formattedDate}</span>
           </div>
         </div>
 
@@ -86,7 +115,7 @@ export default function DeleteTransactionModal({
           </Button>
           <Button
             variant="destructive"
-            onClick={() => onConfirm(transaction.id)}
+            onClick={() => onConfirm(transaction.id!)}
             disabled={isPending}
             className="flex-1 flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white disabled:opacity-70 transition-colors"
           >

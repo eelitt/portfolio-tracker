@@ -1,0 +1,128 @@
+[
+{
+    "id": "bitcoin",
+    "symbol": "BTC",
+    "name": "Bitcoin",
+    "market_cap_rank": 1
+  },
+  {
+    "id": "ethereum",
+    "symbol": "ETH",
+    "name": "Ethereum",
+    "market_cap_rank": 2
+  },
+  {
+    "id": "tether",
+    "symbol": "USDT",
+    "name": "Tether",
+    "market_cap_rank": 3
+  },
+  {
+    "id": "binancecoin",
+    "symbol": "BNB",
+    "name": "BNB",
+    "market_cap_rank": 4
+  },
+  {
+    "id": "usd-coin",
+    "symbol": "USDC",
+    "name": "USDC",
+    "market_cap_rank": 5
+  },
+  {
+    "id": "ripple",
+    "symbol": "XRP",
+    "name": "XRP",
+    "market_cap_rank": 6
+  },
+  {
+    "id": "solana",
+    "symbol": "SOL",
+    "name": "Solana",
+    "market_cap_rank": 7
+  },
+  {
+    "id": "tron",
+    "symbol": "TRX",
+    "name": "TRON",
+    "market_cap_rank": 8
+  },
+  {
+    "id": "figure-heloc",
+    "symbol": "FIGR_HELOC",
+    "name": "Figure Heloc",
+    "market_cap_rank": 9
+  },
+  {
+    "id": "hyperliquid",
+    "symbol": "HYPE",
+    "name": "Hyperliquid",
+    "market_cap_rank": 10
+  },
+  {
+    "id": "dogecoin",
+    "symbol": "DOGE",
+    "name": "Dogecoin",
+    "market_cap_rank": 11
+  },
+  {
+    "id": "usds",
+    "symbol": "USDS",
+    "name": "USDS",
+    "market_cap_rank": 12
+  },
+  {
+    "id": "rain",
+    "symbol": "RAIN",
+    "name": "Rain",
+    "market_cap_rank": 13
+  },
+  {
+    "id": "leo-token",
+    "symbol": "LEO",
+    "name": "LEO Token",
+    "market_cap_rank": 14
+  },
+  {
+    "id": "zcash",
+    "symbol": "ZEC",
+    "name": "Zcash",
+    "market_cap_rank": 15
+  },
+  {
+    "id": "whitebit",
+    "symbol": "WBT",
+    "name": "WhiteBIT Coin",
+    "market_cap_rank": 16
+  },
+  {
+    "id": "cardano",
+    "symbol": "ADA",
+    "name": "Cardano",
+    "market_cap_rank": 17
+  },
+  {
+    "id": "stellar",
+    "symbol": "XLM",
+    "name": "Stellar",
+    "market_cap_rank": 18
+  },
+  {
+    "id": "monero",
+    "symbol": "XMR",
+    "name": "Monero",
+    "market_cap_rank": 19
+  },
+  {
+    "id": "chainlink",
+    "symbol": "LINK",
+    "name": "Chainlink",
+    "market_cap_rank": 20
+  },
+  {
+    "id": "canton-network",
+    "symbol": "CC",
+    "name": "Canton",
+    "market_cap_rank": 21
+  }
+]
