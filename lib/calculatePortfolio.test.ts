@@ -121,8 +121,8 @@ describe('calculateHoldings', () => {
     const transactions: Transaction[] = [
       { symbol: 'AAPL', asset_type: 'stock', action: 'buy', quantity: 10, unit_price: 100, executed_at: '2025-01-01' },
       { symbol: 'AAPL', asset_type: 'stock', action: 'sell', quantity: 10, unit_price: 135, executed_at: '2025-01-05' },
-      // Auto-generated cash credit (what the feature does on sell)
-      { symbol: 'Available Cash', asset_type: 'cash', action: 'buy', quantity: 1350, unit_price: 1, executed_at: '2025-01-05', currency: 'USD' },
+      // Auto-generated cash credit (inflow from sell)
+      { symbol: 'Available Cash', asset_type: 'cash', action: 'inflow', quantity: 1350, unit_price: 1, executed_at: '2025-01-05', currency: 'USD' },
     ]
 
     const holdings = calculateHoldings(transactions)

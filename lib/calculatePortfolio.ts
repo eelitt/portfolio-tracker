@@ -1,11 +1,22 @@
-import { z } from 'zod'
+import type { AssetType, TransactionAction } from '@/lib/types'
 import { createHash } from 'crypto'
 import { Holding, EnrichedHolding } from './types'
+
+export type Transaction = {
+  id?: string
+  symbol: string
+  asset_type: AssetType
+  action: TransactionAction
+  quantity: number
+  unit_price: number
+  executed_at: string
+  currency?: 'USD' | 'EUR'
+}
 
 /**
  * This module contains the core domain logic for the portfolio tracker.
  *
- * - calculateHoldings: Reduces a list of buy/sell transactions into current
+ * - calculateHoldings: Reduces a list of buy/sell/inflow/outflow transactions into current
  *   positions using the weighted average cost method.
  * - enrichHoldings: Combines calculated holdings with live price data to
  *   produce market values, unrealized P&L, and 24h change impact.
@@ -15,30 +26,12 @@ import { Holding, EnrichedHolding } from './types'
  */
 
 /**
- * Zod schema + inferred type used for validating transactions before
- * running the holding calculations. (Separate from the full DB Transaction
- * type in lib/types.ts which includes id and notes.)
- */
-export const TransactionSchema = z.object({
-  id: z.string().optional(),
-  symbol: z.string(),
-  asset_type: z.enum(['stock', 'etf', 'crypto', 'cash']),
-  action: z.enum(['buy', 'sell']),
-  quantity: z.number().positive(),
-  unit_price: z.number().positive(),
-  executed_at: z.string(),
-  currency: z.enum(['USD', 'EUR']).optional(),
-})
-
-export type Transaction = z.infer<typeof TransactionSchema>
-
-/**
  * Calculates current holdings from a list of transactions.
  *
  * Uses the **weighted average cost** method:
  * - Buys increase quantity and add to the total cost basis.
  * - Sells reduce quantity using the *current* average cost at the time of sale.
- * - Realized P&L is recorded for every sell (even if the position is not fully closed).
+ * - Realized P&L is recorded for every sell/outflow on assets (even if the position is not fully closed).
  * - Fully closed positions are dropped from the result.
  *
  * Transactions are sorted by date per symbol so the logic is order-independent
@@ -79,14 +72,14 @@ export function calculateHoldings(transactions: Transaction[]): Holding[] {
     let realizedPnl = 0
 
     for (const tx of sortedTxs) {
-      if (tx.action === 'buy') {
+      if (tx.action === 'buy' || tx.action === 'inflow') {
         const cost = tx.quantity * tx.unit_price
         totalCost += cost
         quantity += tx.quantity
-      } else if (tx.action === 'sell') {
+      } else if (tx.action === 'sell' || tx.action === 'outflow') {
         if (quantity > 0) {
-          // Use the *current* average cost for this sell (weighted average method).
-          // Only 'sell' up to what we currently hold (cap oversells).
+          // Use the *current* average cost for this sell/outflow (weighted average method).
+          // Only 'sell'/'outflow' up to what we currently hold (cap oversells).
           const sellQ = Math.min(tx.quantity, quantity)
           const avgCost = totalCost / quantity
           const sellValue = sellQ * tx.unit_price
@@ -106,19 +99,29 @@ export function calculateHoldings(transactions: Transaction[]): Holding[] {
 
     // Only emit a holding if the user still has a (rounded) position open.
     // We round to 8 decimals (crypto precision) and drop if that rounds to zero.
-    const finalQty = Number(quantity.toFixed(8))
-    if (finalQty > 0) {
-      const finalCost = Number(totalCost.toFixed(8))
+    // For cash we use 2 decimals (fiat precision).
+    if (quantity > 0) {
       const firstTx = sortedTxs[0]
-      holdings.push({
-        symbol,
-        asset_type: firstTx.asset_type,
-        quantity: finalQty,
-        avgCost: Number((finalCost / finalQty).toFixed(8)),
-        totalCost: finalCost,
-        realizedPnl: Number(realizedPnl.toFixed(2)),
-        ...(firstTx.asset_type === 'cash' && firstTx.currency ? { currency: firstTx.currency } : {}),
-      })
+      const isCash = firstTx.asset_type === 'cash'
+      const finalQty = isCash
+        ? Number(quantity.toFixed(2))
+        : Number(quantity.toFixed(8))
+      if (finalQty > 0) {
+        const finalCost = isCash
+          ? Number(totalCost.toFixed(2))
+          : Number(totalCost.toFixed(8))
+        holdings.push({
+          symbol,
+          asset_type: firstTx.asset_type,
+          quantity: finalQty,
+          avgCost: isCash ? 1 : Number((finalCost / finalQty).toFixed(8)),
+          totalCost: finalCost,
+          realizedPnl: Number(realizedPnl.toFixed(2)),
+          // Attach currency for all holdings so we know the denomination of unit prices / costs.
+          // Legacy non-cash txs without currency default to USD.
+          currency: firstTx.currency || 'USD',
+        })
+      }
     }
   }
 
@@ -189,7 +192,7 @@ export function computePortfolioHash(transactions: Transaction[]): string {
   })
 
   const repr = sorted
-    .map(t => `${t.id || ''}|${t.symbol}|${t.action}|${t.quantity.toFixed(8)}|${t.unit_price.toFixed(2)}|${t.executed_at}`)
+    .map(t => `${t.id || ''}|${t.symbol}|${t.action}|${t.quantity.toFixed(8)}|${t.unit_price.toFixed(2)}|${t.executed_at}|${t.currency || ''}`)
     .join(';')
 
   return createHash('sha256').update(repr).digest('hex').slice(0, 16)

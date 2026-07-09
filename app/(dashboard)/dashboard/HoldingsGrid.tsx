@@ -3,21 +3,10 @@
 import { Card, CardContent } from '@/components/ui/card'
 import { formatCurrency } from '@/lib/currency'
 import { getAssetTypeLabel } from '@/lib/utils'
-import type { AssetType } from '@/lib/types'
-
-interface Holding {
-  symbol: string
-  asset_type: AssetType
-  quantity: number
-  avgCost: number
-  currentPrice: number
-  marketValue: number
-  unrealizedPnl: number
-  unrealizedPnlPercent: number
-}
+import type { AssetType, EnrichedHolding } from '@/lib/types'
 
 interface HoldingsGridProps {
-  holdings: Holding[]
+  holdings: EnrichedHolding[]
   preferredCurrency: 'USD' | 'EUR'
   usdToPreferredRate: number
 }
@@ -65,7 +54,11 @@ export default function HoldingsGrid({
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="font-medium">{holding.quantity}</div>
+                  <div className="font-medium">
+                    {holding.asset_type === 'cash'
+                      ? formatCurrency(holding.quantity, preferredCurrency, 1)
+                      : holding.quantity}
+                  </div>
                   <div className="text-xs text-muted-foreground">
                     @ {formatCurrency(holding.avgCost, preferredCurrency, 1)}
                   </div>

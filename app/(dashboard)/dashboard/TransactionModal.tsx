@@ -35,14 +35,13 @@ export default function TransactionModal({
   const [editAssetType, setEditAssetType] = useState<AssetType>('stock')
   const [editSymbol, setEditSymbol] = useState('')
 
-  // For cash we hide action and unit_price in the UI.
-  // We still track them for submission (cash always uses buy + price 1).
-  const [editAction, setEditAction] = useState<'buy' | 'sell'>('buy')
+  // For cash we still track action (Inflow/Outflow) and unit_price=1.
+  const [editAction, setEditAction] = useState<'buy' | 'sell' | 'inflow' | 'outflow'>('buy')
   const [editUnitPrice, setEditUnitPrice] = useState<number>(1)
 
   // Prefill state used only by the add instance (when no transaction prop).
   // Allows holdings cards to open the add form already filled for that symbol (default sell).
-  type AddPrefill = { assetType?: AssetType; symbol?: string; action?: 'buy' | 'sell' }
+  type AddPrefill = { assetType?: AssetType; symbol?: string; action?: 'buy' | 'sell' | 'inflow' | 'outflow' }
   const [addPrefill, setAddPrefill] = useState<AddPrefill | null>(null)
 
   // Key to force remount of AddTransactionForm on every new add open (normal or prefilled).
@@ -54,7 +53,7 @@ export default function TransactionModal({
       setOpen(true)
       setEditAssetType(transaction.asset_type as AssetType)
       setEditSymbol(transaction.symbol)
-      setEditAction(transaction.action as 'buy' | 'sell')
+      setEditAction(transaction.action as 'buy' | 'sell' | 'inflow' | 'outflow')
       setEditUnitPrice(transaction.unit_price)
     }
   }, [transaction])
@@ -71,7 +70,7 @@ export default function TransactionModal({
       setAddPrefill({
         assetType: d.asset_type,
         symbol: d.symbol,
-        action: isCash ? 'buy' : 'sell',
+        action: isCash ? 'inflow' : 'sell',
       })
       setAddFormKey(k => k + 1)
       setOpen(true)
@@ -101,7 +100,7 @@ export default function TransactionModal({
 
     setIsPending(true)
     const formData = new FormData(e.currentTarget)
-    const result = await updateTransaction(transaction.id, formData)
+    const result = await updateTransaction(transaction.id!, formData)
     setIsPending(false)
 
     if (result?.error) {
@@ -174,7 +173,7 @@ export default function TransactionModal({
                     setEditAssetType(newType)
                     setEditSymbol('') // reset symbol when type changes
                     if (newType === 'cash') {
-                      setEditAction('buy')
+                      setEditAction('inflow')
                       setEditUnitPrice(1)
                     }
                   }}
@@ -203,24 +202,29 @@ export default function TransactionModal({
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                {editAssetType !== 'cash' ? (
-                  <>
-                    <label htmlFor="edit-action" className="text-sm font-medium">Action</label>
-                    <select
-                      id="edit-action"
-                      name="action"
-                      value={editAction}
-                      onChange={(e) => setEditAction(e.target.value as 'buy' | 'sell')}
-                      className="border p-2 rounded w-full"
-                      required
-                    >
+                <label htmlFor="edit-action" className="text-sm font-medium">Action</label>
+                <select
+                  id="edit-action"
+                  name="action"
+                  value={editAssetType === 'cash' 
+                    ? (editAction === 'buy' || editAction === 'inflow' ? 'inflow' : 'outflow')
+                    : editAction}
+                  onChange={(e) => setEditAction(e.target.value as 'buy' | 'sell' | 'inflow' | 'outflow')}
+                  className="border p-2 rounded w-full"
+                  required
+                >
+                  {editAssetType === 'cash' ? (
+                    <>
+                      <option value="inflow">Inflow</option>
+                      <option value="outflow">Outflow</option>
+                    </>
+                  ) : (
+                    <>
                       <option value="buy">Buy</option>
                       <option value="sell">Sell</option>
-                    </select>
-                  </>
-                ) : (
-                  <input type="hidden" name="action" value={editAction} />
-                )}
+                    </>
+                  )}
+                </select>
               </div>
               <div className="space-y-1">
                 <label htmlFor="edit-quantity" className="text-sm font-medium">Quantity</label>

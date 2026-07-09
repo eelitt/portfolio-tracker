@@ -24,6 +24,7 @@ export type PortfolioData = {
   total24hChangePercent: number
   preferredCurrency: PreferredCurrency
   usdToPreferredRate: number
+  usdToEurRate: number
   error: string | null
 }
 
@@ -65,49 +66,72 @@ export const getPortfolioData = cache(async (): Promise<PortfolioData> => {
     const priceData = await getPricesForHoldings(holdings)
     let enrichedHoldings = enrichHoldings(holdings, priceData)
 
-    // Convert to display currency.
-    // - Non-cash (stock/etf/crypto): prices come in USD → convert using usdToPreferredRate
-    // - Cash: the quantity/amount is denominated in the currency recorded at entry time (h.currency).
-    //   Convert from that original currency to current preferred using appropriate rate.
+    // Convert everything to display currency.
+    // - Each holding records the currency its unit_prices/costs were denominated in (from tx at entry time,
+    //   or 'USD' for legacy non-cash).
+    // - For non-cash, live prices come from APIs in USD. If the holding's entry currency is EUR we first
+    //   convert the market values (currentPrice, marketValue, PnL impact) into that entry currency.
+    // - Cash amounts are already in their recorded currency after enrich (price=1).
+    // - Then convert from the holding's entry currency to the user's current preferredCurrency.
     enrichedHoldings = enrichedHoldings.map(h => {
+      const entryCurr = h.currency || 'USD'
+
+      let base = { ...h }
+
+      // Adjust market data (which enrich based on USD API price) into entryCurr when necessary.
+      if (entryCurr === 'EUR' && h.asset_type !== 'cash') {
+        const toEntry = usdToEurRate
+        base = {
+          ...h,
+          currentPrice: h.currentPrice * toEntry,
+          marketValue: h.marketValue * toEntry,
+          unrealizedPnl: h.unrealizedPnl * toEntry,
+          position24hChange: h.position24hChange * toEntry,
+          // avgCost / totalCost / realizedPnl already in entryCurr from the transactions
+        }
+      }
+
+      if (entryCurr === preferredCurrency) {
+        return base
+      }
+
+      // Convert from entry currency to display preferred
+      let convRate = 1
+      if (entryCurr === 'USD' && preferredCurrency === 'EUR') {
+        convRate = usdToEurRate
+      } else if (entryCurr === 'EUR' && preferredCurrency === 'USD') {
+        convRate = 1 / usdToEurRate
+      }
+
       if (h.asset_type === 'cash') {
-        const cashCurr = h.currency || 'USD'
-        if (cashCurr === preferredCurrency) {
-          return h
-        }
-        // compute rate from cashCurr to preferredCurrency
-        let convRate = 1
-        if (cashCurr === 'USD' && preferredCurrency === 'EUR') {
-          convRate = usdToEurRate
-        } else if (cashCurr === 'EUR' && preferredCurrency === 'USD') {
-          convRate = 1 / usdToEurRate
-        } else if (cashCurr === 'EUR' && preferredCurrency === 'EUR') {
-          convRate = 1
-        }
+        // Cash is special: "quantity" represents the face amount in entryCurr.
+        // When displaying in preferred currency, convert the face amount (balance),
+        // but keep the "price per cash unit" as 1 in the display currency.
+        // This makes the holdings grid show the cash balance in preferred terms.
+        const convertedQty = Number((base.quantity * convRate).toFixed(2))
         return {
-          ...h,
-          avgCost: h.avgCost * convRate,
-          totalCost: h.totalCost * convRate,
-          currentPrice: h.currentPrice * convRate,
-          marketValue: h.marketValue * convRate,
-          unrealizedPnl: h.unrealizedPnl * convRate,
-          position24hChange: h.position24hChange * convRate,
+          ...base,
+          quantity: convertedQty,
+          avgCost: 1,
+          totalCost: convertedQty,
+          currentPrice: 1,
+          marketValue: convertedQty,
+          unrealizedPnl: 0,
+          unrealizedPnlPercent: 0,
+          position24hChange: 0,
+          realizedPnl: Number(((base.realizedPnl || 0) * convRate).toFixed(2)),
         }
-      } else {
-        // market assets are in USD
-        if (preferredCurrency === 'USD') {
-          return h
-        }
-        const convRate = usdToPreferredRate
-        return {
-          ...h,
-          avgCost: h.avgCost * convRate,
-          totalCost: h.totalCost * convRate,
-          currentPrice: h.currentPrice * convRate,
-          marketValue: h.marketValue * convRate,
-          unrealizedPnl: h.unrealizedPnl * convRate,
-          position24hChange: h.position24hChange * convRate,
-        }
+      }
+
+      return {
+        ...base,
+        avgCost: base.avgCost * convRate,
+        totalCost: base.totalCost * convRate,
+        currentPrice: base.currentPrice * convRate,
+        marketValue: base.marketValue * convRate,
+        unrealizedPnl: base.unrealizedPnl * convRate,
+        position24hChange: base.position24hChange * convRate,
+        realizedPnl: base.realizedPnl * convRate,
       }
     })
 
@@ -136,6 +160,7 @@ export const getPortfolioData = cache(async (): Promise<PortfolioData> => {
       total24hChangePercent,
       preferredCurrency,
       usdToPreferredRate,
+      usdToEurRate,
       error: null,
     }
   } catch (error) {
@@ -154,6 +179,7 @@ export const getPortfolioData = cache(async (): Promise<PortfolioData> => {
       total24hChangePercent: 0,
       preferredCurrency: 'USD',
       usdToPreferredRate: 1,
+      usdToEurRate: 0.92,
       error: 'Failed to load your portfolio data. Please try refreshing the page.',
     }
   }

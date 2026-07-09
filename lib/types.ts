@@ -16,17 +16,19 @@
  */
 export type AssetType = 'stock' | 'etf' | 'crypto' | 'cash'
 
+export type TransactionAction = 'buy' | 'sell' | 'inflow' | 'outflow'
+
 /** A single buy or sell transaction recorded by the user. */
 export interface Transaction {
-  id: string
+  id?: string
   symbol: string
   asset_type: AssetType
-  action: 'buy' | 'sell'
+  action: TransactionAction
   quantity: number
   unit_price: number
   executed_at: string
   notes?: string
-  currency?: 'USD' | 'EUR'   // for cash holdings: the currency in which the amount was denominated
+  currency?: 'USD' | 'EUR'   // currency in which the unit_price (assets) or quantity (cash) was denominated at entry time
 }
 
 /**
@@ -41,7 +43,7 @@ export interface Holding {
   avgCost: number
   totalCost: number
   realizedPnl: number
-  currency?: 'USD' | 'EUR'   // only relevant for cash; the currency the cash amount is denominated in
+  currency?: 'USD' | 'EUR'   // currency in which unit prices / costs were denominated (assets or cash)
 }
 
 /**

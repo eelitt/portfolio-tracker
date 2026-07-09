@@ -38,6 +38,7 @@ export default async function TransactionHistorySection() {
         transactions={transactionsWithFormattedDate} 
         preferredCurrency={data.preferredCurrency}
         usdToPreferredRate={data.usdToPreferredRate}
+        usdToEurRate={data.usdToEurRate}
       />
     </div>
   )

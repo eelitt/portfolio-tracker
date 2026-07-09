@@ -24,7 +24,7 @@ interface AddTransactionFormProps {
   initialAssetType?: AssetType
   initialSymbol?: string
   /** Suggested starting action (e.g. 'sell' when coming from an open holding). Ignored for cash. */
-  initialAction?: 'buy' | 'sell'
+  initialAction?: 'buy' | 'sell' | 'inflow' | 'outflow'
 }
 
 export default function AddTransactionForm({
@@ -42,13 +42,14 @@ export default function AddTransactionForm({
   const [symbol, setSymbol] = useState(initialSymbol || '')
 
   // Controlled action so we can default to 'sell' when prefilled from a holding.
-  const [action, setAction] = useState<'buy' | 'sell'>(initialAction || 'buy')
+  const defaultAction = initialAction || (initialAssetType === 'cash' ? 'inflow' : 'buy')
+  const [action, setAction] = useState<'buy' | 'sell' | 'inflow' | 'outflow'>(defaultAction)
 
   const handleAssetTypeChange = (newType: AssetType) => {
     setAssetType(newType)
     setSymbol('') // reset symbol when the category changes
     if (newType === 'cash') {
-      setAction('buy')
+      setAction('inflow')
     }
   }
 
@@ -87,18 +88,25 @@ export default function AddTransactionForm({
             required
           />
 
-          {assetType !== 'cash' && (
-            <select
-              name="action"
-              value={action}
-              onChange={(e) => setAction(e.target.value as 'buy' | 'sell')}
-              className="border-gray-300 focus:border-gray-400 focus:ring-1 focus:ring-gray-200 p-2 rounded transition-colors"
-              required
-            >
-              <option value="buy">Buy</option>
-              <option value="sell">Sell</option>
-            </select>
-          )}
+          <select
+            name="action"
+            value={action}
+            onChange={(e) => setAction(e.target.value as 'buy' | 'sell' | 'inflow' | 'outflow')}
+            className="border-gray-300 focus:border-gray-400 focus:ring-1 focus:ring-gray-200 p-2 rounded transition-colors"
+            required
+          >
+            {assetType === 'cash' ? (
+              <>
+                <option value="inflow">Inflow</option>
+                <option value="outflow">Outflow</option>
+              </>
+            ) : (
+              <>
+                <option value="buy">Buy</option>
+                <option value="sell">Sell</option>
+              </>
+            )}
+          </select>
 
           <input name="quantity" type="number" step="any" placeholder="Quantity" className="border p-2 rounded" required />
 
@@ -115,13 +123,9 @@ export default function AddTransactionForm({
             suppressHydrationWarning 
           />
 
-          {/* Hidden fields for cash/savings: no buy/sell or price needed in UI.
-              We treat cash additions as "buy" with unit price of 1. */}
+          {/* Hidden unit_price for cash/savings (always 1). Action is now shown as Inflow/Outflow. */}
           {assetType === 'cash' && (
-            <>
-              <input type="hidden" name="action" value={action} />
-              <input type="hidden" name="unit_price" value="1" />
-            </>
+            <input type="hidden" name="unit_price" value="1" />
           )}
           <input name="notes" placeholder="Notes (optional)" className="border p-2 rounded md:col-span-2" />
          <Button 

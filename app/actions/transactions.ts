@@ -58,11 +58,18 @@ export async function createTransaction(
 
   let insertData: any = { ...result.data }
 
-  // For cash transactions, record the currency it was entered in (the user's preferred at creation time)
-  // so that we can correctly convert the value if the user later changes their preferred currency.
-  if (insertData.asset_type === 'cash') {
+  // Record the currency the unit_price (or cash amount) was entered in, using the user's
+  // preferred currency at the time of the transaction. This allows correct conversions
+  // even if the user later changes their preferred currency.
+  // Legacy non-cash transactions without currency are treated as USD downstream.
+  if (!insertData.currency) {
     const profile = await getCurrentUserProfile()
     insertData.currency = profile?.preferredCurrency || 'USD'
+  }
+
+  // Cash quantities are always in 2 decimal places (fiat)
+  if (insertData.asset_type === 'cash') {
+    insertData.quantity = Number(Number(insertData.quantity).toFixed(2))
   }
 
   const { error } = await supabase.from('transactions').insert({
@@ -75,21 +82,21 @@ export async function createTransaction(
   }
 
   // Automatically credit sale proceeds to the "Available Cash" holding.
-  // This keeps total portfolio value continuous: selling an asset increases cash by the same amount.
-  // We use a fixed symbol so all sell proceeds aggregate into one cash position.
-  // Currency is set to 'USD' (the currency in which asset prices are denominated).
+  // The cash credit uses action 'inflow' and the *same currency* as the sell.
+
   if (result.data.action === 'sell' && result.data.asset_type !== 'cash') {
     const proceeds = Number(result.data.quantity) * Number(result.data.unit_price)
     if (proceeds > 0) {
+      const sellCurrency = insertData.currency || 'USD'
       const cashInsert = {
         symbol: 'Available Cash',
         asset_type: 'cash',
-        action: 'buy',
-        quantity: proceeds,
+        action: 'inflow',
+        quantity: Number(proceeds.toFixed(2)),
         unit_price: 1,
         executed_at: result.data.executed_at,
         notes: `Proceeds from SELL ${result.data.quantity} ${result.data.symbol} @ ${result.data.unit_price}`,
-        currency: 'USD',
+        currency: sellCurrency,
         user_id: user.id,
       }
       const { error: cashError } = await supabase.from('transactions').insert(cashInsert)
@@ -183,15 +190,19 @@ export async function updateTransaction(
 
   let updateData: any = { ...result.data }
 
-  // For cash, preserve the original denomination currency (don't change it just because preference changed)
-  if (updateData.asset_type === 'cash') {
-    if (transaction.asset_type === 'cash' && transaction.currency) {
-      updateData.currency = transaction.currency
-    } else {
-      // newly becoming cash or no previous currency
-      const profile = await getCurrentUserProfile()
-      updateData.currency = profile?.preferredCurrency || 'USD'
-    }
+  // Preserve the original entry currency if this transaction already had one recorded
+  // (so historical prices stay denominated in the currency they were entered in).
+  // If no previous currency (legacy non-cash tx or type change), record current preferred.
+  if (transaction.currency) {
+    updateData.currency = transaction.currency
+  } else if (!updateData.currency) {
+    const profile = await getCurrentUserProfile()
+    updateData.currency = profile?.preferredCurrency || 'USD'
+  }
+
+  // Cash quantities are always in 2 decimal places (fiat)
+  if ((updateData.asset_type || transaction.asset_type) === 'cash' && updateData.quantity != null) {
+    updateData.quantity = Number(Number(updateData.quantity).toFixed(2))
   }
 
   const { error } = await supabase
