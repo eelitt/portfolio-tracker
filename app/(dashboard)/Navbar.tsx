@@ -13,7 +13,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { LogOut, Sun, Moon, Target, Sparkles, DollarSign, Euro, Download, Upload } from 'lucide-react'
-import ImportTransactionsModal from './dashboard/ImportTransactionsModal'
+import ImportTransactionsModal from './dashboard/components/ImportTransactionsModal'
 import { getTransactionsForExport, getHoldingsForExport } from '@/app/actions/transactions'
 import { exportTransactionsToCsv, exportHoldingsToCsv } from '@/lib/exportToCsv'
 import { useState, useEffect } from 'react'

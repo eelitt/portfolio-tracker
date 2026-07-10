@@ -5,12 +5,12 @@ import { getLatestAIInsightForCurrentUser } from '@/app/actions/ai'
 import { Button } from '@/components/ui/button'
 import { Sparkles, X } from 'lucide-react'
 
-import { useAIInsightsSidebar } from './ai-insights/useAIInsightsSidebar'
-import { usePortfolioAnalysis } from './ai-insights/usePortfolioAnalysis'
-import { AIInsightsMenu } from './ai-insights/AIInsightsMenu'
-import { PortfolioAnalysisView } from './ai-insights/PortfolioAnalysisView'
-import { PlaceholderView } from './ai-insights/PlaceholderView'
-import { formatRelativeTime } from './ai-insights/utils'
+import { useAIInsightsSidebar } from '../ai-insights/useAIInsightsSidebar'
+import { usePortfolioAnalysis } from '../ai-insights/usePortfolioAnalysis'
+import { AIInsightsMenu } from '../ai-insights/AIInsightsMenu'
+import { PortfolioAnalysisView } from '../ai-insights/PortfolioAnalysisView'
+import { PlaceholderView } from '../ai-insights/PlaceholderView'
+import { formatRelativeTime } from '../ai-insights/utils'
 
 type View = 'menu' | 'portfolio' | 'placeholder'
 

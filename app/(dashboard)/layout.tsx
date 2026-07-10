@@ -1,8 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Navbar from './Navbar'
-import GoalsSidebar from './dashboard/GoalsSidebar'
-import AIInsightsPanel from './dashboard/AIInsightsPanel'
+import GoalsSidebar from './dashboard/components/GoalsSidebar'
+import AIInsightsPanel from './dashboard/components/AIInsightsPanel'
 import { Toaster } from 'sonner'
 import { getCurrentUserProfile } from '@/app/actions/users'
 

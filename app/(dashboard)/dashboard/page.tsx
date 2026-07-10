@@ -1,13 +1,13 @@
-import RefreshButton from './RefreshButton'
-import TransactionModal from './TransactionModal'
+import RefreshButton from './components/RefreshButton'
+import TransactionModal from './components/TransactionModal'
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/app/actions/users'
 import { Suspense } from 'react'
 import SummarySkeleton from '../SummarySkeleton'
 import HoldingsSkeleton from '../HoldingsSkeleton'
-import SummarySection from './SummarySection'
-import HoldingsSection from './HoldingsSection'
-import TransactionHistorySection from './TransactionHistorySection'
+import SummarySection from './components/SummarySection'
+import HoldingsSection from './components/HoldingsSection'
+import TransactionHistorySection from './components/TransactionHistorySection'
 
 export default async function DashboardPage() {
   // Only await the absolute minimum here (auth check).

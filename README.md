@@ -1,6 +1,6 @@
 # Portfolio Tracker
 
-**Next.js** investment portfolio tracker. Users securely record stock and crypto buy/sell transactions; the app computes holdings, cost basis, and P&L in real time. Includes goals tracking and **AI portfolio analysis** powered by xAI Grok.
+**Next.js** investment portfolio tracker. Users securely record stock and crypto buy/sell transactions; the app computes holdings, cost basis, and P&L in real time. Includes goals tracking and **AI features** powered by xAI.
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
 ![Supabase](https://img.shields.io/badge/Supabase-Auth%20%2B%20RLS-green)
@@ -12,16 +12,21 @@
 - Record buy/sell transactions for stocks (Finnhub) and crypto (CoinGecko)
 - Dashboard: total value, 24h change ($ + %), allocation pie chart, holdings table with cost basis and P&L
 - Goals sidebar with progress tracking
-- Transaction history with CSV export (transactions + current holdings)
-- Private per-user data only
 
 ## 🤖 AI Insights — xAI Integration
 
-The **"AI Insights"** button in the navbar opens a fixed left sidebar. Portfolio Analysis is fully implemented.
+The **"AI Insights"** button in the navbar opens a fixed left sidebar. 
 
-- **Smart cost controls**:
-  - Portfolio hash (`computePortfolioHash` — SHA-256 over canonical transactions) skips the API entirely when data is unchanged
-  - 60-second per-user cooldown (`profiles.last_ai_call_at`)
+**Portfolio Analysis** is fully implemented.
+
+**AI  used for CSV imports**:
+- Parses arbitrary exchange/broker CSV formats via `parseCsvWithAI` (server action using `generateObject` + Zod)
+- Client enforces a hard **200-row limit** before any AI call to control costs
+- User gets an editable preview table and can fix any parsing mistakes before bulk import
+
+**Smart cost controls** (shared across AI features):
+- Portfolio hash (`computePortfolioHash` — SHA-256 over canonical transactions) skips the API entirely when data is unchanged
+- 60-second per-user cooldown (`profiles.last_ai_call_at`)
 - **Minimal data exposure** — only a compact summary (value, 24h %, top holdings + allocation & P&L) is ever sent. Raw transactions stay private.
 - **Structured & reliable** — Vercel AI SDK `generateObject` + Zod schema guarantees clean `insights: string[]` (≤6 bullets)
 - **Lean storage** — only the latest result per (user, feature_type) is kept via upsert in `user_ai_insights`
@@ -42,9 +47,10 @@ The **"AI Insights"** button in the navbar opens a fixed left sidebar. Portfolio
 
 - `transactions` table is the only source of truth
 - All holdings & summary logic lives in `lib/calculatePortfolio.ts` (pure functions, extensively tested)
-- Price fetching and AI generation are Server Actions (keys never reach the client)
-- Sidebars use localStorage + custom events for open/close coordination
-- Live updates: components listen for `'portfolio-updated'` after transaction changes
+- Price fetching and AI generation (insights + CSV parsing) are Server Actions (keys never reach the client)
+- Sidebars and import modal use localStorage + custom events (`'open-csv-import'`, `'portfolio-updated'`) for coordination
+- Live updates: components listen for `'portfolio-updated'` after transaction changes (including bulk CSV imports)
+- CSV import: client-side row count gate (max 200) + AI preview + editable table + bulk `importTransactions` server action (reuses validation + sell→cash credit logic)
 
 ## 🚀 Getting Started
 
@@ -81,7 +87,7 @@ XAI_API_KEY=...
 npm run dev
 ```
 
-Sign up, add a few transactions, and explore the dashboard + AI Insights sidebar.
+Sign up, add a few transactions (or import a CSV via the user menu), and explore the dashboard + AI Insights sidebar.
 
 ## 📦 Deployment
 
