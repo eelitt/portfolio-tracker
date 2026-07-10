@@ -41,3 +41,17 @@ export const aiInsightsSchema = z.object({
 })
 
 export type AIInsights = z.infer<typeof aiInsightsSchema>
+
+/**
+ * Zod schema for AI-powered CSV import parsing.
+ *
+ * Used with generateObject for structured, reliable output from the LLM.
+ * The client enforces a hard 200-row limit *before* calling the AI
+ * (cost protection). This schema provides server-side defense-in-depth.
+ */
+export const csvParsedTransactionsSchema = z.object({
+  transactions: z.array(transactionSchema).max(200, 'CSV may contain at most 200 transactions'),
+  warnings: z.array(z.string()).optional(),
+})
+
+export type CsvParsedTransactions = z.infer<typeof csvParsedTransactionsSchema>

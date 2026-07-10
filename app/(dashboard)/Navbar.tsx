@@ -12,7 +12,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { LogOut, Sun, Moon, Target, Sparkles, DollarSign, Euro, Download } from 'lucide-react'
+import { LogOut, Sun, Moon, Target, Sparkles, DollarSign, Euro, Download, Upload } from 'lucide-react'
+import ImportTransactionsModal from './dashboard/ImportTransactionsModal'
 import { getTransactionsForExport, getHoldingsForExport } from '@/app/actions/transactions'
 import { exportTransactionsToCsv, exportHoldingsToCsv } from '@/lib/exportToCsv'
 import { useState, useEffect } from 'react'
@@ -107,6 +108,10 @@ export default function Navbar({ user, hasAiKey = true, preferredCurrency = 'USD
   const handleExportHoldings = async () => {
     const holdings = await getHoldingsForExport()
     exportHoldingsToCsv(holdings)
+  }
+
+  const handleImportCsv = () => {
+    window.dispatchEvent(new CustomEvent('open-csv-import'))
   }
 
   const userInitials = user?.email?.[0]?.toUpperCase() || 'U'
@@ -231,6 +236,20 @@ export default function Navbar({ user, hasAiKey = true, preferredCurrency = 'USD
                 Current Holdings (CSV)
               </DropdownMenuItem>
 
+              {hasAiKey && (
+                <>
+                  <DropdownMenuSeparator />
+                  <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                    Import
+                  </div>
+                  <DropdownMenuItem onClick={handleImportCsv} className="cursor-pointer">
+                    <Upload className="mr-2 h-4 w-4" />
+                    Transactions (CSV)
+                    <Sparkles className="ml-1 h-3 w-3" />
+                  </DropdownMenuItem>
+                </>
+              )}
+
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleLogout}
@@ -243,6 +262,9 @@ export default function Navbar({ user, hasAiKey = true, preferredCurrency = 'USD
           </DropdownMenu>
         </div>
       </div>
+
+      {/* Mounted for event-driven open from dropdown + internal dialog state */}
+      <ImportTransactionsModal />
     </nav>
   )
 }

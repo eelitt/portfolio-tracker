@@ -12,10 +12,14 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
-import { transactionSchema } from '@/lib/schemas'
+import { transactionSchema, csvParsedTransactionsSchema, type CsvParsedTransactions, type TransactionFormData } from '@/lib/schemas'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser, getCurrentUserProfile } from './users'
 import { getPortfolioData } from '@/lib/portfolioData'
+import {
+  getLastAICallTime,
+  updateLastAICallTime,
+} from './ai'
 
 /** Shape returned by mutation actions to the client (used with useActionState). */
 export type ActionState = {
@@ -257,4 +261,169 @@ export async function getHoldingsForExport() {
   const data = await getPortfolioData()
   if (data.error) return []
   return data.enrichedHoldings
+}
+
+// ============================================
+// CSV IMPORT (AI-powered parser + bulk save)
+// ============================================
+
+/**
+ * Parses a CSV using the AI model as the parser.
+ *
+ * Client MUST perform the 200-row count BEFORE calling this (cost protection).
+ * Server applies rate limiting and defensive checks.
+ */
+export async function parseCsvWithAI(
+  csvContent: string
+): Promise<{ data?: CsvParsedTransactions; error?: string }> {
+  const user = await getCurrentUser()
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+
+  if (!process.env.XAI_API_KEY) {
+    return { error: 'AI service is not configured.' }
+  }
+
+  // Basic defensive row count (primary gate is on the client)
+  const rowCount = csvContent.split('\n').filter(Boolean).length - 1
+  if (rowCount > 200) {
+    return { error: 'CSV contains more than 200 rows. Please split the file and import in batches.' }
+  }
+
+  if (!csvContent || csvContent.trim().length < 10) {
+    return { error: 'The selected file appears to be empty or invalid.' }
+  }
+
+  // Rate limit (same 60s cooldown as other AI features)
+  const lastCall = await getLastAICallTime(user.id)
+  if (lastCall) {
+    const secondsSince = (Date.now() - lastCall.getTime()) / 1000
+    if (secondsSince < 60) {
+      const wait = Math.ceil(60 - secondsSince)
+      return { error: `Please wait ${wait} seconds before using AI import again.` }
+    }
+  }
+
+  // Truncate just in case (client should have already capped)
+  const safeContent = csvContent.slice(0, 50000)
+
+  try {
+    const { generateObject } = await import('ai')
+    const { xai } = await import('@ai-sdk/xai')
+
+    const { object } = await generateObject({
+      model: xai('grok-4.3'),
+      schema: csvParsedTransactionsSchema,
+      system: `You are an expert, precise, and conservative financial CSV transaction parser.
+Return ONLY structured data that matches the provided schema exactly.
+- Map common exchange columns (Date, Time, Side, Symbol, Amount, Quantity, Price, Total, Notes, etc.) to our fields.
+- Convert any date format to YYYY-MM-DD.
+- Uppercase all symbols.
+- Map actions: BUY/buy/b → buy, SELL/sell/s → sell, DEPOSIT/INFLOW/DEPOSIT → inflow, WITHDRAW/WITHDRAWAL/OUTFLOW → outflow.
+- For cash rows use asset_type "cash" and unit_price 1.
+- Never invent missing values — prefer to leave notes indicating uncertainty.
+- Keep output minimal and accurate.`,
+      prompt: `User's preferred display currency is available for context. Parse the following CSV export from an exchange or broker into transactions.
+
+CSV content:
+${safeContent}
+
+Return an array of transactions plus any warnings about unmapped columns or ambiguities.`,
+      maxTokens: 2000,
+    })
+
+    // Update cooldown
+    await updateLastAICallTime(user.id)
+
+    return { data: object }
+  } catch (e) {
+    console.error('AI CSV parse error', e)
+    return { error: 'Failed to parse CSV with AI. The file format may be unsupported or the content too complex. You can still add transactions manually.' }
+  }
+}
+
+/**
+ * Bulk imports a list of (user-reviewed) transactions.
+ * Re-uses the same validation, currency, and auto-cash-credit logic as single create.
+ */
+export async function importTransactions(
+  transactions: TransactionFormData[]
+): Promise<{ imported: number; errors: string[] }> {
+  const supabase = await createClient()
+  const user = await getCurrentUser()
+  if (!user) {
+    return { imported: 0, errors: ['Not authenticated'] }
+  }
+
+  if (!transactions || transactions.length === 0) {
+    return { imported: 0, errors: ['No transactions to import'] }
+  }
+
+  const profile = await getCurrentUserProfile()
+  const defaultCurrency = profile?.preferredCurrency || 'USD'
+
+  let imported = 0
+  const errors: string[] = []
+
+  for (const tx of transactions) {
+    const result = transactionSchema.safeParse(tx)
+    if (!result.success) {
+      errors.push(`Row for ${tx.symbol || 'unknown'}: ${Object.values(result.error.flatten().fieldErrors).flat().join(', ')}`)
+      continue
+    }
+
+    const validated = result.data
+
+    let insertData: any = { ...validated }
+
+    if (!insertData.currency) {
+      insertData.currency = defaultCurrency
+    }
+
+    if (insertData.asset_type === 'cash') {
+      insertData.quantity = Number(Number(insertData.quantity).toFixed(2))
+    }
+
+    const { error } = await supabase.from('transactions').insert({
+      ...insertData,
+      user_id: user.id,
+    })
+
+    if (error) {
+      errors.push(`Failed to import ${validated.symbol}: ${error.message}`)
+      continue
+    }
+
+    imported++
+
+    // Auto credit sale proceeds to Available Cash (best-effort, same as manual create)
+    if (validated.action === 'sell' && validated.asset_type !== 'cash') {
+      const proceeds = Number(validated.quantity) * Number(validated.unit_price)
+      if (proceeds > 0) {
+        const sellCurrency = insertData.currency || 'USD'
+        const cashInsert = {
+          symbol: 'Available Cash',
+          asset_type: 'cash',
+          action: 'inflow',
+          quantity: Number(proceeds.toFixed(2)),
+          unit_price: 1,
+          executed_at: validated.executed_at,
+          notes: `Proceeds from SELL ${validated.quantity} ${validated.symbol} @ ${validated.unit_price}`,
+          currency: sellCurrency,
+          user_id: user.id,
+        }
+        const { error: cashError } = await supabase.from('transactions').insert(cashInsert)
+        if (cashError) {
+          console.error('Auto cash credit during import failed:', cashError.message)
+        }
+      }
+    }
+  }
+
+  if (imported > 0) {
+    revalidatePath('/dashboard')
+  }
+
+  return { imported, errors }
 }
