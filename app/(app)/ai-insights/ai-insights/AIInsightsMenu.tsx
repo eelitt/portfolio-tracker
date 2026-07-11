@@ -21,7 +21,7 @@ export function AIInsightsMenu({
       </p>
 
       <div className="space-y-3">
-        {/* Portfolio Analysis - Real feature */}
+        {/* Portfolio Analysis*/}
         <button
           onClick={onOpenPortfolio}
           className="relative w-full text-left border rounded-lg p-4 bg-card shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-accent/60 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-ring"

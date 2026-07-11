@@ -89,11 +89,29 @@ export async function generateAIInsights(
     const { object } = await generateObject({
       model: xai('grok-4.3'),
       schema: aiInsightsSchema,
-      system: `You are a professional financial analyst. 
-Analyze the user's portfolio and return maximum 6 concise bullet points.
-Keep language simple and easy to understand. Avoid jargon.`,
-      prompt: `Portfolio data:\n\n${summary}`,
-      maxTokens: 500,
+      temperature: 0.2,
+      system: 
+      `You are a professional portfolio analyst. 
+Analyze the user's portfolio and provide maximum 6 concise, actionable bullet points.
+
+Focus on:
+- Portfolio risks and weaknesses
+- Concentration and diversification issues
+- Potential improvements or considerations
+
+Rules:
+- Be direct and practical. 
+- Avoid generic statements like "you should diversify".
+- Only give advice that is relevant to the actual portfolio data.
+- Use simple language. No jargon.
+- Prioritize the most important observations first.`,
+      prompt:
+      `Portfolio summary:
+${summary}
+
+Analyze the portfolio and give maximum 6 bullet points with actionable insights. 
+Focus on risks, concentration, and potential improvements.`,
+      maxTokens: 250,
     })
 
     // Persist result (with hash for future change detection) and update cooldown
@@ -114,7 +132,6 @@ Keep language simple and easy to understand. Avoid jargon.`,
 async function buildPortfolioSummary(data: PortfolioData): Promise<string> {
   const profile = await getCurrentUserProfile()
   const currency = profile?.preferredCurrency || 'USD'
-  const rate = data.usdToPreferredRate || 1
 
   const {
     totalMarketValue,
@@ -123,37 +140,40 @@ async function buildPortfolioSummary(data: PortfolioData): Promise<string> {
     enrichedHoldings,
   } = data
 
-  const fmt = (n: number) => formatCurrency(n, currency, 1)
+  const fmt = (amount: number) => formatCurrency(amount, currency, 0)
 
-  let s = `Total Market Value: ${fmt(totalMarketValue)}\n`
-  s += `24h Change: ${fmt(total24hChange)} (${total24hChangePercent.toFixed(2)}%)\n`
-  s += `Number of holdings: ${enrichedHoldings.length}\n`
+  let summary = `Total Value: ${fmt(totalMarketValue)}\n`
+  summary += `24h Change: ${fmt(total24hChange)} (${total24hChangePercent.toFixed(1)}%)\n`
+  summary += `Holdings: ${enrichedHoldings.length}\n`
 
-  if (enrichedHoldings.length === 0) return s
+  if (enrichedHoldings.length === 0) {
+    return summary
+  }
 
-  s += 'Holdings:\n'
+  summary += 'Holdings:\n'
 
-  const sorted = [...enrichedHoldings].sort(
-    (a, b) => b.marketValue - a.marketValue
-  )
-  const top = sorted.slice(0, 8)
+  // Sort holdings by value (highest first)
+  const sorted = [...enrichedHoldings].sort((a, b) => b.marketValue - a.marketValue)
 
-  for (const h of top) {
-    const pct =
+  // Show top 6 holdings
+  for (const holding of sorted.slice(0, 6)) {
+    const percentage =
       totalMarketValue > 0
-        ? ((h.marketValue / totalMarketValue) * 100).toFixed(1)
+        ? ((holding.marketValue / totalMarketValue) * 100).toFixed(1)
         : '0'
-    const typeLabel = h.asset_type === 'etf' ? 'ETF' : h.asset_type === 'cash' ? 'Cash' : h.asset_type
-    s += `- ${h.symbol} (${typeLabel}): ${fmt(h.marketValue)} (${pct}%), `
-    s += `PnL: ${fmt(h.unrealizedPnl)} (${h.unrealizedPnlPercent.toFixed(1)}%)\n`
+
+    summary += `- ${holding.symbol}: ${fmt(holding.marketValue)} (${percentage}%), `
+    summary += `PnL: ${holding.unrealizedPnlPercent.toFixed(0)}%\n`
   }
 
-  if (sorted.length > 8) {
-    const restValue = sorted
-      .slice(8)
-      .reduce((sum, h) => sum + h.marketValue, 0)
-    s += `- and ${sorted.length - 8} others: ${fmt(restValue)}\n`
+  // Show remaining holdings summary
+  if (sorted.length > 6) {
+    const remainingValue = sorted
+      .slice(6)
+      .reduce((sum, holding) => sum + holding.marketValue, 0)
+
+    summary += `- +${sorted.length - 6} others: ${fmt(remainingValue)}\n`
   }
 
-  return s
+  return summary
 }

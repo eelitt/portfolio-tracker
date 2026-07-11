@@ -66,10 +66,31 @@ export function formatCurrency(
 ): string {
   const converted = convertAmount(amount, currency, usdToEurRate)
   const symbol = getCurrencySymbol(currency)
-  // Use proper locale formatting
-  const locale = currency === 'EUR' ? 'de-DE' : 'en-US'
-  return symbol + converted.toLocaleString(locale, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
+  return symbol + formatNumber(converted)
+}
+
+/**
+ * Formats a quantity (e.g. number of shares or crypto tokens) for display.
+ * Uses 2 decimal places with space as thousand separator (e.g. 25 706,46).
+ * Used in holdings display for non-cash assets.
+ */
+export function formatQuantity(quantity: number, currency: Currency = 'USD'): string {
+  return formatNumber(quantity)
+}
+
+/**
+ * Internal helper to format a number with exactly 2 decimals,
+ * using space as thousand separator and comma as decimal separator.
+ * Example: 25706.46 -> "25 706,46"
+ */
+function formatNumber(value: number): string {
+  const isNegative = value < 0
+  const absValue = Math.abs(value)
+  const fixed = absValue.toFixed(2)
+  const [intPart, decPart] = fixed.split('.')
+
+  // Add space as thousand separator (every 3 digits from the right)
+  const withSpaces = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+
+  return (isNegative ? '-' : '') + withSpaces + ',' + decPart
 }

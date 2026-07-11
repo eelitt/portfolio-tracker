@@ -9,6 +9,7 @@ export interface PortfolioAnalysisState {
   error: string | null
   cachedAt: string | null
   isLoading: boolean
+  lastAnalysisMessage: string | null
 }
 
 export function usePortfolioAnalysis() {
@@ -16,11 +17,13 @@ export function usePortfolioAnalysis() {
   const [error, setError] = useState<string | null>(null)
   const [cachedAt, setCachedAt] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [lastAnalysisMessage, setLastAnalysisMessage] = useState<string | null>(null)
 
   const reset = () => {
     setInsights(null)
     setError(null)
     setCachedAt(null)
+    setLastAnalysisMessage(null)
   }
 
   /**
@@ -54,6 +57,7 @@ export function usePortfolioAnalysis() {
   const performAnalysis = async () => {
     setIsLoading(true)
     setError(null)
+    setLastAnalysisMessage(null)
     // Keep previous insights visible while loading new ones
     setCachedAt(null)
 
@@ -62,15 +66,24 @@ export function usePortfolioAnalysis() {
       if ('error' in result && result.error) {
         setError(result.error)
         setCachedAt(null)
+        setLastAnalysisMessage(null)
       } else if ('insights' in result && result.insights) {
         const insightsArr = Array.isArray(result.insights)
           ? result.insights
           : [result.insights].filter(Boolean)
         setInsights(insightsArr)
         setCachedAt(result.cachedAt ?? null)
+
+        // Capture message from backend (e.g. "portfolio unchanged")
+        if ('message' in result && typeof result.message === 'string') {
+          setLastAnalysisMessage(result.message)
+        } else {
+          setLastAnalysisMessage(null)
+        }
       }
     } catch (e) {
       setError('Something went wrong. Please try again.')
+      setLastAnalysisMessage(null)
     } finally {
       setIsLoading(false)
     }
@@ -81,6 +94,7 @@ export function usePortfolioAnalysis() {
     error,
     cachedAt,
     isLoading,
+    lastAnalysisMessage,
     loadInitialAnalysis,
     performAnalysis,
     reset,

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { getLatestAIInsightForCurrentUser } from '@/app/actions/ai'
 import { Button } from '@/components/ui/button'
-import { Sparkles, X } from 'lucide-react'
+import { Sparkles, X, Loader2 } from 'lucide-react'
 
 import { useAIInsightsSidebar } from './ai-insights/useAIInsightsSidebar'
 import { usePortfolioAnalysis } from './ai-insights/usePortfolioAnalysis'
@@ -21,6 +21,7 @@ export default function AIInsightsPanel() {
   const [view, setView] = useState<View>('menu')
   const [placeholderTitle, setPlaceholderTitle] = useState('')
   const [portfolioAnalysisTimestamp, setPortfolioAnalysisTimestamp] = useState<string | null>(null)
+  const [isFetchingTimestamp, setIsFetchingTimestamp] = useState(false)
 
   // Reset internal state when sidebar closes
   useEffect(() => {
@@ -38,14 +39,19 @@ export default function AIInsightsPanel() {
     }
   }, [isOpen])
 
-  // Fetch timestamp of latest portfolio analysis (if any) when sidebar opens
+  // Fetch timestamp of latest portfolio analysis (if any) when sidebar opens.
+  // We use a loading state so the menu doesn't flash the "UNUSED" ribbon
+  // while we check if the user has previously run an analysis.
   useEffect(() => {
     if (isOpen) {
+      setIsFetchingTimestamp(true)
       getLatestAIInsightForCurrentUser('portfolio_insights')
         .then((latest) => setPortfolioAnalysisTimestamp(latest?.createdAt ?? null))
         .catch(() => setPortfolioAnalysisTimestamp(null))
+        .finally(() => setIsFetchingTimestamp(false))
     } else {
       setPortfolioAnalysisTimestamp(null)
+      setIsFetchingTimestamp(false)
     }
   }, [isOpen])
 
@@ -93,40 +99,53 @@ export default function AIInsightsPanel() {
         </Button>
       </div>
 
-      {view === 'menu' && (
-        <AIInsightsMenu
-          onOpenPortfolio={openPortfolio}
-          onOpenPlaceholder={openPlaceholder}
-          portfolioAnalysisTimestamp={portfolioAnalysisTimestamp}
-        />
-      )}
+      {isFetchingTimestamp ? (
+        // Show loading spinner while we fetch whether the user has previously
+        // run an analysis. This prevents flashing the "UNUSED" ribbon in the
+        // menu when the panel is opened from the navbar (even if analysis exists).
+        <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading...
+        </div>
+      ) : (
+        <>
+          {view === 'menu' && (
+            <AIInsightsMenu
+              onOpenPortfolio={openPortfolio}
+              onOpenPlaceholder={openPlaceholder}
+              portfolioAnalysisTimestamp={portfolioAnalysisTimestamp}
+            />
+          )}
 
-      {view === 'portfolio' && (
-        <PortfolioAnalysisView
-          insights={portfolio.insights}
-          error={portfolio.error}
-          cachedAt={portfolio.cachedAt}
-          isLoading={portfolio.isLoading}
-          onBack={backToMenu}
-          onAnalyze={async () => {
-            await portfolio.performAnalysis()
-            // Refresh the timestamp after a successful analysis
-            try {
-              const latest = await getLatestAIInsightForCurrentUser('portfolio_insights')
-              setPortfolioAnalysisTimestamp(latest?.createdAt ?? null)
-            } catch {
-              // ignore
-            }
-          }}
-          formatRelativeTime={formatRelativeTime}
-        />
-      )}
+          {view === 'portfolio' && (
+            <PortfolioAnalysisView
+              insights={portfolio.insights}
+              error={portfolio.error}
+              cachedAt={portfolio.cachedAt}
+              isLoading={portfolio.isLoading}
+              lastAnalysisMessage={portfolio.lastAnalysisMessage}
+              onBack={backToMenu}
+              onAnalyze={async () => {
+                await portfolio.performAnalysis()
+                // Refresh the timestamp after a successful analysis
+                try {
+                  const latest = await getLatestAIInsightForCurrentUser('portfolio_insights')
+                  setPortfolioAnalysisTimestamp(latest?.createdAt ?? null)
+                } catch {
+                  // ignore
+                }
+              }}
+              formatRelativeTime={formatRelativeTime}
+            />
+          )}
 
-      {view === 'placeholder' && (
-        <PlaceholderView
-          title={placeholderTitle}
-          onBack={backToMenu}
-        />
+          {view === 'placeholder' && (
+            <PlaceholderView
+              title={placeholderTitle}
+              onBack={backToMenu}
+            />
+          )}
+        </>
       )}
     </div>
   )
