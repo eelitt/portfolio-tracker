@@ -13,7 +13,7 @@
 # testing
 /coverage
 AGENTS.md
-
+mcps
 # next.js
 /.next/
 /out/

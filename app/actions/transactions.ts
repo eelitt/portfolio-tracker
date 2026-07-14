@@ -224,8 +224,8 @@ export async function updateTransaction(
 
 /**
  * Fetches all transactions belonging to the current user.
- * Results are ordered by execution date (ascending) — the order expected
- * by calculateHoldings().
+ * Results are ordered by execution date (descending) so the table shows
+ * the most recent transactions first.
  *
  * Returns empty array on any error (the dashboard handles graceful degradation).
  */
@@ -239,7 +239,7 @@ export async function getUserTransactions() {
     .from('transactions')
     .select('*')
     .eq('user_id', user.id)
-    .order('executed_at', { ascending: true })
+    .order('executed_at', { ascending: false })
 
   if (error) {
     console.error('Error fetching transactions:', error)

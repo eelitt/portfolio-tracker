@@ -19,6 +19,8 @@ export default async function TransactionHistorySection() {
 
   // Pre-format dates on the server for stable hydration (avoids locale formatting differences
   // between Node.js and the browser in the client component).
+  // Note: data.transactions are already returned in descending executed_at order
+  // from getUserTransactions() so newest transactions appear first in the table.
   const transactionsWithFormattedDate = data.transactions.map((tx) => ({
     ...tx,
     formattedDate: new Date(tx.executed_at).toLocaleDateString('fi-FI', {
@@ -32,7 +34,7 @@ export default async function TransactionHistorySection() {
     <div className="mt-10">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-semibold">Transaction History</h2>
-        {/* Exports are now available in the user dropdown menu (top right) */}
+        {/* Exports are available in the user dropdown menu (top right) */}
       </div>
       <TransactionTable 
         transactions={transactionsWithFormattedDate} 
