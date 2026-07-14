@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { getUserGoals, createGoal, updateGoal, deleteGoal, getCurrentPortfolioValue } from '@/app/actions/goals'
 import { getCurrentUserProfile, type PreferredCurrency } from '@/app/actions/users'
 import { formatCurrency } from '@/lib/currency'
@@ -17,6 +17,7 @@ import { toast } from 'sonner'
 
 export default function GoalsSidebar() {
   const [isOpen, setIsOpen] = useState(false)
+  const isOpenRef = useRef(false)
   const [goals, setGoals] = useState<Goal[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Goal | null>(null)
@@ -49,19 +50,24 @@ export default function GoalsSidebar() {
     }
   }
 
+  // Load sidebar data only when the sidebar is (or becomes) visible.
+  // This avoids useless server action + price API calls on every page load
+  // when the user has the goals sidebar closed.
   useEffect(() => {
-    loadGoals()
-    loadPortfolioValue()
-    loadCurrencyPreference()
+    isOpenRef.current = isOpen
+    if (isOpen) {
+      loadGoals()
+      loadPortfolioValue()
+      loadCurrencyPreference()
+    }
+  }, [isOpen])
 
+  useEffect(() => {
     const handleToggle = () => {
       const open = localStorage.getItem('goalsSidebarOpen') === 'true'
       setIsOpen(open)
-      if (open) {
-        loadGoals()
-        loadPortfolioValue()
-        loadCurrencyPreference()
-      } else {
+      // loads are driven by the isOpen effect above; no need to duplicate here
+      if (!open) {
         // close any open inner dialog when sidebar is closed externally
         setDialogOpen(false)
         setEditing(null)
@@ -70,18 +76,19 @@ export default function GoalsSidebar() {
     window.addEventListener('goals-sidebar-toggle', handleToggle)
 
     const handlePortfolioUpdate = () => {
-      loadPortfolioValue()
-      loadCurrencyPreference()
+      // Only refresh when the sidebar is actually open (saves work when closed)
+      // Use ref to avoid stale closure from the empty-deps listener setup
+      if (isOpenRef.current) {
+        loadPortfolioValue()
+        loadCurrencyPreference()
+      }
     }
     window.addEventListener('portfolio-updated', handlePortfolioUpdate)
 
+    // Set initial open state from localStorage.
+    // The isOpen effect above will trigger loads if it ends up true.
     const initial = localStorage.getItem('goalsSidebarOpen') === 'true'
     setIsOpen(initial)
-    if (initial) {
-      loadGoals()
-      loadPortfolioValue()
-      loadCurrencyPreference()
-    }
 
     return () => {
       window.removeEventListener('goals-sidebar-toggle', handleToggle)

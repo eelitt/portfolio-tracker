@@ -42,7 +42,9 @@ export async function getStockPrice(symbol: string): Promise<{ price: number; ch
     if (!res.ok) return null
 
     const data = await res.json()
-    console.log(`Fetched price for ${symbol}:`, data.c)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`Fetched price for ${symbol}:`, data.c)
+    }
     return {
       price: data.c ?? null,
       change24h: data.dp ?? null,
@@ -74,7 +76,9 @@ export async function getCryptoPrice(symbol: string): Promise<{ price: number; c
     if (!res.ok) return null
 
     const data = await res.json()
-    console.log(`Fetched price for ${symbol}:`, data[id]?.usd)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`Fetched price for ${symbol}:`, data[id]?.usd)
+    }
     return {
       price: data[id]?.usd ?? null,
       change24h: data[id]?.usd_24h_change ?? null,
