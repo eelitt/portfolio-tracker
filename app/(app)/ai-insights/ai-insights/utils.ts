@@ -1,12 +1,30 @@
 export function formatRelativeTime(isoString: string): string {
   const date = new Date(isoString)
-  const diffMs = Date.now() - date.getTime()
-  const diffSec = Math.floor(diffMs / 1000)
+  const diffMs = date.getTime() - Date.now()
+  const absMs = Math.abs(diffMs)
+  const past = diffMs <= 0
 
-  if (diffSec < 5) return 'just now'
-  if (diffSec < 60) return `${diffSec} seconds ago`
+  const diffSec = Math.floor(absMs / 1000)
+  if (diffSec < 5) return past ? 'just now' : 'in a moment'
+  if (diffSec < 60) {
+    return past
+      ? `${diffSec} seconds ago`
+      : `in ${diffSec} seconds`
+  }
   const diffMin = Math.floor(diffSec / 60)
-  if (diffMin < 60) return `${diffMin} minute${diffMin > 1 ? 's' : ''} ago`
+  if (diffMin < 60) {
+    return past
+      ? `${diffMin} minute${diffMin > 1 ? 's' : ''} ago`
+      : `in ${diffMin} minute${diffMin > 1 ? 's' : ''}`
+  }
   const diffHours = Math.floor(diffMin / 60)
-  return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
+  if (diffHours < 48) {
+    return past
+      ? `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
+      : `in ${diffHours} hour${diffHours > 1 ? 's' : ''}`
+  }
+  const diffDays = Math.floor(diffHours / 24)
+  return past
+    ? `${diffDays} day${diffDays > 1 ? 's' : ''} ago`
+    : `in ${diffDays} day${diffDays > 1 ? 's' : ''}`
 }

@@ -1,44 +1,42 @@
 'use server'
 
-import { getCurrentUser } from './users'
+import { getCurrentUser, getCurrentUserProfile } from '@/app/actions/users'
 import { getPortfolioData, type PortfolioData } from '@/lib/portfolioData'
 import {
   getLastAICallTime,
   updateLastAICallTime,
   saveAIInsight,
   getLatestAIInsight,
-} from './ai'
+} from '@/app/actions/ai/storage'
 import { computePortfolioHash } from '@/lib/calculatePortfolio'
 import { aiInsightsSchema } from '@/lib/schemas'
-import { getCurrentUserProfile } from './users'
 import { formatCurrency } from '@/lib/currency'
 
-export type AIInsightsResult =
+const FEATURE_TYPE = 'portfolio_insights'
+
+export type PortfolioInsightsResult =
   | { insights: string[]; cachedAt?: string; message?: string; error?: undefined }
   | { error: string; insights?: undefined }
 
-// Helper to support old string results in DB
-function normalizeInsights(insights: any): string[] {
-  if (Array.isArray(insights)) return insights
-  if (typeof insights === 'string') return insights.split('\n').map(s => s.trim()).filter(Boolean)
+function normalizeInsights(insights: unknown): string[] {
+  if (Array.isArray(insights)) return insights.map(String)
+  if (typeof insights === 'string') {
+    return insights
+      .split('\n')
+      .map(s => s.trim())
+      .filter(Boolean)
+  }
   return []
 }
 
 /**
- * Server Action for generating AI insights.
- * Handles auth, rate limiting (60s per user), and delegates persistence to ai.ts.
- * When rate limit is active, returns the latest cached result (if any) instead of an error.
+ * Generate portfolio analysis insights for the current user.
+ * Hash short-circuit when portfolio unchanged; 60s global AI cooldown.
  */
-export async function generateAIInsights(
-  featureType: string = 'portfolio_insights'
-): Promise<AIInsightsResult> {
+export async function generatePortfolioInsights(): Promise<PortfolioInsightsResult> {
   const user = await getCurrentUser()
   if (!user) {
     return { error: 'Not authenticated' }
-  }
-
-  if (featureType !== 'portfolio_insights') {
-    return { error: 'This AI feature is not implemented yet.' }
   }
 
   const data = await getPortfolioData()
@@ -50,13 +48,10 @@ export async function generateAIInsights(
     return { error: 'AI service is not configured.' }
   }
 
-  const summary = await buildPortfolioSummary(data)
-
   try {
+    const cached = await getLatestAIInsight(user.id, FEATURE_TYPE)
     const currentHash = computePortfolioHash(data.transactions)
-    const cached = await getLatestAIInsight(user.id, featureType)
 
-    // If portfolio data is identical to last analysis → serve cached (preferred over error)
     if (cached?.result?.portfolioHash === currentHash) {
       return {
         insights: normalizeInsights(cached.result.insights),
@@ -65,7 +60,6 @@ export async function generateAIInsights(
       }
     }
 
-    // Rate limiting (60s cooldown). If we have a cached result (even if data changed), return it.
     const lastCall = await getLastAICallTime(user.id)
     if (lastCall) {
       const secondsSince = (Date.now() - lastCall.getTime()) / 1000
@@ -82,16 +76,16 @@ export async function generateAIInsights(
       }
     }
 
-    // Dynamic imports so the AI SDK is only loaded server-side when the action is invoked
     const { generateObject } = await import('ai')
     const { xai } = await import('@ai-sdk/xai')
+
+    const summary = await buildPortfolioSummary(data)
 
     const { object } = await generateObject({
       model: xai('grok-4.3'),
       schema: aiInsightsSchema,
       temperature: 0.2,
-      system: 
-      `You are a professional portfolio analyst. 
+      system: `You are a professional portfolio analyst. 
 Analyze the user's portfolio and provide maximum 6 concise, actionable bullet points.
 
 Focus on:
@@ -105,8 +99,7 @@ Rules:
 - Only give advice that is relevant to the actual portfolio data.
 - Use simple language. No jargon.
 - Prioritize the most important observations first.`,
-      prompt:
-      `Portfolio summary:
+      prompt: `Portfolio summary:
 ${summary}
 
 Analyze the portfolio and give maximum 6 bullet points with actionable insights. 
@@ -114,17 +107,15 @@ Focus on risks, concentration, and potential improvements.`,
       maxTokens: 250,
     })
 
-    // Persist result (with hash for future change detection) and update cooldown
-    const resultToStore: Record<string, any> = {
+    await saveAIInsight(user.id, FEATURE_TYPE, {
       insights: object.insights,
       portfolioHash: currentHash,
-    }
-    await saveAIInsight(user.id, featureType, resultToStore)
+    })
     await updateLastAICallTime(user.id)
 
     return { insights: object.insights }
   } catch (e) {
-    console.error('AI insights error', e)
+    console.error('Portfolio insights error', e)
     return { error: 'Failed to generate insights. Please try again later.' }
   }
 }
@@ -152,10 +143,8 @@ async function buildPortfolioSummary(data: PortfolioData): Promise<string> {
 
   summary += 'Holdings:\n'
 
-  // Sort holdings by value (highest first)
   const sorted = [...enrichedHoldings].sort((a, b) => b.marketValue - a.marketValue)
 
-  // Show top 6 holdings
   for (const holding of sorted.slice(0, 6)) {
     const percentage =
       totalMarketValue > 0
@@ -166,7 +155,6 @@ async function buildPortfolioSummary(data: PortfolioData): Promise<string> {
     summary += `PnL: ${holding.unrealizedPnlPercent.toFixed(0)}%\n`
   }
 
-  // Show remaining holdings summary
   if (sorted.length > 6) {
     const remainingValue = sorted
       .slice(6)

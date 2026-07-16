@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { getCurrentUser } from './users'
+import { getCurrentUser } from '@/app/actions/users'
 
 /**
  * AI-related Supabase database actions.
@@ -50,7 +50,7 @@ export async function updateLastAICallTime(userId: string): Promise<void> {
 export async function saveAIInsight(
   userId: string,
   featureType: string,
-  result: Record<string, any>
+  result: Record<string, unknown>
 ): Promise<void> {
   const supabase = await createClient()
 
@@ -73,7 +73,7 @@ export async function saveAIInsight(
 export async function getLatestAIInsight(
   userId: string,
   featureType: string
-): Promise<{ result: Record<string, any>; createdAt: string } | null> {
+): Promise<{ result: Record<string, unknown>; createdAt: string } | null> {
   const supabase = await createClient()
 
   const { data } = await supabase
@@ -86,7 +86,7 @@ export async function getLatestAIInsight(
   if (!data) return null
 
   return {
-    result: data.result,
+    result: data.result as Record<string, unknown>,
     createdAt: data.created_at,
   }
 }
@@ -96,7 +96,7 @@ export async function getLatestAIInsight(
  */
 export async function getLatestAIInsightForCurrentUser(
   featureType: string
-): Promise<{ result: Record<string, any>; createdAt: string } | null> {
+): Promise<{ result: Record<string, unknown>; createdAt: string } | null> {
   const user = await getCurrentUser()
   if (!user) return null
 

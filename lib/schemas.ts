@@ -34,13 +34,55 @@ export type GoalFormData = z.infer<typeof goalSchema>
  * Zod schema for structured AI output (used with generateObject).
  * 
  * Forces the model to return a clean array of bullet points (max 6).
- * Used by generateAIInsights for reliable, parseable results.
+ * Used by generatePortfolioInsights for reliable, parseable results.
  */
 export const aiInsightsSchema = z.object({
   insights: z.array(z.string()).max(6),
 })
 
 export type AIInsights = z.infer<typeof aiInsightsSchema>
+
+/**
+ * Zod schema for Holding News feature.
+ *
+ * AI returns news collectively (one call) but structured per-symbol.
+ * Max 3 short bullets per holding (cost + “main points only”).
+ */
+export const holdingNewsSchema = z.object({
+  news: z.record(
+    z.string(), // symbol e.g. "AAPL", "LINK"
+    z.array(z.string()).max(3)
+  ),
+})
+
+export type HoldingNews = z.infer<typeof holdingNewsSchema>
+
+/** Tone label for news impact analysis (required enum, no free text). */
+export const newsImpactToneSchema = z.enum([
+  'positive',
+  'neutral',
+  'negative',
+  'mixed',
+])
+
+export type NewsImpactTone = z.infer<typeof newsImpactToneSchema>
+
+/**
+ * Per-holding impact analysis derived from fetched news (no live tools).
+ * tone + outlook + up to 3 points.
+ */
+export const holdingNewsImpactEntrySchema = z.object({
+  tone: newsImpactToneSchema,
+  outlook: z.string(),
+  points: z.array(z.string()).max(3),
+})
+
+export const holdingNewsImpactSchema = z.object({
+  impact: z.record(z.string(), holdingNewsImpactEntrySchema),
+})
+
+export type HoldingNewsImpactEntry = z.infer<typeof holdingNewsImpactEntrySchema>
+export type HoldingNewsImpact = z.infer<typeof holdingNewsImpactSchema>
 
 /**
  * Zod schema for AI-powered CSV import parsing.

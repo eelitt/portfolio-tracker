@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { generateAIInsights } from '@/app/actions/generateAIInsights'
-import { getLatestAIInsightForCurrentUser } from '@/app/actions/ai'
+import { generatePortfolioInsights } from '@/app/actions/ai/portfolio-insights/generatePortfolioInsights'
+import { getLatestAIInsightForCurrentUser } from '@/app/actions/ai/storage'
 
 export interface PortfolioAnalysisState {
   insights: string[] | null
@@ -62,7 +62,7 @@ export function usePortfolioAnalysis() {
     setCachedAt(null)
 
     try {
-      const result = await generateAIInsights('portfolio_insights')
+      const result = await generatePortfolioInsights()
       if ('error' in result && result.error) {
         setError(result.error)
         setCachedAt(null)
@@ -81,7 +81,7 @@ export function usePortfolioAnalysis() {
           setLastAnalysisMessage(null)
         }
       }
-    } catch (e) {
+    } catch {
       setError('Something went wrong. Please try again.')
       setLastAnalysisMessage(null)
     } finally {

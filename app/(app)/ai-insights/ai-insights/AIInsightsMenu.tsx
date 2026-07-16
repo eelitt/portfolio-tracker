@@ -5,14 +5,18 @@ import { formatRelativeTime } from './utils'
 
 interface AIInsightsMenuProps {
   onOpenPortfolio: () => void
+  onOpenHoldingNews: () => void
   onOpenPlaceholder: (title: string) => void
   portfolioAnalysisTimestamp?: string | null
+  holdingNewsTimestamp?: string | null
 }
 
 export function AIInsightsMenu({
   onOpenPortfolio,
+  onOpenHoldingNews,
   onOpenPlaceholder,
   portfolioAnalysisTimestamp = null,
+  holdingNewsTimestamp = null,
 }: AIInsightsMenuProps) {
   return (
     <div className="space-y-4 pt-2">
@@ -48,16 +52,22 @@ export function AIInsightsMenu({
           )}
         </button>
 
-        {/* Placeholders */}
+        {/* Holding News - replaces old Goal Suggestions placeholder */}
         <button
-          onClick={() => onOpenPlaceholder('Goal Suggestions')}
-          className="w-full text-left border rounded-lg p-4 bg-card shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-accent/60 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-ring opacity-75"
+          onClick={onOpenHoldingNews}
+          className="w-full text-left border rounded-lg p-4 bg-card shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-accent/60 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-ring"
         >
-          <div className="font-medium">Goal Suggestions</div>
+          <div className="font-medium flex items-center gap-2">
+            <span>Holding News</span>
+          </div>
           <p className="text-sm text-muted-foreground mt-1">
-            See realistic goals based on your portfolio
+            Recent news and developments for your current holdings
           </p>
-          <div className="mt-2 text-[10px] text-muted-foreground">Coming soon</div>
+          {holdingNewsTimestamp && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Last fetched {formatRelativeTime(holdingNewsTimestamp)}
+            </p>
+          )}
         </button>
 
         <button

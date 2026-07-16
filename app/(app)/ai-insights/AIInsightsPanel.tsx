@@ -1,26 +1,30 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getLatestAIInsightForCurrentUser } from '@/app/actions/ai'
+import { getLatestAIInsightForCurrentUser } from '@/app/actions/ai/storage'
 import { Button } from '@/components/ui/button'
 import { Sparkles, X, Loader2 } from 'lucide-react'
 
 import { useAIInsightsSidebar } from './ai-insights/useAIInsightsSidebar'
 import { usePortfolioAnalysis } from './ai-insights/usePortfolioAnalysis'
+import { useHoldingNews } from './ai-insights/useHoldingNews'
 import { AIInsightsMenu } from './ai-insights/AIInsightsMenu'
 import { PortfolioAnalysisView } from './ai-insights/PortfolioAnalysisView'
+import { HoldingNewsView } from './ai-insights/HoldingNewsView'
 import { PlaceholderView } from './ai-insights/PlaceholderView'
 import { formatRelativeTime } from './ai-insights/utils'
 
-type View = 'menu' | 'portfolio' | 'placeholder'
+type View = 'menu' | 'portfolio' | 'holding-news' | 'placeholder'
 
 export default function AIInsightsPanel() {
   const { isOpen, close } = useAIInsightsSidebar()
   const portfolio = usePortfolioAnalysis()
+  const holdingNews = useHoldingNews()
 
   const [view, setView] = useState<View>('menu')
   const [placeholderTitle, setPlaceholderTitle] = useState('')
   const [portfolioAnalysisTimestamp, setPortfolioAnalysisTimestamp] = useState<string | null>(null)
+  const [holdingNewsTimestamp, setHoldingNewsTimestamp] = useState<string | null>(null)
   const [isFetchingTimestamp, setIsFetchingTimestamp] = useState(false)
 
   // Reset internal state when sidebar closes
@@ -29,8 +33,9 @@ export default function AIInsightsPanel() {
       setView('menu')
       setPlaceholderTitle('')
       portfolio.reset()
+      holdingNews.reset()
     }
-  }, [isOpen, portfolio])
+  }, [isOpen, portfolio, holdingNews])
 
   // When the sidebar opens, make sure we start on the menu
   useEffect(() => {
@@ -39,18 +44,26 @@ export default function AIInsightsPanel() {
     }
   }, [isOpen])
 
-  // Fetch timestamp of latest portfolio analysis (if any) when sidebar opens.
-  // We use a loading state so the menu doesn't flash the "UNUSED" ribbon
-  // while we check if the user has previously run an analysis.
+  // Fetch timestamps for portfolio analysis and holding news when sidebar opens.
   useEffect(() => {
     if (isOpen) {
       setIsFetchingTimestamp(true)
-      getLatestAIInsightForCurrentUser('portfolio_insights')
-        .then((latest) => setPortfolioAnalysisTimestamp(latest?.createdAt ?? null))
-        .catch(() => setPortfolioAnalysisTimestamp(null))
+      Promise.all([
+        getLatestAIInsightForCurrentUser('portfolio_insights'),
+        getLatestAIInsightForCurrentUser('holding_news'),
+      ])
+        .then(([portfolioLatest, newsLatest]) => {
+          setPortfolioAnalysisTimestamp(portfolioLatest?.createdAt ?? null)
+          setHoldingNewsTimestamp(newsLatest?.createdAt ?? null)
+        })
+        .catch(() => {
+          setPortfolioAnalysisTimestamp(null)
+          setHoldingNewsTimestamp(null)
+        })
         .finally(() => setIsFetchingTimestamp(false))
     } else {
       setPortfolioAnalysisTimestamp(null)
+      setHoldingNewsTimestamp(null)
       setIsFetchingTimestamp(false)
     }
   }, [isOpen])
@@ -71,6 +84,11 @@ export default function AIInsightsPanel() {
   const openPortfolio = () => {
     setView('portfolio')
     portfolio.loadInitialAnalysis()
+  }
+
+  const openHoldingNews = () => {
+    setView('holding-news')
+    holdingNews.loadInitialNews()
   }
 
   const openPlaceholder = (title: string) => {
@@ -112,8 +130,10 @@ export default function AIInsightsPanel() {
           {view === 'menu' && (
             <AIInsightsMenu
               onOpenPortfolio={openPortfolio}
+              onOpenHoldingNews={openHoldingNews}
               onOpenPlaceholder={openPlaceholder}
               portfolioAnalysisTimestamp={portfolioAnalysisTimestamp}
+              holdingNewsTimestamp={holdingNewsTimestamp}
             />
           )}
 
@@ -131,6 +151,32 @@ export default function AIInsightsPanel() {
                 try {
                   const latest = await getLatestAIInsightForCurrentUser('portfolio_insights')
                   setPortfolioAnalysisTimestamp(latest?.createdAt ?? null)
+                } catch {
+                  // ignore
+                }
+              }}
+              formatRelativeTime={formatRelativeTime}
+            />
+          )}
+
+          {view === 'holding-news' && (
+            <HoldingNewsView
+              news={holdingNews.news}
+              impact={holdingNews.impact}
+              error={holdingNews.error}
+              cachedAt={holdingNews.cachedAt}
+              isLoading={holdingNews.isLoading}
+              lastMessage={holdingNews.lastMessage}
+              nextRefreshAt={holdingNews.nextRefreshAt}
+              windowFrom={holdingNews.windowFrom}
+              windowTo={holdingNews.windowTo}
+              onBack={backToMenu}
+              onFetch={async () => {
+                await holdingNews.fetchFreshNews()
+                // Refresh timestamp after fetch
+                try {
+                  const latest = await getLatestAIInsightForCurrentUser('holding_news')
+                  setHoldingNewsTimestamp(latest?.createdAt ?? null)
                 } catch {
                   // ignore
                 }
