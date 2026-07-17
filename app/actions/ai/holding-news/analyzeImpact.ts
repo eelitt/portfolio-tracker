@@ -1,18 +1,38 @@
+/**
+ * News impact analysis — sub-step of Holding News (no live search).
+ *
+ * Runs after news bullets are fetched. For each holding that has ≥1 bullet,
+ * asks Grok (generateObject) for a rough near-term read:
+ *   tone (positive | neutral | negative | mixed)
+ *   outlook (one short sentence)
+ *   points (up to 3 bullets — mechanisms / what to watch)
+ *
+ * Not a server action: imported only by generateHoldingNews.
+ * Fail-open: returns {} on empty input or LLM errors so news can still be saved.
+ */
+
 import {
   holdingNewsImpactSchema,
   type HoldingNewsImpactEntry,
   type NewsImpactTone,
 } from '@/lib/schemas'
+import { buildImpactSystemPrompt, buildImpactUserPrompt } from './prompts'
 
+/** Allowed tone enum values (mirrors Zod schema; used for post-normalize). */
 const TONES: NewsImpactTone[] = ['positive', 'neutral', 'negative', 'mixed']
+
+/** Hard cap so outlook fits holding-card tooltips. */
 const OUTLOOK_MAX_CHARS = 160
 
+/** Minimal holding identity for the impact prompt (same set as news fetch). */
 export type HoldingMeta = { symbol: string; assetType: string; name: string }
 
 /**
  * Synthesize per-holding impact from already-fetched news bullets.
- * No live search tools — cheap generateObject pass only.
- * Returns {} if nothing to analyze or the model call fails (caller fail-open).
+ *
+ * - Only symbols with non-empty news are sent to the model (avoids invented impact).
+ * - No web/X tools: synthesis only, cheaper than another live search.
+ * - Dynamic import of AI SDK so this module stays light when unused.
  */
 export async function analyzeNewsImpact(
   news: Record<string, string[]>,
@@ -25,7 +45,10 @@ export async function analyzeNewsImpact(
     return {}
   }
 
+  // Restrict normalize to symbols we actually asked about
   const bySymbol = new Map(withNews.map(h => [h.symbol, h]))
+
+  // Compact multi-holding prompt block for one batched LLM call
   const block = withNews
     .map(h => {
       const bullets = news[h.symbol].map(b => `  • ${b}`).join('\n')
@@ -42,32 +65,22 @@ export async function analyzeNewsImpact(
       schema: holdingNewsImpactSchema,
       temperature: 0.2,
       maxTokens: 500,
-      system: `You analyze portfolio holding news for rough near-term implications.
-For each holding, return:
-- tone: exactly one of positive | neutral | negative | mixed
-- outlook: one short sentence (rough forward read, not a prediction)
-- points: 2–3 short bullets on mechanisms / what to watch (do not restate headlines verbatim)
-
-Rules:
-- Base conclusions only on the provided news bullets. Do not invent events.
-- Qualitative only: no price targets, no % forecasts, no buy/sell/hold recommendations.
-- If implications are unclear, use tone "neutral" and a cautious outlook.
-- Keys MUST be the exact uppercase tickers provided.
-- Not financial advice — stay measured.`,
-      prompt: `Analyze impact for these holdings and their news:
-
-${block}
-
-Return JSON: { "impact": { "SYMBOL": { "tone", "outlook", "points" } } }`,
+      system: buildImpactSystemPrompt(),
+      prompt: buildImpactUserPrompt(block),
     })
 
     return normalizeImpact(object.impact, bySymbol)
   } catch (e) {
+    // Caller treats empty impact as optional UI; news path continues
     console.error('News impact analysis failed', e)
     return {}
   }
 }
 
+/**
+ * Align model output with requested holdings and UI constraints.
+ * Drop unknown symbols; default bad tone → neutral; clamp outlook/points.
+ */
 function normalizeImpact(
   raw: Record<string, HoldingNewsImpactEntry>,
   bySymbol: Map<string, HoldingMeta>

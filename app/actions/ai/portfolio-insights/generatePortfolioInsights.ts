@@ -1,5 +1,20 @@
 'use server'
 
+/**
+ * Portfolio Analysis server action — AI Insights sidebar “Portfolio Analysis”.
+ *
+ * Flow:
+ *  1. Auth + non-empty portfolio + XAI_API_KEY
+ *  2. Load cached user_ai_insights (feature_type portfolio_insights)
+ *  3. If stored portfolioHash matches current transactions → return cache (no LLM)
+ *  4. Else enforce global 60s AI cooldown (profiles.last_ai_call_at)
+ *  5. Build a compact text summary → generateObject (≤6 insight bullets)
+ *  6. Upsert { insights, portfolioHash } and bump last_ai_call_at
+ *
+ * Unlike Holding News: no live search, no 24h gate — regeneration is driven by
+ * portfolio content change (hash) + shared 60s rate limit across AI features.
+ */
+
 import { getCurrentUser, getCurrentUserProfile } from '@/app/actions/users'
 import { getPortfolioData, type PortfolioData } from '@/lib/portfolioData'
 import {
@@ -12,12 +27,18 @@ import { computePortfolioHash } from '@/lib/calculatePortfolio'
 import { aiInsightsSchema } from '@/lib/schemas'
 import { formatCurrency } from '@/lib/currency'
 
+/** user_ai_insights.feature_type for this feature (one row per user). */
 const FEATURE_TYPE = 'portfolio_insights'
 
+/** Success vs error shape consumed by usePortfolioAnalysis. */
 export type PortfolioInsightsResult =
   | { insights: string[]; cachedAt?: string; message?: string; error?: undefined }
   | { error: string; insights?: undefined }
 
+/**
+ * Normalize insights from DB or older stored formats.
+ * Prefer string[]; also accept a single newline-separated string from legacy rows.
+ */
 function normalizeInsights(insights: unknown): string[] {
   if (Array.isArray(insights)) return insights.map(String)
   if (typeof insights === 'string') {
@@ -30,8 +51,8 @@ function normalizeInsights(insights: unknown): string[] {
 }
 
 /**
- * Generate portfolio analysis insights for the current user.
- * Hash short-circuit when portfolio unchanged; 60s global AI cooldown.
+ * Generate (or return cached) portfolio analysis for the current user.
+ * Hash short-circuit when transactions unchanged; 60s global AI cooldown otherwise.
  */
 export async function generatePortfolioInsights(): Promise<PortfolioInsightsResult> {
   const user = await getCurrentUser()
@@ -50,6 +71,7 @@ export async function generatePortfolioInsights(): Promise<PortfolioInsightsResu
 
   try {
     const cached = await getLatestAIInsight(user.id, FEATURE_TYPE)
+    // Hash of transactions: same holdings activity → same analysis, skip LLM cost
     const currentHash = computePortfolioHash(data.transactions)
 
     if (cached?.result?.portfolioHash === currentHash) {
@@ -60,6 +82,7 @@ export async function generatePortfolioInsights(): Promise<PortfolioInsightsResu
       }
     }
 
+    // Shared with CSV import / other AI that update last_ai_call_at
     const lastCall = await getLastAICallTime(user.id)
     if (lastCall) {
       const secondsSince = (Date.now() - lastCall.getTime()) / 1000
@@ -76,6 +99,7 @@ export async function generatePortfolioInsights(): Promise<PortfolioInsightsResu
       }
     }
 
+    // Dynamic import: AI SDK only loads when a real generation runs
     const { generateObject } = await import('ai')
     const { xai } = await import('@ai-sdk/xai')
 
@@ -120,6 +144,11 @@ Focus on risks, concentration, and potential improvements.`,
   }
 }
 
+/**
+ * Compact text summary for the LLM (keeps tokens low).
+ * Totals + top 6 holdings by market value; remainder rolled into “+N others”.
+ * Amounts use the user’s preferred currency for display consistency.
+ */
 async function buildPortfolioSummary(data: PortfolioData): Promise<string> {
   const profile = await getCurrentUserProfile()
   const currency = profile?.preferredCurrency || 'USD'

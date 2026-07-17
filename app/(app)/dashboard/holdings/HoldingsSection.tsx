@@ -1,6 +1,9 @@
 import { getPortfolioData } from '@/lib/portfolioData'
 import { getLatestAIInsightForCurrentUser } from '@/app/actions/ai/storage'
-import type { HoldingNewsImpactEntry } from '@/lib/schemas'
+import {
+  HOLDING_NEWS_FEATURE_TYPE,
+  parseHoldingNewsStored,
+} from '@/app/actions/ai/holding-news/newsUtils'
 import AllocationPie from './AllocationPie'
 import HoldingsGrid from './HoldingsGrid'
 
@@ -15,16 +18,18 @@ export default async function HoldingsSection() {
   const data = await getPortfolioData()
 
   // Load cached holding news + impact (cheap) for symbol-specific tooltips
-  const holdingNewsResult = await getLatestAIInsightForCurrentUser('holding_news')
-  const holdingNews = holdingNewsResult?.result?.news
+  const holdingNewsResult = await getLatestAIInsightForCurrentUser(HOLDING_NEWS_FEATURE_TYPE)
+  const stored = holdingNewsResult
+    ? parseHoldingNewsStored(holdingNewsResult.result, holdingNewsResult.createdAt)
+    : null
+  const holdingNews = stored
     ? {
-        news: holdingNewsResult.result.news as Record<string, string[]>,
+        news: stored.news,
         impact:
-          holdingNewsResult.result.impact &&
-          typeof holdingNewsResult.result.impact === 'object'
-            ? (holdingNewsResult.result.impact as Record<string, HoldingNewsImpactEntry>)
+          stored.impact && Object.keys(stored.impact).length > 0
+            ? stored.impact
             : undefined,
-        cachedAt: holdingNewsResult.createdAt,
+        cachedAt: stored.contentFetchedAt ?? holdingNewsResult!.createdAt,
       }
     : null
 

@@ -10,6 +10,8 @@ interface HoldingNewsViewProps {
   impact?: Record<string, HoldingNewsImpactEntry> | null
   error: string | null
   cachedAt: string | null
+  contentFetchedAt?: string | null
+  lastCheckedAt?: string | null
   isLoading: boolean
   lastMessage?: string | null
   nextRefreshAt?: string | null
@@ -25,6 +27,8 @@ export function HoldingNewsView({
   impact = null,
   error,
   cachedAt,
+  contentFetchedAt = null,
+  lastCheckedAt = null,
   isLoading,
   lastMessage,
   nextRefreshAt = null,
@@ -116,12 +120,24 @@ export function HoldingNewsView({
 
       {hasNews && (
         <div className="space-y-4">
-          {cachedAt && !lastMessage && (
+          {(contentFetchedAt || cachedAt || lastCheckedAt) && (
             <div className="text-xs bg-blue-50 border border-blue-200 text-blue-700 p-2 rounded space-y-0.5">
-              <div>Last updated {formatRelativeTime(cachedAt)}</div>
-              {windowFrom && windowTo && (
+              {(contentFetchedAt || cachedAt) && (
+                <div>
+                  News as of{' '}
+                  {formatRelativeTime(contentFetchedAt ?? cachedAt!)}
+                </div>
+              )}
+              {lastCheckedAt &&
+                contentFetchedAt &&
+                lastCheckedAt !== contentFetchedAt && (
+                  <div className="text-blue-600/80">
+                    Last checked {formatRelativeTime(lastCheckedAt)}
+                  </div>
+                )}
+              {!lastMessage && windowFrom && windowTo && (
                 <div className="text-blue-600/80">
-                  Coverage: {windowFrom} → {windowTo}
+                  Last search window: {windowFrom} → {windowTo}
                 </div>
               )}
             </div>

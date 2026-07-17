@@ -5,11 +5,22 @@ import { useRouter } from 'next/navigation'
 import { generateHoldingNews } from '@/app/actions/ai/holding-news/generateHoldingNews'
 import { getLatestAIInsightForCurrentUser } from '@/app/actions/ai/storage'
 import type { HoldingNewsImpactEntry } from '@/lib/schemas'
+import {
+  HOLDING_NEWS_COOLDOWN_MS,
+  HOLDING_NEWS_FEATURE_TYPE,
+  newsHasAnyBullets,
+  parseHoldingNewsStored,
+} from '@/app/actions/ai/holding-news/newsUtils'
 
 export interface HoldingNewsState {
   news: Record<string, string[]> | null
   impact: Record<string, HoldingNewsImpactEntry> | null
   error: string | null
+  /** News content age (“news as of”) */
+  contentFetchedAt: string | null
+  /** Last live check (including no-op) */
+  lastCheckedAt: string | null
+  /** Alias for content age — used by older UI fields */
   cachedAt: string | null
   isLoading: boolean
   lastMessage: string | null
@@ -18,16 +29,13 @@ export interface HoldingNewsState {
   windowTo: string | null
 }
 
-function asImpactMap(raw: unknown): Record<string, HoldingNewsImpactEntry> | null {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
-  return raw as Record<string, HoldingNewsImpactEntry>
-}
-
 export function useHoldingNews() {
   const router = useRouter()
   const [news, setNews] = useState<Record<string, string[]> | null>(null)
   const [impact, setImpact] = useState<Record<string, HoldingNewsImpactEntry> | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [contentFetchedAt, setContentFetchedAt] = useState<string | null>(null)
+  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null)
   const [cachedAt, setCachedAt] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [lastMessage, setLastMessage] = useState<string | null>(null)
@@ -39,6 +47,8 @@ export function useHoldingNews() {
     setNews(null)
     setImpact(null)
     setError(null)
+    setContentFetchedAt(null)
+    setLastCheckedAt(null)
     setCachedAt(null)
     setLastMessage(null)
     setNextRefreshAt(null)
@@ -55,31 +65,35 @@ export function useHoldingNews() {
     reset()
 
     try {
-      const latest = await getLatestAIInsightForCurrentUser('holding_news')
-      if (latest?.result?.news) {
-        const newsMap = latest.result.news as Record<string, string[]>
-        setNews(newsMap)
-        setImpact(asImpactMap(latest.result.impact))
-        setCachedAt(latest.createdAt)
-        setWindowFrom(
-          typeof latest.result.windowFrom === 'string' ? latest.result.windowFrom : null
-        )
-        setWindowTo(
-          typeof latest.result.windowTo === 'string' ? latest.result.windowTo : null
-        )
+      const latest = await getLatestAIInsightForCurrentUser(HOLDING_NEWS_FEATURE_TYPE)
+      if (!latest) return
 
-        const lastFetched = new Date(latest.createdAt).getTime()
-        const cooldownMs = 24 * 60 * 60 * 1000
-        const hasAnyBullet = Object.values(newsMap).some(
-          bullets => Array.isArray(bullets) && bullets.length > 0
-        )
-        // Match server: only enforce 24h cooldown for live-search results with content
-        const isLiveSearchResult = typeof latest.result.windowFrom === 'string'
-        if (Date.now() - lastFetched < cooldownMs && isLiveSearchResult && hasAnyBullet) {
-          setNextRefreshAt(new Date(lastFetched + cooldownMs).toISOString())
-        } else {
-          setNextRefreshAt(null)
-        }
+      const stored = parseHoldingNewsStored(latest.result, latest.createdAt)
+      if (!stored) return
+
+      setNews(stored.news)
+      setImpact(
+        stored.impact && Object.keys(stored.impact).length > 0 ? stored.impact : null
+      )
+      setContentFetchedAt(stored.contentFetchedAt ?? null)
+      setLastCheckedAt(stored.lastCheckedAt ?? null)
+      setCachedAt(stored.contentFetchedAt ?? null)
+      setWindowFrom(stored.windowFrom ?? null)
+      setWindowTo(stored.windowTo ?? null)
+
+      const checkedAt = stored.lastCheckedAt ?? latest.createdAt
+      const lastCheckMs = new Date(checkedAt).getTime()
+      const hasAnyBullet = newsHasAnyBullets(stored.news)
+      const isLiveSearchResult = typeof stored.windowFrom === 'string'
+      if (
+        !Number.isNaN(lastCheckMs) &&
+        Date.now() - lastCheckMs < HOLDING_NEWS_COOLDOWN_MS &&
+        isLiveSearchResult &&
+        hasAnyBullet
+      ) {
+        setNextRefreshAt(new Date(lastCheckMs + HOLDING_NEWS_COOLDOWN_MS).toISOString())
+      } else {
+        setNextRefreshAt(null)
       }
     } catch {
       // ignore – user can still click Fetch
@@ -90,6 +104,7 @@ export function useHoldingNews() {
 
   /**
    * Triggers a fresh AI news fetch (subject to 24h holding-news cooldown).
+   * On error, keeps any already-shown news on screen.
    */
   const fetchFreshNews = async () => {
     setIsLoading(true)
@@ -104,7 +119,11 @@ export function useHoldingNews() {
       } else if ('news' in result && result.news) {
         setNews(result.news)
         setImpact(result.impact ?? null)
-        setCachedAt(result.cachedAt ?? new Date().toISOString())
+        const contentAt = result.contentFetchedAt ?? result.cachedAt ?? new Date().toISOString()
+        const checkedAt = result.lastCheckedAt ?? new Date().toISOString()
+        setContentFetchedAt(contentAt)
+        setLastCheckedAt(checkedAt)
+        setCachedAt(contentAt)
         setNextRefreshAt(result.nextRefreshAt ?? null)
         setWindowFrom(result.windowFrom ?? null)
         setWindowTo(result.windowTo ?? null)
@@ -115,7 +134,6 @@ export function useHoldingNews() {
           setLastMessage(null)
         }
 
-        // Refresh RSC dashboard so holding-card tooltips pick up new bullets
         router.refresh()
       }
     } catch {
@@ -129,6 +147,8 @@ export function useHoldingNews() {
     news,
     impact,
     error,
+    contentFetchedAt,
+    lastCheckedAt,
     cachedAt,
     isLoading,
     lastMessage,

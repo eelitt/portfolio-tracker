@@ -85,6 +85,23 @@ export type HoldingNewsImpactEntry = z.infer<typeof holdingNewsImpactEntrySchema
 export type HoldingNewsImpact = z.infer<typeof holdingNewsImpactSchema>
 
 /**
+ * Shape stored in user_ai_insights.result for feature_type holding_news.
+ * Timestamps are normalized on read (see parseHoldingNewsStored).
+ */
+export const holdingNewsStoredSchema = z.object({
+  news: z.record(z.string(), z.array(z.string())),
+  impact: z.record(z.string(), holdingNewsImpactEntrySchema).optional(),
+  windowFrom: z.string().optional(),
+  windowTo: z.string().optional(),
+  contentFetchedAt: z.string().optional(),
+  lastCheckedAt: z.string().optional(),
+  /** Legacy; prefer contentFetchedAt / lastCheckedAt */
+  fetchedAt: z.string().optional(),
+})
+
+export type HoldingNewsStored = z.infer<typeof holdingNewsStoredSchema>
+
+/**
  * Zod schema for AI-powered CSV import parsing.
  *
  * Used with generateObject for structured, reliable output from the LLM.

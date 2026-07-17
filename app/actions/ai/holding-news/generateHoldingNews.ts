@@ -1,49 +1,59 @@
 'use server'
 
+/**
+ * Holding News server action — public entry for the sidebar / AI Insights UI.
+ *
+ * Flow:
+ *  1. Auth + portfolio + XAI_API_KEY checks
+ *  2. Load cached user_ai_insights row (feature_type holding_news)
+ *  3. If last check < 24h and result looks valid → return cache (no LLM)
+ *  4. Else live search → parse/normalize
+ *     - If new package empty/identical vs previous with substance → keep previous
+ *       news+impact, set lastCheckedAt, message user (no impact LLM)
+ *     - Else → impact analysis, save new contentFetchedAt
+ *  5. Upsert via saveHoldingNewsPackage
+ *
+ * Cooldown is holding-news specific (lastCheckedAt).
+ */
+
 import { getCurrentUser } from '@/app/actions/users'
 import { getPortfolioData, type PortfolioData } from '@/lib/portfolioData'
 import {
   updateLastAICallTime,
-  saveAIInsight,
   getLatestAIInsight,
 } from '@/app/actions/ai/storage'
 import type { HoldingNewsImpactEntry } from '@/lib/schemas'
 import { callXaiResponsesWithSearch } from './xaiLiveSearch'
 import { analyzeNewsImpact } from './analyzeImpact'
+import { saveHoldingNewsPackage } from './persist'
+import {
+  buildHoldingNewsSystemPrompt,
+  buildHoldingNewsUserPrompt,
+} from './prompts'
 import {
   HOLDING_NEWS_COOLDOWN_MS,
   HOLDING_NEWS_FEATURE_TYPE,
   type CachedInsight,
+  type HoldingNewsSuccessResult,
   computeNewsWindow,
   selectHoldingsForNews,
   parseHoldingNewsJson,
   normalizeHoldingNews,
+  newsHasAnyBullets,
+  newsContentFingerprint,
+  parseHoldingNewsStored,
+  toCooldownResult,
+  buildNextRefreshAt,
 } from './newsUtils'
 
+/** Discriminated result for useHoldingNews (success fields vs error). */
 export type HoldingNewsResult =
-  | {
-      news: Record<string, string[]>
-      impact?: Record<string, HoldingNewsImpactEntry>
-      cachedAt?: string
-      message?: string
-      nextRefreshAt?: string
-      windowFrom?: string
-      windowTo?: string
-      error?: undefined
-    }
+  | HoldingNewsSuccessResult
   | { error: string; news?: undefined; impact?: undefined }
 
-function parseCachedImpact(
-  raw: unknown
-): Record<string, HoldingNewsImpactEntry> | undefined {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
-  return raw as Record<string, HoldingNewsImpactEntry>
-}
-
 /**
- * Fetch live holding news (web + X) for the user's top holdings,
- * then synthesize impact analysis (fail-open).
- * At most one successful live fetch per 24h; returns cache when rate-limited.
+ * Fetch live holding news for the user's top holdings, then impact analysis.
+ * At most one successful live check per 24h; empty/identical re-fetches keep prior news.
  */
 export async function generateHoldingNews(): Promise<HoldingNewsResult> {
   const user = await getCurrentUser()
@@ -62,45 +72,35 @@ export async function generateHoldingNews(): Promise<HoldingNewsResult> {
 
   try {
     const cached = await getLatestAIInsight(user.id, HOLDING_NEWS_FEATURE_TYPE)
+    const stored = cached
+      ? parseHoldingNewsStored(cached.result, cached.createdAt)
+      : null
 
-    if (cached?.result?.news) {
-      const lastFetched = new Date(cached.createdAt).getTime()
-      const elapsed = Date.now() - lastFetched
-      const newsMap = cached.result.news as Record<string, string[]>
-      const hasAnyBullet = Object.values(newsMap).some(
-        bullets => Array.isArray(bullets) && bullets.length > 0
-      )
-      // Legacy pre-live-search rows lack windowFrom; allow one free re-fetch so users
-      // stuck with empty model-memory results are not locked out for 24h.
-      const isLiveSearchResult = typeof cached.result.windowFrom === 'string'
-      const shouldEnforceCooldown = isLiveSearchResult && hasAnyBullet
+    // --- 24h cooldown (only for “real” live-search caches with content) ---
+    if (cached && stored && newsHasAnyBullets(stored.news)) {
+      const lastCheck = Date.parse(stored.lastCheckedAt ?? cached.createdAt)
+      const elapsed = Date.now() - lastCheck
+      const isLiveSearchResult = typeof stored.windowFrom === 'string'
+      const shouldEnforceCooldown = isLiveSearchResult && newsHasAnyBullets(stored.news)
 
-      if (elapsed < HOLDING_NEWS_COOLDOWN_MS && shouldEnforceCooldown) {
-        const nextRefreshAt = new Date(lastFetched + HOLDING_NEWS_COOLDOWN_MS).toISOString()
+      if (elapsed < HOLDING_NEWS_COOLDOWN_MS && shouldEnforceCooldown && !Number.isNaN(lastCheck)) {
+        const nextRefreshAt = buildNextRefreshAt(lastCheck)
         const hoursLeft = Math.max(
           1,
           Math.ceil((HOLDING_NEWS_COOLDOWN_MS - elapsed) / (60 * 60 * 1000))
         )
-        return {
-          news: newsMap,
-          impact: parseCachedImpact(cached.result.impact),
-          cachedAt: cached.createdAt,
+        return toCooldownResult(stored, {
           nextRefreshAt,
-          windowFrom:
-            typeof cached.result.windowFrom === 'string'
-              ? cached.result.windowFrom
-              : undefined,
-          windowTo:
-            typeof cached.result.windowTo === 'string' ? cached.result.windowTo : undefined,
           message: `Showing cached news. Next refresh available in ~${hoursLeft}h.`,
-        }
+        })
       }
     }
 
+    // Lookback window uses last *live* check only (not legacy empty rows)
     const windowBase: CachedInsight | null =
-      cached && typeof cached.result.windowFrom === 'string' ? cached : null
+      cached && stored && typeof stored.windowFrom === 'string' ? cached : null
 
-    return await runLiveHoldingNewsFetch(user.id, data, windowBase)
+    return await runLiveHoldingNewsFetch(user.id, data, windowBase, cached, stored)
   } catch (e) {
     console.error('Holding news error', e)
     const msg = e instanceof Error ? e.message : ''
@@ -118,10 +118,15 @@ export async function generateHoldingNews(): Promise<HoldingNewsResult> {
   }
 }
 
+/**
+ * One live pipeline: search → parse → maybe keep previous → impact → persist.
+ */
 async function runLiveHoldingNewsFetch(
   userId: string,
   data: PortfolioData,
-  cached: CachedInsight | null
+  windowBase: CachedInsight | null,
+  previousRow: CachedInsight | null,
+  previousStored: ReturnType<typeof parseHoldingNewsStored>
 ): Promise<HoldingNewsResult> {
   const holdings = selectHoldingsForNews(data)
   if (holdings.length === 0) {
@@ -129,34 +134,24 @@ async function runLiveHoldingNewsFetch(
   }
 
   const symbols = holdings.map(h => h.symbol)
-  const { fromDate, toDate, lookbackDays } = computeNewsWindow(
-    cached?.createdAt ? new Date(cached.createdAt) : null
-  )
+  const lookbackFrom =
+    windowBase && previousStored
+      ? new Date(previousStored.lastCheckedAt ?? windowBase.createdAt)
+      : null
+  const { fromDate, toDate, lookbackDays } = computeNewsWindow(lookbackFrom)
 
   const holdingsSummary = holdings
     .map(h => `- ${h.symbol} (${h.assetType}) — ${h.name}`)
     .join('\n')
 
-  const system = `You are a financial news assistant with live web and X search tools.
-For each holding, use the tools to find material, price-relevant news or official announcements in the given date range only.
-Rules:
-- Prefer reputable web sources; use X for official company/project posts and major announcements.
-- Max 3 short bullet points per holding (one sentence each).
-- Be factual. Do not invent events. If nothing material is found for a holding, return an empty array for that symbol.
-- Keys MUST be the exact ticker symbols provided (uppercase), never company names alone.
-- Respond with ONLY valid JSON matching this shape (no markdown fences, no extra text):
-{"news":{"SYMBOL":["bullet1","bullet2"]}}`
-
-  const prompt = `Date range (inclusive): ${fromDate} to ${toDate} (last ${lookbackDays} day(s)).
-
-Holdings to cover:
-${holdingsSummary}
-
-Search for main news items in this window for each holding. Return JSON with a "news" object keyed by ticker.`
-
   const rawText = await callXaiResponsesWithSearch({
-    system,
-    prompt,
+    system: buildHoldingNewsSystemPrompt(),
+    prompt: buildHoldingNewsUserPrompt({
+      fromDate,
+      toDate,
+      lookbackDays,
+      holdingsSummary,
+    }),
     fromDate,
     toDate,
   })
@@ -164,24 +159,72 @@ Search for main news items in this window for each holding. Return JSON with a "
   const parsed = parseHoldingNewsJson(rawText)
   const news = normalizeHoldingNews(parsed, symbols)
 
-  // Impact is a sub-step: fail-open so news still saves if analysis fails.
-  const impact = await analyzeNewsImpact(news, holdings)
+  const previousNews = previousStored?.news ?? null
+  const previousHadContent = newsHasAnyBullets(previousNews)
+  const newHasContent = newsHasAnyBullets(news)
+  const nowIso = new Date().toISOString()
+  const nextRefreshAt = buildNextRefreshAt()
 
-  const resultToStore: Record<string, unknown> = {
+  // --- Keep previous package when re-fetch is empty or essentially unchanged ---
+  if (previousStored && previousNews && previousHadContent) {
+    const emptyNew = !newHasContent
+    const sameContent =
+      newHasContent &&
+      newsContentFingerprint(previousNews) === newsContentFingerprint(news)
+
+    if (emptyNew || sameContent) {
+      const contentFetchedAt =
+        previousStored.contentFetchedAt ?? previousRow?.createdAt ?? nowIso
+      const previousImpact = previousStored.impact ?? {}
+
+      await saveHoldingNewsPackage(userId, {
+        news: previousNews,
+        impact: previousImpact,
+        windowFrom: fromDate,
+        windowTo: toDate,
+        contentFetchedAt,
+        lastCheckedAt: nowIso,
+      })
+      await updateLastAICallTime(userId)
+
+      return {
+        news: previousNews,
+        impact: Object.keys(previousImpact).length > 0 ? previousImpact : undefined,
+        contentFetchedAt,
+        lastCheckedAt: nowIso,
+        cachedAt: contentFetchedAt,
+        windowFrom: fromDate,
+        windowTo: toDate,
+        nextRefreshAt,
+        message: emptyNew
+          ? 'No material new headlines since last update. Showing your previous news.'
+          : 'No significant change since last fetch. Showing your previous news.',
+      }
+    }
+  }
+
+  // Real update: recompute impact and advance contentFetchedAt
+  const impact: Record<string, HoldingNewsImpactEntry> = await analyzeNewsImpact(
+    news,
+    holdings
+  )
+
+  await saveHoldingNewsPackage(userId, {
     news,
     impact,
     windowFrom: fromDate,
     windowTo: toDate,
-    fetchedAt: new Date().toISOString(),
-  }
-  await saveAIInsight(userId, HOLDING_NEWS_FEATURE_TYPE, resultToStore)
+    contentFetchedAt: nowIso,
+    lastCheckedAt: nowIso,
+  })
   await updateLastAICallTime(userId)
-
-  const nextRefreshAt = new Date(Date.now() + HOLDING_NEWS_COOLDOWN_MS).toISOString()
 
   return {
     news,
     impact: Object.keys(impact).length > 0 ? impact : undefined,
+    contentFetchedAt: nowIso,
+    lastCheckedAt: nowIso,
+    cachedAt: nowIso,
     windowFrom: fromDate,
     windowTo: toDate,
     nextRefreshAt,

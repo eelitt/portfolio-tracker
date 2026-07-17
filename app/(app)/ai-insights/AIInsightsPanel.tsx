@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { getLatestAIInsightForCurrentUser } from '@/app/actions/ai/storage'
+import { HOLDING_NEWS_FEATURE_TYPE } from '@/app/actions/ai/holding-news/newsUtils'
 import { Button } from '@/components/ui/button'
 import { Sparkles, X, Loader2 } from 'lucide-react'
 
@@ -50,7 +51,7 @@ export default function AIInsightsPanel() {
       setIsFetchingTimestamp(true)
       Promise.all([
         getLatestAIInsightForCurrentUser('portfolio_insights'),
-        getLatestAIInsightForCurrentUser('holding_news'),
+        getLatestAIInsightForCurrentUser(HOLDING_NEWS_FEATURE_TYPE),
       ])
         .then(([portfolioLatest, newsLatest]) => {
           setPortfolioAnalysisTimestamp(portfolioLatest?.createdAt ?? null)
@@ -165,6 +166,8 @@ export default function AIInsightsPanel() {
               impact={holdingNews.impact}
               error={holdingNews.error}
               cachedAt={holdingNews.cachedAt}
+              contentFetchedAt={holdingNews.contentFetchedAt}
+              lastCheckedAt={holdingNews.lastCheckedAt}
               isLoading={holdingNews.isLoading}
               lastMessage={holdingNews.lastMessage}
               nextRefreshAt={holdingNews.nextRefreshAt}
@@ -175,7 +178,7 @@ export default function AIInsightsPanel() {
                 await holdingNews.fetchFreshNews()
                 // Refresh timestamp after fetch
                 try {
-                  const latest = await getLatestAIInsightForCurrentUser('holding_news')
+                  const latest = await getLatestAIInsightForCurrentUser(HOLDING_NEWS_FEATURE_TYPE)
                   setHoldingNewsTimestamp(latest?.createdAt ?? null)
                 } catch {
                   // ignore
