@@ -160,7 +160,9 @@ async function buildPortfolioSummary(data: PortfolioData): Promise<string> {
     enrichedHoldings,
   } = data
 
-  const fmt = (amount: number) => formatCurrency(amount, currency, 0)
+  // Amounts from getPortfolioData are already in preferred currency — pass rate 1
+  // so EUR display is not multiplied by 0 (or double-converted).
+  const fmt = (amount: number) => formatCurrency(amount, currency, 1)
 
   let summary = `Total Value: ${fmt(totalMarketValue)}\n`
   summary += `24h Change: ${fmt(total24hChange)} (${total24hChangePercent.toFixed(1)}%)\n`

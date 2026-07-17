@@ -6,8 +6,8 @@ import {
   getSymbolsForType,
   getCryptoId,
   getSymbolOptions,
-} from './symbols'
-import { getStockPrice, getCryptoPrice } from './priceService'
+} from '../symbols'
+import { getStockPrice, getCryptoPrice } from '../priceService'
 
 describe('symbols data (curated lists for transaction forms)', () => {
   it('loads stocks, etfs and cryptos with expected structure', () => {

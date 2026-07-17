@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { getCryptoPrice, getPricesForHoldings } from './priceService'
+import { getCryptoPrice, getPricesForHoldings } from '../priceService'
 
 // Mock fetch globally
 const mockFetch = vi.fn()

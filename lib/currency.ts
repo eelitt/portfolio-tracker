@@ -59,6 +59,21 @@ export function getAmountInUsd(
   return amount / usdToEurRate
 }
 
+/**
+ * Convert an amount from one supported currency to another via USD.
+ * Identity when from === to.
+ */
+export function convertBetweenCurrencies(
+  amount: number,
+  fromCurrency: Currency,
+  toCurrency: Currency,
+  usdToEurRate: number
+): number {
+  if (fromCurrency === toCurrency) return amount
+  const inUsd = getAmountInUsd(amount, fromCurrency, usdToEurRate)
+  return convertAmount(inUsd, toCurrency, usdToEurRate)
+}
+
 export function formatCurrency(
   amount: number,
   currency: Currency,

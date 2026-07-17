@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { calculateHoldings, enrichHoldings, type Transaction} from './calculatePortfolio'
-import { Holding, EnrichedHolding } from './types'
+import { calculateHoldings, enrichHoldings, type Transaction} from '../calculatePortfolio'
+import { Holding, EnrichedHolding } from '../types'
 
 describe('calculateHoldings', () => {
   it('should return empty array when no transactions', () => {

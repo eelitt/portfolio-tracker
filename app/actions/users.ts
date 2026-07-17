@@ -1,5 +1,6 @@
 'use server'
 
+import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 
 export type PreferredCurrency = 'USD' | 'EUR'
@@ -56,5 +57,6 @@ export async function updatePreferredCurrency(currency: PreferredCurrency) {
     return { error: error.message }
   }
 
+  revalidatePath('/dashboard')
   return { success: true }
 }
