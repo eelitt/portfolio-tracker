@@ -175,15 +175,17 @@ describe('enrichHoldings', () => {
     expect(enriched[0].unrealizedPnlPercent).toBe(20)
     expect(enriched[0].change24h).toBe(2.5)
     expect(enriched[0].position24hChange).toBe(45) // 1800 * 0.025
+    expect(enriched[0].priceAvailable).toBe(true)
 
     // BTC checks
     expect(enriched[1].currentPrice).toBe(65000)
     expect(enriched[1].marketValue).toBe(32500)
     expect(enriched[1].unrealizedPnl).toBe(2500)
     expect(enriched[1].unrealizedPnlPercent).toBeCloseTo(8.333, 2)
+    expect(enriched[1].priceAvailable).toBe(true)
   })
 
-  it('should handle missing price data gracefully', () => {
+  it('should handle missing price data without inventing a total loss', () => {
     const priceData = {
       AAPL: { price: 180, change24h: 2.5 },
       // BTC is missing
@@ -191,10 +193,13 @@ describe('enrichHoldings', () => {
 
     const enriched = enrichHoldings(mockHoldings, priceData)
 
+    expect(enriched[0].priceAvailable).toBe(true)
+    expect(enriched[1].priceAvailable).toBe(false)
     expect(enriched[1].currentPrice).toBe(0)
     expect(enriched[1].marketValue).toBe(0)
-    expect(enriched[1].unrealizedPnl).toBe(-30000)
-    expect(enriched[1].unrealizedPnlPercent).toBe(-100)
+    // Must not treat missing quote as price 0 → −100% P&L
+    expect(enriched[1].unrealizedPnl).toBe(0)
+    expect(enriched[1].unrealizedPnlPercent).toBe(0)
     expect(enriched[1].change24h).toBe(0)
     expect(enriched[1].position24hChange).toBe(0)
   })

@@ -49,6 +49,10 @@ export interface Holding {
 /**
  * Holding augmented with current market data.
  * Used everywhere the UI needs to show "what is it worth right now?"
+ *
+ * priceAvailable is false when no valid live quote was returned for this
+ * symbol. In that case market fields are zeroed and must not be treated as
+ * a real price of 0 (see portfolio aggregates + holdings UI).
  */
 export type EnrichedHolding = Holding & {
   currentPrice: number
@@ -57,6 +61,7 @@ export type EnrichedHolding = Holding & {
   unrealizedPnlPercent: number
   change24h: number
   position24hChange: number
+  priceAvailable: boolean
 }
 
 export interface Goal {

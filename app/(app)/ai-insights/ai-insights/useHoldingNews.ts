@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { generateHoldingNews } from '@/app/actions/ai/holding-news/generateHoldingNews'
 import { getLatestAIInsightForCurrentUser } from '@/app/actions/ai/storage'
+import { refreshPortfolioPrices } from '@/app/actions/prices'
 import type { HoldingNewsImpactEntry } from '@/lib/schemas'
 import {
   HOLDING_NEWS_COOLDOWN_MS,
@@ -134,6 +135,8 @@ export function useHoldingNews() {
           setLastMessage(null)
         }
 
+        // Bust price cache so dashboard KPIs re-fetch instead of reusing a partial 60s cache
+        await refreshPortfolioPrices()
         router.refresh()
       }
     } catch {

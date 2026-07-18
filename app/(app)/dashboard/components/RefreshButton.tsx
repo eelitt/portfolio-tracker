@@ -6,6 +6,7 @@ import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatDistanceToNow } from 'date-fns'
 import { Button } from '@/components/ui/button'
+import { refreshPortfolioPrices } from '@/app/actions/prices'
 
 export default function RefreshButton() {
   const router = useRouter()
@@ -31,19 +32,22 @@ export default function RefreshButton() {
     return () => clearInterval(interval)
   }, [lastUpdatedTime])
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsPending(true)
-    
-    router.refresh()
-    
-    setTimeout(() => {
+    try {
+      // Bust Next Data Cache for price fetches, then re-render RSC tree
+      await refreshPortfolioPrices()
+      router.refresh()
       const now = new Date()
       setLastUpdatedTime(now)
       setRelativeTime(formatDistanceToNow(now, { addSuffix: true }))
-      setIsPending(false)
       window.dispatchEvent(new CustomEvent('portfolio-updated'))
       toast.success('Prices refreshed')
-    }, 600)
+    } catch {
+      toast.error('Could not refresh prices. Try again.')
+    } finally {
+      setIsPending(false)
+    }
   }
 
   return (

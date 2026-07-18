@@ -18,20 +18,25 @@ export default async function SummarySection() {
     )
   }
 
-  // Show the amber warning only when we have holdings but didn't get
-  // prices for every symbol (partial data is still usable).
+  // Incomplete live quotes: MV and 24h only use priced assets (+ cash).
   const showPartialPriceWarning =
-    data.holdingsCount > 0 &&
-    Object.keys(data.priceData).length < data.holdingsCount
+    data.assetCount > 0 && data.pricedAssetCount < data.assetCount
 
   return (
     <>
       {showPartialPriceWarning && (
-        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
           Live prices loaded for{' '}
-          <span className="font-medium">{Object.keys(data.priceData).length}</span> of{' '}
-          <span className="font-medium">{data.holdingsCount}</span> holdings.
-          Some data may be outdated.
+          <span className="font-medium">{data.pricedAssetCount}</span> of{' '}
+          <span className="font-medium">{data.assetCount}</span> assets
+          {data.unpricedSymbols.length > 0 && data.unpricedSymbols.length <= 8 && (
+            <>
+              {' '}
+              (missing: {data.unpricedSymbols.join(', ')})
+            </>
+          )}
+          . Total Market Value and 24h Change exclude missing quotes; cost basis
+          still includes all positions. Use Refresh Prices and try again.
         </div>
       )}
 

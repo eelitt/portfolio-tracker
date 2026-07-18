@@ -21,6 +21,11 @@ export type PortfolioData = {
   enrichedHoldings: any[]
   priceData: Record<string, { price: number; change24h: number | null }>
   holdingsCount: number
+  /** Non-cash holdings only */
+  assetCount: number
+  /** Non-cash holdings with a valid live quote */
+  pricedAssetCount: number
+  unpricedSymbols: string[]
   totalMarketValue: number
   totalCost: number
   totalUnrealizedPnl: number
@@ -35,19 +40,9 @@ export type PortfolioData = {
 /**
  * Single source of truth for all dashboard data.
  *
- * - Fetches the user's transactions (source of truth).
- * - Computes holdings using average cost method.
- * - Fetches live prices (stocks via Finnhub, crypto via CoinGecko).
- * - Enriches holdings with market values + P&L + 24h impact.
- * - Converts all money to preferred currency (market from USD; costs from entry currency).
- * - Cash is netted per-transaction with its own currency so multi-currency cash is correct.
- *
- * Wrapped in React.cache() so that the three independent async Server
- * Components below can each call it safely. The expensive work
- * (DB + external price APIs) runs only once per server request.
- *
- * On failure we return safe defaults + an error message instead of throwing.
- * This lets each UI section render its own friendly error state.
+ * Market value and 24h change only include holdings with valid live prices
+ * (plus cash). Cost basis includes all open positions. Unrealized P&L is
+ * summed only for priced assets so a missing quote is not treated as $0.
  */
 export const getPortfolioData = cache(async (): Promise<PortfolioData> => {
   try {
@@ -60,7 +55,6 @@ export const getPortfolioData = cache(async (): Promise<PortfolioData> => {
     const transactions = await getUserTransactions()
     const allHoldings = calculateHoldings(transactions || [])
 
-    // Assets only for market price fetch; cash is rebuilt with per-tx FX below.
     const assetHoldings = allHoldings.filter((h) => h.asset_type !== 'cash')
     const priceData = await getPricesForHoldings(assetHoldings)
     const enrichedAssets = enrichHoldings(assetHoldings, priceData)
@@ -74,19 +68,29 @@ export const getPortfolioData = cache(async (): Promise<PortfolioData> => {
       usdToEurRate
     )
 
-    // Cash is valued at face value (no market API). Keep priceData complete so the
-    // partial-price banner compares apples-to-apples with holdingsCount.
     for (const cash of preferredCash) {
       priceData[cash.symbol] = { price: 1, change24h: 0 }
     }
 
     const enrichedHoldings = [...preferredAssets, ...preferredCash]
 
-    const totalMarketValue = enrichedHoldings.reduce((sum, h) => sum + h.marketValue, 0)
-    const totalCost = enrichedHoldings.reduce((sum, h) => sum + h.totalCost, 0)
-    const totalUnrealizedPnl = totalMarketValue - totalCost
+    const unpricedSymbols = preferredAssets
+      .filter((h) => !h.priceAvailable)
+      .map((h) => h.symbol)
+    const pricedAssets = preferredAssets.filter((h) => h.priceAvailable)
 
-    const total24hChange = enrichedHoldings.reduce((sum, h) => sum + h.position24hChange, 0)
+    // MV + 24h: priced assets + cash only (never treat missing quote as price 0)
+    const totalMarketValue =
+      pricedAssets.reduce((sum, h) => sum + h.marketValue, 0) +
+      preferredCash.reduce((sum, h) => sum + h.marketValue, 0)
+
+    // Full book cost (including unpriced assets)
+    const totalCost = enrichedHoldings.reduce((sum, h) => sum + h.totalCost, 0)
+
+    // Unrealized only where we have a fair mark
+    const totalUnrealizedPnl = pricedAssets.reduce((sum, h) => sum + h.unrealizedPnl, 0)
+
+    const total24hChange = pricedAssets.reduce((sum, h) => sum + h.position24hChange, 0)
     const previousTotalValue = totalMarketValue - total24hChange
     const total24hChangePercent =
       previousTotalValue > 0 ? (total24hChange / previousTotalValue) * 100 : 0
@@ -96,6 +100,9 @@ export const getPortfolioData = cache(async (): Promise<PortfolioData> => {
       enrichedHoldings,
       priceData,
       holdingsCount: enrichedHoldings.length,
+      assetCount: preferredAssets.length,
+      pricedAssetCount: pricedAssets.length,
+      unpricedSymbols,
       totalMarketValue,
       totalCost,
       totalUnrealizedPnl,
@@ -113,6 +120,9 @@ export const getPortfolioData = cache(async (): Promise<PortfolioData> => {
       enrichedHoldings: [],
       priceData: {},
       holdingsCount: 0,
+      assetCount: 0,
+      pricedAssetCount: 0,
+      unpricedSymbols: [],
       totalMarketValue: 0,
       totalCost: 0,
       totalUnrealizedPnl: 0,

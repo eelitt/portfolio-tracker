@@ -78,22 +78,34 @@ function HoldingCard({
             <div className="mt-4 space-y-1 text-sm">
               <div className="flex justify-between">
                 <span>Current Price</span>
-                <span>{formatCurrency(holding.currentPrice, preferredCurrency, 1)}</span>
+                <span>
+                  {holding.asset_type === 'cash' || holding.priceAvailable !== false
+                    ? formatCurrency(holding.currentPrice, preferredCurrency, 1)
+                    : '—'}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>Market Value</span>
-                <span>{formatCurrency(holding.marketValue, preferredCurrency, 1)}</span>
+                <span>
+                  {holding.asset_type === 'cash' || holding.priceAvailable !== false
+                    ? formatCurrency(holding.marketValue, preferredCurrency, 1)
+                    : '—'}
+                </span>
               </div>
               <div className="flex justify-between font-medium">
                 <span>Unrealized P&amp;L</span>
-                <span
-                  className={
-                    holding.unrealizedPnl >= 0 ? 'text-green-600' : 'text-red-600'
-                  }
-                >
-                  {formatCurrency(holding.unrealizedPnl, preferredCurrency, 1)} (
-                  {holding.unrealizedPnlPercent.toFixed(1)}%)
-                </span>
+                {holding.asset_type === 'cash' || holding.priceAvailable !== false ? (
+                  <span
+                    className={
+                      holding.unrealizedPnl >= 0 ? 'text-green-600' : 'text-red-600'
+                    }
+                  >
+                    {formatCurrency(holding.unrealizedPnl, preferredCurrency, 1)} (
+                    {holding.unrealizedPnlPercent.toFixed(1)}%)
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
               </div>
             </div>
           </CardContent>

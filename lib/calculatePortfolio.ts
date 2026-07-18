@@ -134,18 +134,35 @@ export function enrichHoldings(
 ): EnrichedHolding[] {
   return holdings.map((holding) => {
     const raw = priceData[holding.symbol]
-    // Guard against missing or malformed price data from the service.
-    const data = raw && typeof raw === 'object'
-      ? raw
-      : { price: 0, change24h: null as number | null }
+    const hasValidPrice =
+      raw &&
+      typeof raw === 'object' &&
+      typeof raw.price === 'number' &&
+      Number.isFinite(raw.price) &&
+      raw.price > 0
 
-    const currentPrice = data.price ?? 0
+    // Missing / invalid quote: do not invent a $0 mark-to-market (that would
+    // look like a total loss and skew portfolio 24h when only a subset prices).
+    if (!hasValidPrice) {
+      return {
+        ...holding,
+        currentPrice: 0,
+        marketValue: 0,
+        unrealizedPnl: 0,
+        unrealizedPnlPercent: 0,
+        change24h: 0,
+        position24hChange: 0,
+        priceAvailable: false,
+      }
+    }
+
+    const currentPrice = raw.price
     const marketValue = holding.quantity * currentPrice
     const unrealizedPnl = marketValue - holding.totalCost
     const unrealizedPnlPercent =
       holding.totalCost > 0 ? (unrealizedPnl / holding.totalCost) * 100 : 0
 
-    const change24h = data.change24h ?? 0
+    const change24h = raw.change24h ?? 0
     const position24hChange = marketValue * (change24h / 100)
 
     return {
@@ -156,6 +173,7 @@ export function enrichHoldings(
       unrealizedPnlPercent,
       change24h,
       position24hChange,
+      priceAvailable: true,
     }
   })
 }

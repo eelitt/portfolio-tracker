@@ -19,11 +19,7 @@ export function toPreferredHolding(
 ): EnrichedHolding {
   const entryCurr = (holding.currency || 'USD') as Currency
 
-  // Market side: API quotes are USD
-  const currentPrice = convertAmount(holding.currentPrice, preferredCurrency, usdToEurRate)
-  const marketValue = holding.quantity * currentPrice
-
-  // Cost side: entry currency → preferred
+  // Cost side always converts (from entry currency)
   const totalCost = convertBetweenCurrencies(
     holding.totalCost,
     entryCurr,
@@ -39,6 +35,26 @@ export function toPreferredHolding(
     usdToEurRate
   )
 
+  // No valid live quote: keep market fields empty; still convert cost basis.
+  if (holding.priceAvailable === false) {
+    return {
+      ...holding,
+      currency: preferredCurrency,
+      currentPrice: 0,
+      marketValue: 0,
+      totalCost,
+      avgCost,
+      realizedPnl,
+      unrealizedPnl: 0,
+      unrealizedPnlPercent: 0,
+      position24hChange: 0,
+      priceAvailable: false,
+    }
+  }
+
+  // Market side: API quotes are USD
+  const currentPrice = convertAmount(holding.currentPrice, preferredCurrency, usdToEurRate)
+  const marketValue = holding.quantity * currentPrice
   const unrealizedPnl = marketValue - totalCost
   const unrealizedPnlPercent =
     totalCost > 0 ? (unrealizedPnl / totalCost) * 100 : 0
@@ -55,6 +71,7 @@ export function toPreferredHolding(
     unrealizedPnl,
     unrealizedPnlPercent,
     position24hChange,
+    priceAvailable: true,
   }
 }
 
@@ -134,6 +151,7 @@ export function calculateCashHoldingsInPreferred(
         unrealizedPnlPercent: 0,
         change24h: 0,
         position24hChange: 0,
+        priceAvailable: true,
       })
     }
   }

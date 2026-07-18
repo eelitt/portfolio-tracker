@@ -1,11 +1,12 @@
 /**
- * Curated symbol lists for the transaction form dropdowns.
+ * Curated symbol lists for transaction form dropdowns (+ crypto id map).
  *
  * - Users can only pick symbols that exist in these lists for the chosen asset type.
  * - To support a new instrument, add it to the appropriate .json file.
- * - Crypto entries include the CoinGecko "id" so price fetching works dynamically.
+ * - Crypto entries include the CoinGecko "id" so held cryptos can be priced.
  *
- * These are also used (on the server) by the price service.
+ * Price APIs are never called for the full lists. The price service only looks up
+ * CoinGecko ids (getCryptoId) for symbols already in the user's holdings.
  */
 
 import stocksJson from './symbols/stocks.json' with { type: 'json' };

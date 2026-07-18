@@ -5,27 +5,56 @@ import { getCryptoId } from './symbols'
 /**
  * Price fetching service.
  *
- * All functions are marked 'use server' because they are called from
- * Server Components / Server Actions and use Next.js fetch caching
- * (revalidate: 60).
+ * Called from Server Components / Server Actions. Uses Next.js fetch
+ * Data Cache with revalidate: 60 and tag `prices` so explicit refresh
+ * can call revalidateTag('prices').
  *
- * Stock / ETF prices come from Finnhub (requires FINNHUB_API_KEY).
- * Crypto prices come from CoinGecko using the curated list in lib/symbols/cryptos.json
- * (the "id" field supplies the CoinGecko slug; no API key needed).
- * Cash is always valued at 1 with 0 change.
- *
- * The import of `unstable_cache` is currently unused (fetch options provide
- * the caching we need).
+ * Stock / ETF: Finnhub (FINNHUB_API_KEY).
+ * Crypto: CoinGecko (batched when fetching multiple holdings).
+ * Cash: face value 1, change 0.
  */
+
+export type PriceQuote = { price: number; change24h: number | null }
+
+const PRICE_CACHE = { next: { revalidate: 60, tags: ['prices'] as string[] } }
+
+/** Reject missing, non-finite, and zero Finnhub empty quotes (c: 0). */
+function isValidPrice(price: unknown): price is number {
+  return typeof price === 'number' && Number.isFinite(price) && price > 0
+}
+
+async function fetchJson(
+  url: string,
+  retries = 1
+): Promise<{ ok: true; data: unknown } | { ok: false }> {
+  try {
+    const res = await fetch(url, PRICE_CACHE)
+    if (!res.ok) {
+      if (retries > 0) {
+        await new Promise((r) => setTimeout(r, 250))
+        return fetchJson(url, retries - 1)
+      }
+      return { ok: false }
+    }
+    const data = await res.json()
+    return { ok: true, data }
+  } catch (error) {
+    if (retries > 0) {
+      await new Promise((r) => setTimeout(r, 250))
+      return fetchJson(url, retries - 1)
+    }
+    console.error('Price fetch error:', error)
+    return { ok: false }
+  }
+}
 
 // ==================== STOCKS (Finnhub) ====================
 
 /**
- * Fetches the latest quote for a stock symbol.
- * Returns current price ("c") and daily percent change ("dp").
- * Returns null on any failure (missing key, network error, bad response).
+ * Latest quote for a stock/ETF symbol.
+ * Returns null on failure or invalid/zero last price.
  */
-export async function getStockPrice(symbol: string): Promise<{ price: number; change24h: number | null } | null> {
+export async function getStockPrice(symbol: string): Promise<PriceQuote | null> {
   const apiKey = process.env.FINNHUB_API_KEY
 
   if (!apiKey) {
@@ -33,97 +62,128 @@ export async function getStockPrice(symbol: string): Promise<{ price: number; ch
     return null
   }
 
-  try {
-    const res = await fetch(
-      `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`,
-      { next: { revalidate: 60 } }
-    )
+  const result = await fetchJson(
+    `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${apiKey}`
+  )
+  if (!result.ok) return null
 
-    if (!res.ok) return null
+  const data = result.data as { c?: number; dp?: number | null }
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`Fetched price for ${symbol}:`, data?.c)
+  }
 
-    const data = await res.json()
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`Fetched price for ${symbol}:`, data.c)
-    }
-    return {
-      price: data.c ?? null,
-      change24h: data.dp ?? null,
-    }
-  } catch (error) {
-    console.error('Stock price fetch error:', error)
-    return null
+  if (!isValidPrice(data?.c)) return null
+
+  return {
+    price: data.c,
+    change24h: typeof data.dp === 'number' && Number.isFinite(data.dp) ? data.dp : null,
   }
 }
 
 // ==================== CRYPTO (CoinGecko) ====================
 
 /**
- * Fetches price for a crypto symbol present in lib/symbols/cryptos.json.
- *
- * The CoinGecko id is looked up dynamically via getCryptoId().
- * Unknown symbols (not present in the curated list) return null immediately.
+ * Single-symbol crypto price (tests + callers that need one id).
+ * Prefer getPricesForHoldings for portfolios (batched).
  */
-export async function getCryptoPrice(symbol: string): Promise<{ price: number; change24h: number | null } | null> {
+export async function getCryptoPrice(symbol: string): Promise<PriceQuote | null> {
   const id = getCryptoId(symbol)
   if (!id) return null
 
-  try {
-    const res = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd&include_24hr_change=true`,
-      { next: { revalidate: 60 } }
-    )
+  const result = await fetchJson(
+    `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd&include_24hr_change=true`
+  )
+  if (!result.ok) return null
 
-    if (!res.ok) return null
-
-    const data = await res.json()
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`Fetched price for ${symbol}:`, data[id]?.usd)
-    }
-    return {
-      price: data[id]?.usd ?? null,
-      change24h: data[id]?.usd_24h_change ?? null,
-    }
-  } catch (error) {
-    console.error('Crypto price fetch error:', error)
-    return null
+  const data = result.data as Record<string, { usd?: number; usd_24h_change?: number }>
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`Fetched price for ${symbol}:`, data?.[id]?.usd)
   }
+
+  const usd = data?.[id]?.usd
+  if (!isValidPrice(usd)) return null
+
+  const ch = data[id]?.usd_24h_change
+  return {
+    price: usd,
+    change24h: typeof ch === 'number' && Number.isFinite(ch) ? ch : null,
+  }
+}
+
+/**
+ * Batch-fetch crypto prices in one CoinGecko request (avoids free-tier 429s).
+ */
+export async function getCryptoPricesBatch(
+  symbols: string[]
+): Promise<Record<string, PriceQuote>> {
+  const out: Record<string, PriceQuote> = {}
+  if (symbols.length === 0) return out
+
+  const idToSymbol = new Map<string, string>()
+  for (const symbol of symbols) {
+    const id = getCryptoId(symbol)
+    if (id) idToSymbol.set(id, symbol)
+  }
+  if (idToSymbol.size === 0) return out
+
+  const ids = [...idToSymbol.keys()].join(',')
+  const result = await fetchJson(
+    `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd&include_24hr_change=true`
+  )
+  if (!result.ok) return out
+
+  const data = result.data as Record<string, { usd?: number; usd_24h_change?: number }>
+  for (const [id, symbol] of idToSymbol) {
+    const row = data?.[id]
+    if (!isValidPrice(row?.usd)) continue
+    const ch = row.usd_24h_change
+    out[symbol] = {
+      price: row.usd,
+      change24h: typeof ch === 'number' && Number.isFinite(ch) ? ch : null,
+    }
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`Fetched price for ${symbol}:`, row.usd)
+    }
+  }
+
+  return out
 }
 
 // ==================== BATCH FETCH ====================
 
 /**
- * Given a list of holdings (symbol + type), fetches current prices
- * for all of them in parallel.
- *
- * Returns a map of symbol → {price, change24h}. Only symbols that
- * successfully returned a price are included.
- *
- * Failures for individual symbols are swallowed (we still want to
- * show the rest of the portfolio).
+ * Fetch current prices for holdings.
+ * Crypto is batched; stocks/ETFs are parallel Finnhub quotes.
+ * Only symbols with a valid price > 0 are included.
  */
 export async function getPricesForHoldings(
   holdings: { symbol: string; asset_type: 'stock' | 'etf' | 'crypto' | 'cash' }[]
-): Promise<Record<string, { price: number; change24h: number | null }>> {
-  const priceData: Record<string, { price: number; change24h: number | null }> = {}
+): Promise<Record<string, PriceQuote>> {
+  const priceData: Record<string, PriceQuote> = {}
 
-  const promises = holdings.map(async (holding) => {
-    let result: { price: number; change24h: number | null } | null = null
+  const cryptos = holdings.filter((h) => h.asset_type === 'crypto')
+  const stocks = holdings.filter(
+    (h) => h.asset_type === 'stock' || h.asset_type === 'etf'
+  )
+  const cash = holdings.filter((h) => h.asset_type === 'cash')
 
-    if (holding.asset_type === 'crypto') {
-      result = await getCryptoPrice(holding.symbol)
-    } else if (holding.asset_type === 'cash') {
-      // Cash / savings has no market price — always valued at face value (1.0)
-      result = { price: 1, change24h: 0 }
-    } else {
-      // 'stock' and 'etf' (index funds) both use stock market data (Finnhub)
-      result = await getStockPrice(holding.symbol)
-    }
+  for (const h of cash) {
+    priceData[h.symbol] = { price: 1, change24h: 0 }
+  }
 
-    if (result && result.price !== null) {
-      priceData[holding.symbol] = result
-    }
+  const cryptoSymbols = [...new Set(cryptos.map((h) => h.symbol))]
+  const cryptoPromise =
+    cryptoSymbols.length > 0
+      ? getCryptoPricesBatch(cryptoSymbols)
+      : Promise.resolve({} as Record<string, PriceQuote>)
+
+  const stockPromises = stocks.map(async (holding) => {
+    const result = await getStockPrice(holding.symbol)
+    if (result) priceData[holding.symbol] = result
   })
 
-  await Promise.all(promises)
+  const [cryptoMap] = await Promise.all([cryptoPromise, Promise.all(stockPromises)])
+  Object.assign(priceData, cryptoMap)
+
   return priceData
 }

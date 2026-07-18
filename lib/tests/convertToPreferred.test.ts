@@ -24,6 +24,7 @@ function assetHolding(
     unrealizedPnlPercent: overrides.unrealizedPnlPercent ?? 50,
     change24h: overrides.change24h ?? 2,
     position24hChange: overrides.position24hChange ?? 30,
+    priceAvailable: overrides.priceAvailable ?? true,
   }
 }
 
