@@ -172,12 +172,13 @@ export default function Navbar({ user, hasAiKey = true, preferredCurrency = 'USD
           {/* Goals sidebar toggle */}
           <Button
             variant="ghost"
-            size="icon"
+            size="sm"
             onClick={toggleGoalsSidebar}
-            className="h-9 w-9"
+            className="flex items-center gap-2"
             aria-label="Toggle investing goals sidebar"
           >
             <Target className="h-4 w-4" />
+            Goals
           </Button>
 
           {/* User Dropdown */}
