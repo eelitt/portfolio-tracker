@@ -11,11 +11,12 @@ import { usePortfolioAnalysis } from './ai-insights/usePortfolioAnalysis'
 import { useHoldingNews } from './ai-insights/useHoldingNews'
 import { AIInsightsMenu } from './ai-insights/AIInsightsMenu'
 import { PortfolioAnalysisView } from './ai-insights/PortfolioAnalysisView'
+import { PortfolioAnalystView } from './ai-insights/PortfolioAnalystView'
 import { HoldingNewsView } from './ai-insights/HoldingNewsView'
 import { PlaceholderView } from './ai-insights/PlaceholderView'
 import { formatRelativeTime } from './ai-insights/utils'
 
-type View = 'menu' | 'portfolio' | 'holding-news' | 'placeholder'
+type View = 'menu' | 'analyst' | 'portfolio' | 'holding-news' | 'placeholder'
 
 export default function AIInsightsPanel() {
   const { isOpen, close } = useAIInsightsSidebar()
@@ -82,6 +83,10 @@ export default function AIInsightsPanel() {
     portfolio.reset()
   }
 
+  const openAnalyst = () => {
+    setView('analyst')
+  }
+
   const openPortfolio = () => {
     setView('portfolio')
     portfolio.loadInitialAnalysis()
@@ -130,12 +135,17 @@ export default function AIInsightsPanel() {
         <>
           {view === 'menu' && (
             <AIInsightsMenu
+              onOpenAnalyst={openAnalyst}
               onOpenPortfolio={openPortfolio}
               onOpenHoldingNews={openHoldingNews}
               onOpenPlaceholder={openPlaceholder}
               portfolioAnalysisTimestamp={portfolioAnalysisTimestamp}
               holdingNewsTimestamp={holdingNewsTimestamp}
             />
+          )}
+
+          {view === 'analyst' && (
+            <PortfolioAnalystView onBack={backToMenu} />
           )}
 
           {view === 'portfolio' && (

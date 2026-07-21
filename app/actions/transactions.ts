@@ -23,16 +23,109 @@ export type ActionState = {
   success?: boolean
 }
 
+export type CreateTransactionResult =
+  | { ok: true; data: TransactionFormData & { currency: 'USD' | 'EUR' } }
+  | { ok: false; error: string }
+
 /**
- * Creates a new transaction for the currently authenticated user.
+ * Programmatic create (manual form, NL confirm, imports share this path after Zod).
+ * @param options.requireCurrency — if true, currency must be set on the payload (NL path).
+ *   If false (default), falls back to preferred currency like the manual form.
+ */
+export async function createTransactionRecord(
+  raw: TransactionFormData,
+  options: { requireCurrency?: boolean } = {}
+): Promise<CreateTransactionResult> {
+  const result = transactionSchema.safeParse(raw)
+  if (!result.success) {
+    const msg = Object.values(result.error.flatten().fieldErrors)
+      .flat()
+      .join(', ')
+    return { ok: false, error: msg || 'Invalid transaction' }
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    return { ok: false, error: 'Not authenticated' }
+  }
+
+  let currency: 'USD' | 'EUR' | undefined = result.data.currency
+  if (!currency) {
+    if (options.requireCurrency) {
+      return {
+        ok: false,
+        error:
+          'Currency is required. Include € or $ (or USD/EUR) in your message before confirming.',
+      }
+    }
+    const profile = await getCurrentUserProfile()
+    currency = profile?.preferredCurrency || 'USD'
+  }
+
+  let quantity = result.data.quantity
+  if (result.data.asset_type === 'cash') {
+    quantity = Number(Number(quantity).toFixed(2))
+  }
+
+  const insertData = {
+    ...result.data,
+    quantity,
+    currency,
+  }
+
+  const { error } = await supabase.from('transactions').insert({
+    ...insertData,
+    user_id: user.id,
+  })
+
+  if (error) {
+    return { ok: false, error: error.message }
+  }
+
+  // Auto credit sale proceeds to Available Cash (best-effort)
+  if (result.data.action === 'sell' && result.data.asset_type !== 'cash') {
+    const proceeds = Number(result.data.quantity) * Number(result.data.unit_price)
+    if (proceeds > 0) {
+      const sellCurrency = insertData.currency || 'USD'
+      const cashInsert = {
+        symbol: 'Available Cash',
+        asset_type: 'cash' as const,
+        action: 'inflow' as const,
+        quantity: Number(proceeds.toFixed(2)),
+        unit_price: 1,
+        executed_at: result.data.executed_at,
+        notes: `Proceeds from SELL ${result.data.quantity} ${result.data.symbol} @ ${result.data.unit_price}`,
+        currency: sellCurrency,
+        user_id: user.id,
+      }
+      const { error: cashError } = await supabase.from('transactions').insert(cashInsert)
+      if (cashError) {
+        console.error('Auto cash credit for sell proceeds failed:', cashError.message)
+      }
+    }
+  }
+
+  revalidatePath('/dashboard')
+  return {
+    ok: true,
+    data: {
+      ...result.data,
+      currency: insertData.currency as 'USD' | 'EUR',
+    },
+  }
+}
+
+/**
+ * Creates a new transaction for the currently authenticated user (form / useActionState).
  * Validates input with Zod before touching the database.
  */
 export async function createTransaction(
   prevState: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const supabase = await createClient()
-
   const rawData = {
     symbol: formData.get('symbol'),
     asset_type: formData.get('asset_type'),
@@ -44,70 +137,16 @@ export async function createTransaction(
   }
 
   const result = transactionSchema.safeParse(rawData)
-
   if (!result.success) {
-    return { 
-      error: result.error.flatten().fieldErrors 
+    return {
+      error: result.error.flatten().fieldErrors,
     }
   }
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return { error: 'Not authenticated' }
+  const created = await createTransactionRecord(result.data)
+  if (!created.ok) {
+    return { error: created.error }
   }
-
-  let insertData: any = { ...result.data }
-
-  // Record the currency the unit_price (or cash amount) was entered in, using the user's
-  // preferred currency at the time of the transaction. This allows correct conversions
-  // even if the user later changes their preferred currency.
-  // Legacy non-cash transactions without currency are treated as USD downstream.
-  if (!insertData.currency) {
-    const profile = await getCurrentUserProfile()
-    insertData.currency = profile?.preferredCurrency || 'USD'
-  }
-
-  // Cash quantities are always in 2 decimal places (fiat)
-  if (insertData.asset_type === 'cash') {
-    insertData.quantity = Number(Number(insertData.quantity).toFixed(2))
-  }
-
-  const { error } = await supabase.from('transactions').insert({
-    ...insertData,
-    user_id: user.id,
-  })
-
-  if (error) {
-    return { error: error.message }
-  }
-
-  // Automatically credit sale proceeds to the "Available Cash" holding.
-  // The cash credit uses action 'inflow' and the *same currency* as the sell.
-
-  if (result.data.action === 'sell' && result.data.asset_type !== 'cash') {
-    const proceeds = Number(result.data.quantity) * Number(result.data.unit_price)
-    if (proceeds > 0) {
-      const sellCurrency = insertData.currency || 'USD'
-      const cashInsert = {
-        symbol: 'Available Cash',
-        asset_type: 'cash',
-        action: 'inflow',
-        quantity: Number(proceeds.toFixed(2)),
-        unit_price: 1,
-        executed_at: result.data.executed_at,
-        notes: `Proceeds from SELL ${result.data.quantity} ${result.data.symbol} @ ${result.data.unit_price}`,
-        currency: sellCurrency,
-        user_id: user.id,
-      }
-      const { error: cashError } = await supabase.from('transactions').insert(cashInsert)
-      if (cashError) {
-        // Do not fail the user's sell transaction. Cash credit is best-effort.
-        console.error('Auto cash credit for sell proceeds failed:', cashError.message)
-      }
-    }
-  }
-
-  revalidatePath('/dashboard')
   return { success: true }
 }
 

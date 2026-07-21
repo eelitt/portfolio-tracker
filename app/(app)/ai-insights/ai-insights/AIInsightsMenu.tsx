@@ -1,9 +1,10 @@
 'use client'
 
-import { Sparkles } from 'lucide-react'
+import { MessageSquare, Sparkles } from 'lucide-react'
 import { formatRelativeTime } from './utils'
 
 interface AIInsightsMenuProps {
+  onOpenAnalyst: () => void
   onOpenPortfolio: () => void
   onOpenHoldingNews: () => void
   onOpenPlaceholder: (title: string) => void
@@ -12,6 +13,7 @@ interface AIInsightsMenuProps {
 }
 
 export function AIInsightsMenu({
+  onOpenAnalyst,
   onOpenPortfolio,
   onOpenHoldingNews,
   onOpenPlaceholder,
@@ -25,6 +27,20 @@ export function AIInsightsMenu({
       </p>
 
       <div className="space-y-3">
+        {/* Portfolio Analyst chat */}
+        <button
+          onClick={onOpenAnalyst}
+          className="w-full text-left border rounded-lg p-4 bg-card shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-accent/60 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          <div className="font-medium flex items-center gap-2">
+            <MessageSquare className="h-4 w-4" />
+            Portfolio Analyst
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            Chat about your holdings, P&L, allocation, and what-if scenarios
+          </p>
+        </button>
+
         {/* Portfolio Analysis*/}
         <button
           onClick={onOpenPortfolio}
