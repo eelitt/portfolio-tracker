@@ -8,9 +8,11 @@ global.fetch = mockFetch
 describe('priceService', () => {
   beforeEach(() => {
     mockFetch.mockClear()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
@@ -63,7 +65,7 @@ describe('priceService', () => {
   })
 
   describe('getPricesForHoldings', () => {
-    it('should batch crypto into a single CoinGecko request', async () => {
+    it('should batch crypto into a single CoinGecko request when all succeed', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
@@ -80,7 +82,7 @@ describe('priceService', () => {
 
       const prices = await getPricesForHoldings(holdings)
 
-      // One batch request for both cryptos (cash needs no network)
+      // One batch request for both cryptos (cash needs no network); no second pass
       expect(mockFetch).toHaveBeenCalledTimes(1)
       expect(mockFetch.mock.calls[0][0]).toContain('bitcoin')
       expect(mockFetch.mock.calls[0][0]).toContain('ethereum')
@@ -92,31 +94,68 @@ describe('priceService', () => {
       })
     })
 
-    it('should return empty object when no valid prices are fetched', async () => {
+    it('should retry missing symbols with forceFresh on second pass', async () => {
+      mockFetch
+        // Pass 1: fail (ok false + internal retry = 2 calls)
+        .mockResolvedValueOnce({ ok: false })
+        .mockResolvedValueOnce({ ok: false })
+        // Pass 2 (forceFresh): success
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            bitcoin: { usd: 61000, usd_24h_change: 1 },
+          }),
+        })
+
+      const pricesPromise = getPricesForHoldings([
+        { symbol: 'BTC', asset_type: 'crypto' },
+      ])
+      await vi.runAllTimersAsync()
+      const prices = await pricesPromise
+
+      expect(prices.BTC).toEqual({ price: 61000, change24h: 1 })
+      // Last call should be no-store retry
+      const lastInit = mockFetch.mock.calls[mockFetch.mock.calls.length - 1][1]
+      expect(lastInit).toEqual(expect.objectContaining({ cache: 'no-store' }))
+    })
+
+    it('should return empty object when no valid prices after retry', async () => {
       mockFetch.mockResolvedValue({ ok: false })
 
-      const holdings = [{ symbol: 'BTC', asset_type: 'crypto' as const }]
-
-      const prices = await getPricesForHoldings(holdings)
+      const pricesPromise = getPricesForHoldings([
+        { symbol: 'BTC', asset_type: 'crypto' as const },
+      ])
+      await vi.runAllTimersAsync()
+      const prices = await pricesPromise
       expect(prices).toEqual({})
     })
 
-    it('should omit crypto symbols with zero price in batch response', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          bitcoin: { usd: 0 },
-          ethereum: { usd: 2800 },
-        }),
-      })
+    it('should omit crypto symbols with zero price then retry that symbol', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            bitcoin: { usd: 0 },
+            ethereum: { usd: 2800 },
+          }),
+        })
+        // Retry pass for BTC only
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            bitcoin: { usd: 64000, usd_24h_change: 0.5 },
+          }),
+        })
 
-      const prices = await getPricesForHoldings([
+      const pricesPromise = getPricesForHoldings([
         { symbol: 'BTC', asset_type: 'crypto' },
         { symbol: 'ETH', asset_type: 'crypto' },
       ])
+      await vi.runAllTimersAsync()
+      const prices = await pricesPromise
 
-      expect(prices.BTC).toBeUndefined()
       expect(prices.ETH).toEqual({ price: 2800, change24h: null })
+      expect(prices.BTC).toEqual({ price: 64000, change24h: 0.5 })
     })
   })
 })

@@ -7,10 +7,9 @@
  *  1. Auth + portfolio + XAI_API_KEY checks
  *  2. Load cached user_ai_insights row (feature_type holding_news)
  *  3. If last check < 24h and result looks valid → return cache (no LLM)
- *  4. Else live search → parse/normalize
- *     - If new package empty/identical vs previous with substance → keep previous
- *       news+impact, set lastCheckedAt, message user (no impact LLM)
- *     - Else → impact analysis, save new contentFetchedAt
+ *  4. Else live search (7d window if any symbol never had news; else elapsed lookback)
+ *     → per-symbol merge (first fill vs keep vs update)
+ *     → impact only for changed symbols
  *  5. Upsert via saveHoldingNewsPackage
  *
  * Cooldown is holding-news specific (lastCheckedAt).
@@ -40,7 +39,9 @@ import {
   parseHoldingNewsJson,
   normalizeHoldingNews,
   newsHasAnyBullets,
-  newsContentFingerprint,
+  symbolHasBullets,
+  mergeHoldingNews,
+  buildHoldingNewsMergeMessage,
   parseHoldingNewsStored,
   toCooldownResult,
   buildNextRefreshAt,
@@ -53,7 +54,7 @@ export type HoldingNewsResult =
 
 /**
  * Fetch live holding news for the user's top holdings, then impact analysis.
- * At most one successful live check per 24h; empty/identical re-fetches keep prior news.
+ * At most one successful live check per 24h; per-symbol keep/first-fill/update merge.
  */
 export async function generateHoldingNews(): Promise<HoldingNewsResult> {
   const user = await getCurrentUser()
@@ -96,7 +97,6 @@ export async function generateHoldingNews(): Promise<HoldingNewsResult> {
       }
     }
 
-    // Lookback window uses last *live* check only (not legacy empty rows)
     const windowBase: CachedInsight | null =
       cached && stored && typeof stored.windowFrom === 'string' ? cached : null
 
@@ -119,7 +119,7 @@ export async function generateHoldingNews(): Promise<HoldingNewsResult> {
 }
 
 /**
- * One live pipeline: search → parse → maybe keep previous → impact → persist.
+ * One live pipeline: window → search → per-symbol merge → selective impact → persist.
  */
 async function runLiveHoldingNewsFetch(
   userId: string,
@@ -134,8 +134,12 @@ async function runLiveHoldingNewsFetch(
   }
 
   const symbols = holdings.map(h => h.symbol)
+  const previousNews = previousStored?.news ?? null
+
+  // Any selected symbol without prior bullets → full 7d baseline window
+  const needsBaseline = symbols.some(s => !symbolHasBullets(previousNews?.[s]))
   const lookbackFrom =
-    windowBase && previousStored
+    !needsBaseline && windowBase && previousStored
       ? new Date(previousStored.lastCheckedAt ?? windowBase.createdAt)
       : null
   const { fromDate, toDate, lookbackDays } = computeNewsWindow(lookbackFrom)
@@ -157,76 +161,62 @@ async function runLiveHoldingNewsFetch(
   })
 
   const parsed = parseHoldingNewsJson(rawText)
-  const news = normalizeHoldingNews(parsed, symbols)
+  const incoming = normalizeHoldingNews(parsed, symbols)
+  const merge = mergeHoldingNews(previousNews, incoming, symbols)
 
-  const previousNews = previousStored?.news ?? null
-  const previousHadContent = newsHasAnyBullets(previousNews)
-  const newHasContent = newsHasAnyBullets(news)
   const nowIso = new Date().toISOString()
   const nextRefreshAt = buildNextRefreshAt()
+  const previousImpact = previousStored?.impact ?? {}
+  const previousContentFetchedAt =
+    previousStored?.contentFetchedAt ?? previousRow?.createdAt ?? nowIso
 
-  // --- Keep previous package when re-fetch is empty or essentially unchanged ---
-  if (previousStored && previousNews && previousHadContent) {
-    const emptyNew = !newHasContent
-    const sameContent =
-      newHasContent &&
-      newsContentFingerprint(previousNews) === newsContentFingerprint(news)
-
-    if (emptyNew || sameContent) {
-      const contentFetchedAt =
-        previousStored.contentFetchedAt ?? previousRow?.createdAt ?? nowIso
-      const previousImpact = previousStored.impact ?? {}
-
-      await saveHoldingNewsPackage(userId, {
-        news: previousNews,
-        impact: previousImpact,
-        windowFrom: fromDate,
-        windowTo: toDate,
-        contentFetchedAt,
-        lastCheckedAt: nowIso,
-      })
-      await updateLastAICallTime(userId)
-
-      return {
-        news: previousNews,
-        impact: Object.keys(previousImpact).length > 0 ? previousImpact : undefined,
-        contentFetchedAt,
-        lastCheckedAt: nowIso,
-        cachedAt: contentFetchedAt,
-        windowFrom: fromDate,
-        windowTo: toDate,
-        nextRefreshAt,
-        message: emptyNew
-          ? 'No material new headlines since last update. Showing your previous news.'
-          : 'No significant change since last fetch. Showing your previous news.',
-      }
+  // Carry forward impact for kept symbols; recompute only for first-fill / updates
+  const impact: Record<string, HoldingNewsImpactEntry> = {}
+  for (const symbol of symbols) {
+    if (
+      !merge.changedSymbols.includes(symbol) &&
+      previousImpact[symbol] &&
+      symbolHasBullets(merge.news[symbol])
+    ) {
+      impact[symbol] = previousImpact[symbol]
     }
   }
 
-  // Real update: recompute impact and advance contentFetchedAt
-  const impact: Record<string, HoldingNewsImpactEntry> = await analyzeNewsImpact(
-    news,
-    holdings
-  )
+  if (merge.changedSymbols.length > 0) {
+    const changedHoldings = holdings.filter(h =>
+      merge.changedSymbols.includes(h.symbol)
+    )
+    const newsForImpact: Record<string, string[]> = {}
+    for (const s of merge.changedSymbols) {
+      newsForImpact[s] = merge.news[s] ?? []
+    }
+    const freshImpact = await analyzeNewsImpact(newsForImpact, changedHoldings)
+    Object.assign(impact, freshImpact)
+  }
+
+  const contentFetchedAt =
+    merge.changedSymbols.length > 0 ? nowIso : previousContentFetchedAt
+  const message = buildHoldingNewsMergeMessage(merge)
 
   await saveHoldingNewsPackage(userId, {
-    news,
+    news: merge.news,
     impact,
     windowFrom: fromDate,
     windowTo: toDate,
-    contentFetchedAt: nowIso,
+    contentFetchedAt,
     lastCheckedAt: nowIso,
   })
   await updateLastAICallTime(userId)
 
   return {
-    news,
+    news: merge.news,
     impact: Object.keys(impact).length > 0 ? impact : undefined,
-    contentFetchedAt: nowIso,
+    contentFetchedAt,
     lastCheckedAt: nowIso,
-    cachedAt: nowIso,
+    cachedAt: contentFetchedAt,
     windowFrom: fromDate,
     windowTo: toDate,
     nextRefreshAt,
+    message,
   }
 }

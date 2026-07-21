@@ -158,12 +158,27 @@ export function toCooldownResult(
   }
 }
 
+/** True if a single bullet list has at least one non-empty string. */
+export function symbolHasBullets(bullets: string[] | null | undefined): boolean {
+  return Array.isArray(bullets) && bullets.some(b => String(b).trim().length > 0)
+}
+
 /** True if any symbol has at least one non-empty bullet. */
 export function newsHasAnyBullets(news: Record<string, string[]> | null | undefined): boolean {
   if (!news) return false
-  return Object.values(news).some(
-    bullets => Array.isArray(bullets) && bullets.some(b => String(b).trim().length > 0)
-  )
+  return Object.values(news).some(symbolHasBullets)
+}
+
+/**
+ * Stable fingerprint of one symbol's bullets (order-independent, case-insensitive).
+ */
+export function symbolNewsFingerprint(bullets: string[] | null | undefined): string {
+  if (!Array.isArray(bullets)) return ''
+  return bullets
+    .map(b => String(b).trim().toLowerCase())
+    .filter(Boolean)
+    .sort()
+    .join('|')
 }
 
 /**
@@ -174,14 +189,121 @@ export function newsContentFingerprint(news: Record<string, string[]>): string {
   const symbols = Object.keys(news).map(s => s.toUpperCase()).sort()
   const parts: string[] = []
   for (const symbol of symbols) {
-    const bullets = (news[symbol] ?? news[symbol.toLowerCase()] ?? [])
-      .map(b => String(b).trim().toLowerCase())
-      .filter(Boolean)
-      .sort()
-    if (bullets.length === 0) continue
-    parts.push(`${symbol}:${bullets.join('|')}`)
+    const bullets = news[symbol] ?? news[symbol.toLowerCase()] ?? []
+    const fp = symbolNewsFingerprint(bullets)
+    if (!fp) continue
+    parts.push(`${symbol}:${fp}`)
   }
   return parts.join('||')
+}
+
+export type HoldingNewsMergeResult = {
+  /** News map restricted to current symbols only. */
+  news: Record<string, string[]>
+  /** Symbols that first-filled or got a material update (need impact recompute). */
+  changedSymbols: string[]
+  firstFillCount: number
+  updateCount: number
+  keptCount: number
+  emptyCount: number
+}
+
+/**
+ * Per-symbol merge: first fill vs material update.
+ * Scales to any N — never uses package-level empty/same.
+ *
+ * - No previous bullets + new bullets → first fill
+ * - Previous bullets + empty/same new → keep previous
+ * - Previous bullets + different new → update
+ */
+export function mergeHoldingNews(
+  previous: Record<string, string[]> | null | undefined,
+  incoming: Record<string, string[]>,
+  symbols: string[]
+): HoldingNewsMergeResult {
+  const prev = previous ?? {}
+  const news: Record<string, string[]> = {}
+  const changedSymbols: string[] = []
+  let firstFillCount = 0
+  let updateCount = 0
+  let keptCount = 0
+  let emptyCount = 0
+
+  for (const symbol of symbols) {
+    const prevBullets = prev[symbol] ?? prev[symbol.toUpperCase()] ?? []
+    const nextBullets = incoming[symbol] ?? []
+    const hadPrev = symbolHasBullets(prevBullets)
+    const hasNext = symbolHasBullets(nextBullets)
+
+    if (!hadPrev) {
+      if (hasNext) {
+        news[symbol] = nextBullets
+        changedSymbols.push(symbol)
+        firstFillCount++
+      } else {
+        news[symbol] = []
+        emptyCount++
+      }
+      continue
+    }
+
+    // Had previous content
+    if (
+      !hasNext ||
+      symbolNewsFingerprint(prevBullets) === symbolNewsFingerprint(nextBullets)
+    ) {
+      news[symbol] = prevBullets
+      keptCount++
+    } else {
+      news[symbol] = nextBullets
+      changedSymbols.push(symbol)
+      updateCount++
+    }
+  }
+
+  return {
+    news,
+    changedSymbols,
+    firstFillCount,
+    updateCount,
+    keptCount,
+    emptyCount,
+  }
+}
+
+/** User-facing summary after a live merge. */
+export function buildHoldingNewsMergeMessage(merge: HoldingNewsMergeResult): string | undefined {
+  const { firstFillCount, updateCount, keptCount, emptyCount, changedSymbols } = merge
+  if (changedSymbols.length === 0) {
+    if (keptCount > 0) {
+      return 'No material new headlines for holdings that already had news. Showing previous news where available.'
+    }
+    if (emptyCount > 0) {
+      return 'No material news found in this period for your holdings.'
+    }
+    return undefined
+  }
+  const parts: string[] = []
+  if (firstFillCount > 0) {
+    parts.push(
+      firstFillCount === 1
+        ? 'Added news for a new holding'
+        : `Added news for ${firstFillCount} holdings`
+    )
+  }
+  if (updateCount > 0) {
+    parts.push(
+      updateCount === 1
+        ? 'updated one holding'
+        : `updated ${updateCount} holdings`
+    )
+  }
+  if (keptCount > 0) {
+    parts.push('others unchanged')
+  }
+  if (parts.length === 0) return undefined
+  const text = parts.join('; ')
+  return text.charAt(0).toUpperCase() + text.slice(1) + '.'
 }
 
 /**
