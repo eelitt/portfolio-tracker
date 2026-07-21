@@ -18,7 +18,7 @@ Investment portfolio app: track stock, ETF, crypto, and cash positions, see live
 - 💱 **Preferred currency** — USD or EUR display with FX conversion on the dashboard
 - 🎯 **Goals** — target amounts with progress in a sidebar
 - 📥 **CSV** — export holdings/transactions; **AI-assisted import** from messy broker/exchange files
-- 🤖 **AI Insights** — tool-grounded portfolio chat, one-shot analysis, holding news + impact
+- 🤖 **AI Insights** — tool-grounded portfolio chat (incl. NL trade logging), one-shot analysis, holding news + impact
 
 ## 🛠️ Tech stack
 
@@ -32,7 +32,7 @@ Investment portfolio app: track stock, ETF, crypto, and cash positions, see live
 | 🎨 | UI | Tailwind CSS, shadcn/ui, Lucide, Sonner |
 | 📉 | Charts | Recharts |
 | ✅ | Validation | Zod + React Hook Form |
-| 🧪 | Tests | Vitest (portfolio math, FX, price helpers, analyst scenarios) |
+| 🧪 | Tests | Vitest (portfolio math, FX, price helpers, analyst scenarios + NL drafts) |
 | ☁️ | Hosting | **Vercel** (preview deploys per branch) |
 
 ## 🤖 AI features (xAI)
@@ -42,9 +42,12 @@ All model traffic stays **server-side**. Feature code lives under `app/actions/a
 ### 💬 Portfolio Analyst
 - Private chat over **this user’s** holdings, cost basis, P&L, allocation, and what-if scenarios
 - **Tool-first** — facts come from the same pure calculation path as the dashboard (`calculateHoldings` / enriched prices), not free-form invention
-- Tools: summary, filtered holdings, allocation, realized P&L, transactions, sell / price-shock simulations
-- **NL transaction entry** — draft → user confirm; requires explicit **€/$** and a catalog ticker; no preferred-currency guess on chat path
-- Strict scope: refuses general advice and off-topic requests; non-advisory disclaimer in UI + system prompt
+- Read/sim tools: summary, filtered holdings, allocation, realized P&L, transactions, sell / price-shock simulations
+- **NL transaction entry** — `prepare` → user **confirm** → write; pending draft stored server-side so a short “confirm” works
+- 🛡️ Chat logging is stricter than the form: explicit **€/$** (or USD/EUR) in the user’s words + **catalog ticker**; no preferred-currency default
+- Same insert path as manual create (incl. sell → Available Cash); **Sonner toast** + **dashboard refresh** (summary, holdings, history) on success/error
+- Strict scope: refuses general advice and off-topic chat; short logging follow-ups (`confirm`, `yes`, corrections) stay in scope
+- Non-advisory disclaimer on analysis answers only — **not** on draft/confirm/save replies
 - Streaming via **Vercel AI SDK** (`streamText` + tools) and `@ai-sdk/react` `useChat`
 - Session-only transcript (clears when the panel closes); soft per-user rate limit separate from other AI features
 
@@ -67,10 +70,10 @@ All model traffic stays **server-side**. Feature code lives under `app/actions/a
 
 ### 🔒 Cost & safety controls
 - Global **60s** AI cooldown for analysis / CSV (not every chat turn)
-- Analyst chat: rolling message cap + short inter-message gap
+- Analyst chat: rolling message cap + short inter-message gap; pending NL draft TTL (~30 min)
 - Holding news **once-per-day** live search gate
 - Latest stored result only per `(user, feature_type)` where applicable
-- Structured outputs via **Zod** where applicable
+- Structured outputs via **Zod** where applicable; NL drafts re-validated on confirm before insert
 - RLS + authenticated server loaders so the model only ever sees the current user’s data
 
 ## ☁️ Cloud & ops
@@ -86,7 +89,8 @@ All model traffic stays **server-side**. Feature code lives under `app/actions/a
 - 🧮 **Domain logic:** pure functions in `lib/calculatePortfolio.ts` + `lib/portfolioAnalyst/` (unit tested)  
 - 🔑 **Secrets:** price APIs + xAI only on the server  
 - 📁 **AI layout:** `actions/ai/storage.ts` + feature folders (`portfolio-analyst`, `portfolio-insights`, `holding-news`, `csv-import`)  
-- 🔌 **Analyst stream:** `app/api/portfolio-analyst` → tools → user-scoped `getPortfolioData`  
+- 🔌 **Analyst stream:** `app/api/portfolio-analyst` → tools → user-scoped `getPortfolioData` / `createTransactionRecord`  
+- ✍️ **Shared writes:** manual form, CSV import, and chat confirm use the same transaction insert + cash-credit rules  
 - 📸 **History:** Edge Function → `portfolio_snapshots` → Performance chart aggregation
 
 ## 🚀 Getting started
@@ -113,7 +117,7 @@ XAI_API_KEY=...              # optional; AI Insights (analyst, analysis, news, C
 npm run dev
 ```
 
-Sign up → add or import transactions → open **AI Insights** from the navbar (Portfolio Analyst, analysis, holding news).
+Sign up → add or import transactions (form, CSV, or Portfolio Analyst chat) → open **AI Insights** from the navbar.
 
 ## 📦 Deploy
 
