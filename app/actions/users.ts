@@ -1,6 +1,6 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 
 export type PreferredCurrency = 'USD' | 'EUR'
@@ -57,6 +57,8 @@ export async function updatePreferredCurrency(currency: PreferredCurrency) {
     return { error: error.message }
   }
 
+  // Align with Refresh Prices: clear any tagged price entries + re-render dashboard
+  revalidateTag('prices')
   revalidatePath('/dashboard')
   return { success: true }
 }

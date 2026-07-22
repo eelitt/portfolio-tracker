@@ -1,49 +1,22 @@
 /**
- * Pure validation for natural-language transaction drafts (Portfolio Analyst).
+ * Pure validation for chat-based “add transaction” (prepare → confirm).
  * No I/O. Tools call this before any DB write.
  */
 
 import type { AssetType, TransactionAction } from '../types'
 import { STOCK_SYMBOLS, ETF_SYMBOLS, CRYPTO_SYMBOLS } from '../symbols'
-
-export type CurrencyCode = 'USD' | 'EUR'
-
-export type NlDraftInput = {
-  /** User wording used for currency / ambiguity checks (required). */
-  sourceText: string
-  symbol?: string | null
-  asset_type?: AssetType | null
-  action?: TransactionAction | null
-  quantity?: number | null
-  unit_price?: number | null
-  executed_at?: string | null
-  notes?: string | null
-  /** Model guess — text detection wins when present. */
-  currency?: CurrencyCode | null
-}
-
-export type ValidatedTxDraft = {
-  symbol: string
-  asset_type: AssetType
-  action: TransactionAction
-  quantity: number
-  unit_price: number
-  executed_at: string
-  notes?: string
-  currency: CurrencyCode
-  currencySource: 'text'
-}
-
-export type ValidateDraftResult = {
-  status: 'incomplete' | 'invalid' | 'ready'
-  missing: string[]
-  errors: string[]
-  warnings: string[]
-  draft?: ValidatedTxDraft
-  summary?: string
-}
+import type {
+  ChatAddTransactionInput,
+  CurrencyCode,
+  ValidateDraftResult,
+  ValidatedTxDraft,
+} from './types'
 
 const CASH_SYMBOL = 'Available Cash'
+
+// ---------------------------------------------------------------------------
+// Currency (from user text — € / $ / USD / EUR)
+// ---------------------------------------------------------------------------
 
 const EUR_RE = /(?:€|\beur\b|\beuro\b|\beuros\b)/i
 const USD_RE = /(?:\$|\busd\b|\bdollar\b|\bdollars\b)/i
@@ -62,9 +35,9 @@ export function detectCurrencyFromText(text: string): CurrencyCode | 'ambiguous'
   return null
 }
 
-function isValidDate(iso: string): boolean {
-  return Number.isFinite(Date.parse(iso))
-}
+// ---------------------------------------------------------------------------
+// Catalog symbol resolution
+// ---------------------------------------------------------------------------
 
 /**
  * Resolve a user-provided symbol/name against the app catalog.
@@ -136,6 +109,14 @@ export function resolveCatalogSymbol(
   return null
 }
 
+// ---------------------------------------------------------------------------
+// Validate draft (prepare / confirm)
+// ---------------------------------------------------------------------------
+
+function isValidDate(iso: string): boolean {
+  return Number.isFinite(Date.parse(iso))
+}
+
 function buildSummary(d: ValidatedTxDraft): string {
   const cur = d.currency === 'EUR' ? '€' : '$'
   if (d.asset_type === 'cash') {
@@ -145,10 +126,12 @@ function buildSummary(d: ValidatedTxDraft): string {
 }
 
 /**
- * Validate a draft from NL + tool args. Ready drafts are safe to pass to confirm.
+ * Validate a chat add-transaction draft. Ready drafts are safe to pass to confirm.
  * Currency must appear explicitly in sourceText (€/$/USD/EUR/…); no preferred-currency default.
  */
-export function validateTransactionDraft(input: NlDraftInput): ValidateDraftResult {
+export function validateTransactionDraft(
+  input: ChatAddTransactionInput
+): ValidateDraftResult {
   const missing: string[] = []
   const errors: string[] = []
   const warnings: string[] = []
@@ -242,19 +225,16 @@ export function validateTransactionDraft(input: NlDraftInput): ValidateDraftResu
         'Price needs an explicit currency in your text (€, $, USD, or EUR). Example: "$3180" or "€3180". Preferred currency is not assumed for chat entry.'
       )
     }
-  } else {
-    // asset type still unknown — still require currency once price present
-    if (
-      unitPrice !== undefined &&
-      unitPrice !== null &&
-      !currency &&
-      detected !== 'ambiguous'
-    ) {
-      missing.push('currency')
-      errors.push(
-        'Price needs an explicit currency in your text (€, $, USD, or EUR). Example: "$3180" or "€3180".'
-      )
-    }
+  } else if (
+    unitPrice !== undefined &&
+    unitPrice !== null &&
+    !currency &&
+    detected !== 'ambiguous'
+  ) {
+    missing.push('currency')
+    errors.push(
+      'Price needs an explicit currency in your text (€, $, USD, or EUR). Example: "$3180" or "€3180".'
+    )
   }
 
   // --- Action vs asset type ---
@@ -290,7 +270,7 @@ export function validateTransactionDraft(input: NlDraftInput): ValidateDraftResu
       lower.includes('greater than 0') ||
       lower.includes('invalid date') ||
       lower.includes('both euro') ||
-      lower.includes('is a ') && lower.includes('not ')
+      (lower.includes('is a ') && lower.includes('not '))
     )
   })
 
@@ -304,9 +284,12 @@ export function validateTransactionDraft(input: NlDraftInput): ValidateDraftResu
   }
 
   if (missingUnique.length > 0 || !currency) {
-    // Ensure currency message is visible when only currency is the issue
     const errs = [...errorsUnique]
-    if (!currency && detected !== 'ambiguous' && !errs.some((e) => e.toLowerCase().includes('currency'))) {
+    if (
+      !currency &&
+      detected !== 'ambiguous' &&
+      !errs.some((e) => e.toLowerCase().includes('currency'))
+    ) {
       errs.push(
         'Include € or $ (or USD/EUR) for the amount. Preferred currency is not assumed for chat entry.'
       )
@@ -344,6 +327,10 @@ export function validateTransactionDraft(input: NlDraftInput): ValidateDraftResu
     summary: buildSummary(draft),
   }
 }
+
+// ---------------------------------------------------------------------------
+// Warnings
+// ---------------------------------------------------------------------------
 
 /** Optional warning when sell qty exceeds current holding. */
 export function sellExceedsHoldingWarning(

@@ -5,13 +5,14 @@ import { getCryptoId } from './symbols'
 /**
  * Price fetching service.
  *
- * Called from Server Components / Server Actions. Uses Next.js fetch
- * Data Cache with revalidate: 60 and tag `prices` so explicit refresh
- * can call revalidateTag('prices').
+ * Called from Server Components / Server Actions.
  *
- * On incomplete first pass, getPricesForHoldings retries missing asset
- * symbols with cache: 'no-store' so cold loads are not stuck on a bad cache.
- * That work still happens inside the awaited pipeline (Suspense skeletons).
+ * Portfolio KPIs (getPricesForHoldings) default to cache: 'no-store' so the
+ * first dashboard paint uses live quotes — correctness over a 60s Data Cache.
+ * Suspense skeletons cover the wait. Optional forceFresh: false re-enables
+ * short-lived tag `prices` caching for non-critical callers.
+ *
+ * On incomplete first pass, missing symbols are retried once (still fresh).
  *
  * Stock / ETF: Finnhub (FINNHUB_API_KEY).
  * Crypto: CoinGecko (batched when fetching multiple holdings).
@@ -21,7 +22,10 @@ import { getCryptoId } from './symbols'
 export type PriceQuote = { price: number; change24h: number | null }
 
 export type PriceFetchOptions = {
-  /** Bypass Next Data Cache (used for retry pass). */
+  /**
+   * Bypass Next Data Cache (no-store).
+   * getPricesForHoldings defaults this to true for trustworthy portfolio math.
+   */
   forceFresh?: boolean
 }
 
@@ -221,14 +225,22 @@ async function fetchPricesOnce(
  * Crypto is batched; stocks/ETFs are parallel Finnhub quotes.
  * Only symbols with a valid price > 0 are included.
  *
+ * Defaults to forceFresh (live API) so dashboard MV / P&L / 24h are trustworthy
+ * on first load — not a mix of stale Data Cache entries. Pass forceFresh: false
+ * only if you explicitly want the 60s tagged cache.
+ *
  * If any non-cash holding is missing after the first pass, waits briefly and
- * retries those symbols with forceFresh (no-store) so first dashboard load
- * is less likely to show incomplete MV / 24h. Suspense skeletons cover the wait.
+ * retries those symbols (still forceFresh). Suspense skeletons cover the wait.
  */
 export async function getPricesForHoldings(
-  holdings: HoldingInput[]
+  holdings: HoldingInput[],
+  options: PriceFetchOptions = {}
 ): Promise<Record<string, PriceQuote>> {
-  const priceData = await fetchPricesOnce(holdings)
+  // Portfolio correctness: fresh by default (undefined → true)
+  const forceFresh = options.forceFresh !== false
+  const fetchOpts: PriceFetchOptions = { forceFresh }
+
+  const priceData = await fetchPricesOnce(holdings, fetchOpts)
 
   const missing = holdings.filter(
     (h) =>

@@ -1,8 +1,8 @@
 /**
- * Types for Portfolio Analyst pure helpers (tools + scenarios).
+ * Types for Portfolio Analyst pure helpers (tools, scenarios, chat add-transaction).
  */
 
-import type { AssetType } from '../types'
+import type { AssetType, TransactionAction } from '../types'
 
 export type HoldingSortBy =
   | 'marketValue'
@@ -95,3 +95,45 @@ export type PriceShockResult =
       notes: string[]
     }
   | { ok: false; error: string }
+
+// ---------------------------------------------------------------------------
+// Chat “add transaction” (prepare → confirm)
+// ---------------------------------------------------------------------------
+
+export type CurrencyCode = 'USD' | 'EUR'
+
+/** Structured fields extracted from chat for validation before insert. */
+export type ChatAddTransactionInput = {
+  /** User wording used for currency / ambiguity checks (required). */
+  sourceText: string
+  symbol?: string | null
+  asset_type?: AssetType | null
+  action?: TransactionAction | null
+  quantity?: number | null
+  unit_price?: number | null
+  executed_at?: string | null
+  notes?: string | null
+  /** Model guess — text detection wins when present. */
+  currency?: CurrencyCode | null
+}
+
+export type ValidatedTxDraft = {
+  symbol: string
+  asset_type: AssetType
+  action: TransactionAction
+  quantity: number
+  unit_price: number
+  executed_at: string
+  notes?: string
+  currency: CurrencyCode
+  currencySource: 'text'
+}
+
+export type ValidateDraftResult = {
+  status: 'incomplete' | 'invalid' | 'ready'
+  missing: string[]
+  errors: string[]
+  warnings: string[]
+  draft?: ValidatedTxDraft
+  summary?: string
+}

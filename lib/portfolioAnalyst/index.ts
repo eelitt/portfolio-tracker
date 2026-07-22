@@ -18,6 +18,10 @@ export type {
   SellFractionResult,
   PriceShock,
   PriceShockResult,
+  CurrencyCode,
+  ChatAddTransactionInput,
+  ValidatedTxDraft,
+  ValidateDraftResult,
 } from './types'
 
 export { filterEnrichedHoldings, allocationBreakdown } from './holdings'
@@ -29,10 +33,4 @@ export {
   resolveCatalogSymbol,
   validateTransactionDraft,
   sellExceedsHoldingWarning,
-} from './nlTransaction'
-export type {
-  CurrencyCode,
-  NlDraftInput,
-  ValidatedTxDraft,
-  ValidateDraftResult,
-} from './nlTransaction'
+} from './chatAddTransaction'

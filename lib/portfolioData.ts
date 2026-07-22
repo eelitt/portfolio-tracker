@@ -56,6 +56,7 @@ export const getPortfolioData = cache(async (): Promise<PortfolioData> => {
     const allHoldings = calculateHoldings(transactions || [])
 
     const assetHoldings = allHoldings.filter((h) => h.asset_type !== 'cash')
+    // Live quotes by default (forceFresh) — dashboard KPIs must be trustworthy on first paint
     const priceData = await getPricesForHoldings(assetHoldings)
     const enrichedAssets = enrichHoldings(assetHoldings, priceData)
 

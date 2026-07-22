@@ -81,7 +81,7 @@ All model traffic stays **server-side**. Feature code lives under `app/actions/a
 - **Vercel** — production + GitHub preview deployments
 - **Supabase** — Auth, Postgres, RLS; Edge Function `portfolio-snapshots` writes daily MV/cost series
 - **Server-only integrations** — Finnhub, CoinGecko, xAI (keys in env, never bundled to the client)
-- **Price cache** — tag-based revalidation (`prices`) with a manual dashboard refresh
+- **Live prices for KPIs** — holdings quotes default to no-store on dashboard load (correctness over 60s cache); manual refresh + currency change also revalidate tag `prices`
 
 ## 🏗️ Architecture
 

@@ -4,7 +4,7 @@ import {
   resolveCatalogSymbol,
   validateTransactionDraft,
   sellExceedsHoldingWarning,
-} from '../portfolioAnalyst/nlTransaction'
+} from '../portfolioAnalyst'
 
 describe('detectCurrencyFromText', () => {
   it('detects $ and USD', () => {

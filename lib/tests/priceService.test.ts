@@ -32,6 +32,7 @@ describe('priceService', () => {
       const price = await getCryptoPrice('BTC')
       expect(price?.price).toBe(65000)
       expect(price?.change24h).toBe(1.2)
+      // Single-symbol helper still uses short Data Cache unless forceFresh
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('bitcoin'),
         expect.objectContaining({
@@ -86,12 +87,36 @@ describe('priceService', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1)
       expect(mockFetch.mock.calls[0][0]).toContain('bitcoin')
       expect(mockFetch.mock.calls[0][0]).toContain('ethereum')
+      // Portfolio path defaults to live quotes (no-store)
+      expect(mockFetch.mock.calls[0][1]).toEqual(
+        expect.objectContaining({ cache: 'no-store' })
+      )
 
       expect(prices).toEqual({
         BTC: { price: 62000, change24h: 2 },
         ETH: { price: 2800, change24h: -1 },
         'Available Cash': { price: 1, change24h: 0 },
       })
+    })
+
+    it('can opt into Data Cache with forceFresh: false', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          bitcoin: { usd: 62000, usd_24h_change: 2 },
+        }),
+      })
+
+      await getPricesForHoldings(
+        [{ symbol: 'BTC', asset_type: 'crypto' }],
+        { forceFresh: false }
+      )
+
+      expect(mockFetch.mock.calls[0][1]).toEqual(
+        expect.objectContaining({
+          next: expect.objectContaining({ tags: ['prices'] }),
+        })
+      )
     })
 
     it('should retry missing symbols with forceFresh on second pass', async () => {
