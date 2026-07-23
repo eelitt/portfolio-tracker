@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { getUserGoals, createGoal, updateGoal, deleteGoal, getCurrentPortfolioValue } from '@/app/actions/goals'
 import type { PreferredCurrency } from '@/lib/userTypes'
 import { formatCurrency } from '@/lib/currency'
+import SensitiveValue from '@/components/SensitiveValue'
 import { Goal } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import {
@@ -177,7 +178,10 @@ export default function GoalsSidebar({
         </Button>
       </div>
       <div className="text-sm text-muted-foreground mb-3">
-        Current portfolio: {formatCurrency(portfolioValue, preferredCurrency, 1)}
+        Current portfolio:{' '}
+        <SensitiveValue
+          value={formatCurrency(portfolioValue, preferredCurrency, 1)}
+        />
       </div>
 
       {goals.length === 0 && (
@@ -201,7 +205,13 @@ export default function GoalsSidebar({
                     {goal.name} {isDone && '✓'}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {formatCurrency(current, preferredCurrency, 1)} / {formatCurrency(goal.target_amount, preferredCurrency, 1)}
+                    <SensitiveValue
+                      value={formatCurrency(current, preferredCurrency, 1)}
+                    />{' '}
+                    /{' '}
+                    <SensitiveValue
+                      value={formatCurrency(goal.target_amount, preferredCurrency, 1)}
+                    />
                   </div>
                   {goal.notes && (
                     <div className="text-xs text-muted-foreground mt-1 italic">{goal.notes}</div>

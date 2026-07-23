@@ -1,6 +1,7 @@
 import { getPortfolioData } from '@/lib/portfolioData'
 import { Card, CardContent } from '@/components/ui/card'
 import { formatCurrency } from '@/lib/currency'
+import SensitiveValue from '@/components/SensitiveValue'
 
 /**
  * Async Server Component for the top portfolio summary.
@@ -46,7 +47,9 @@ export default async function SummarySection() {
           <CardContent className="p-4">
             <div className="text-sm text-muted-foreground">Total Market Value</div>
             <div className="text-2xl font-semibold">
-              {formatCurrency(data.totalMarketValue, data.preferredCurrency, 1)}
+              <SensitiveValue
+                value={formatCurrency(data.totalMarketValue, data.preferredCurrency, 1)}
+              />
             </div>
           </CardContent>
         </Card>
@@ -55,7 +58,9 @@ export default async function SummarySection() {
           <CardContent className="p-4">
             <div className="text-sm text-muted-foreground">Total Cost Basis</div>
             <div className="text-2xl font-semibold">
-              {formatCurrency(data.totalCost, data.preferredCurrency, 1)}
+              <SensitiveValue
+                value={formatCurrency(data.totalCost, data.preferredCurrency, 1)}
+              />
             </div>
           </CardContent>
         </Card>
@@ -68,7 +73,9 @@ export default async function SummarySection() {
                 data.totalUnrealizedPnl >= 0 ? 'text-green-600' : 'text-red-600'
               }`}
             >
-              {formatCurrency(data.totalUnrealizedPnl, data.preferredCurrency, 1)}
+              <SensitiveValue
+                value={formatCurrency(data.totalUnrealizedPnl, data.preferredCurrency, 1)}
+              />
             </div>
           </CardContent>
         </Card>
@@ -82,9 +89,15 @@ export default async function SummarySection() {
                   data.total24hChange >= 0 ? 'text-green-600' : 'text-red-600'
                 }`}
               >
-                {formatCurrency(data.total24hChange, data.preferredCurrency, 1)}
+                <SensitiveValue
+                  value={formatCurrency(data.total24hChange, data.preferredCurrency, 1)}
+                />
                 <span className="text-base ml-1">
-                  ({data.total24hChangePercent.toFixed(2)}%)
+                  (
+                  <SensitiveValue
+                    value={`${data.total24hChangePercent.toFixed(2)}%`}
+                  />
+                  )
                 </span>
               </div>
             ) : (

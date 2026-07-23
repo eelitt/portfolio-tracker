@@ -12,7 +12,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { LogOut, Sun, Moon, Target, Sparkles, DollarSign, Euro, Download, Upload } from 'lucide-react'
+import { LogOut, Sun, Moon, Target, Sparkles, DollarSign, Euro, Download, Upload, Eye, EyeOff } from 'lucide-react'
+import { usePrivacyMode } from './privacy/PrivacyModeProvider'
 import ImportTransactionsModal from './dashboard/transactions/ImportTransactionsModal'
 import AdminMenu from './admin/AdminMenu'
 import { getTransactionsForExport, getHoldingsForExport } from '@/app/actions/transactions'
@@ -36,6 +37,7 @@ export default function Navbar({
 }: NavbarProps) {
   const router = useRouter()
   const supabase = createClient()
+  const { hideMoney, toggleHideMoney } = usePrivacyMode()
 
   // Theme state (light | dark). Defaults to light on server; synced on client.
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
@@ -231,6 +233,24 @@ export default function Navbar({
                 <Euro className="mr-2 h-4 w-4" />
                 EUR (Euro)
                 {currentCurrency === 'EUR' && <span className="ml-auto text-xs">✓</span>}
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+
+              <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                Privacy
+              </div>
+              <DropdownMenuItem
+                onClick={toggleHideMoney}
+                className="cursor-pointer"
+              >
+                {hideMoney ? (
+                  <Eye className="mr-2 h-4 w-4" />
+                ) : (
+                  <EyeOff className="mr-2 h-4 w-4" />
+                )}
+                {hideMoney ? 'Show balances' : 'Hide balances'}
+                {hideMoney && <span className="ml-auto text-xs">✓</span>}
               </DropdownMenuItem>
 
               <DropdownMenuSeparator />

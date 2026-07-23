@@ -5,8 +5,35 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { HoldingNewsImpactEntry, NewsImpactTone } from '@/lib/schemas'
 import { NewsImpactBlock } from '@/app/(app)/ai-insights/ai-insights/NewsImpactBlock'
 
-const PANEL_WIDTH_PX = 288 // w-72
+const PANEL_WIDTH_PX = 360 // w-90-ish; room for Finnhub headline + summary without scrolling
 const VIEWPORT_PAD = 8
+
+/** Split trailing http(s) URL into body + Source link (Finnhub bullets). */
+function TooltipBulletText({ text }: { text: string }) {
+  const match = text.match(/^(.*?)\s+(https?:\/\/\S+)\s*$/)
+  if (!match) {
+    return (
+      <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
+        {text}
+      </span>
+    )
+  }
+  const [, body, href] = match
+  return (
+    <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
+      {body}{' '}
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary underline underline-offset-2 hover:opacity-80"
+        onClick={(e) => e.stopPropagation()}
+      >
+        Source
+      </a>
+    </span>
+  )
+}
 
 const TONE_BADGE: Record<NewsImpactTone, { label: string; className: string }> = {
   positive: {
@@ -88,7 +115,9 @@ export function HoldingNewsTooltip({
       ref={panelRef}
       role="tooltip"
       className={[
-        'absolute z-50 w-72 max-w-[calc(100vw-2rem)] rounded-lg border bg-popover p-3 text-sm shadow-lg',
+        'absolute z-50 w-[22.5rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border bg-popover p-3 text-sm shadow-lg',
+        // Tall enough for typical news + impact; scroll only if viewport is short
+        'max-h-[min(32rem,80vh)] overflow-y-auto',
         'transition-opacity duration-150',
         // Mobile / default: below card
         'left-0 top-full mt-2',
@@ -100,11 +129,11 @@ export function HoldingNewsTooltip({
           : 'pointer-events-none opacity-0',
       ].join(' ')}
     >
-      <div className="flex min-h-full flex-col gap-2">
+      <div className="flex min-h-0 min-w-0 flex-col gap-2">
         {/* News section */}
-        <section>
+        <section className="min-w-0">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-medium text-sm">
+            <span className="min-w-0 font-medium text-sm">
               News
               <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
                 ({newsBullets.length})
@@ -129,11 +158,11 @@ export function HoldingNewsTooltip({
             </button>
           </div>
           {newsOpen && (
-            <ul id={newsId} className="mt-1.5 space-y-1 text-muted-foreground">
+            <ul id={newsId} className="mt-1.5 min-w-0 space-y-1.5 text-muted-foreground">
               {newsBullets.map((bullet, idx) => (
-                <li key={idx} className="flex gap-1.5">
+                <li key={idx} className="flex min-w-0 gap-1.5">
                   <span className="shrink-0">•</span>
-                  <span>{bullet}</span>
+                  <TooltipBulletText text={bullet} />
                 </li>
               ))}
             </ul>
@@ -142,7 +171,7 @@ export function HoldingNewsTooltip({
 
         {/* Impact section */}
         {impact && (
-          <section className="border-t pt-2">
+          <section className="min-w-0 border-t pt-2">
             <div className="flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -150,7 +179,7 @@ export function HoldingNewsTooltip({
                 </span>
                 {tone && (
                   <span
-                    className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${tone.className}`}
+                    className={`inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${tone.className}`}
                   >
                     {tone.label}
                   </span>
@@ -175,7 +204,7 @@ export function HoldingNewsTooltip({
               </button>
             </div>
             {impactOpen && (
-              <div id={impactId} className="mt-1.5">
+              <div id={impactId} className="mt-1.5 min-w-0 break-words [overflow-wrap:anywhere]">
                 <NewsImpactBlock impact={impact} compact hideHeader />
               </div>
             )}

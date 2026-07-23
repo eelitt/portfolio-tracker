@@ -14,6 +14,7 @@ import { Loader2 } from 'lucide-react'
 import { getAssetTypeLabel } from '@/lib/utils'
 import { formatCurrency, getAmountInUsd } from '@/lib/currency'
 import type { PreferredCurrency } from '@/lib/userTypes'
+import SensitiveValue from '@/components/SensitiveValue'
 
 interface DeleteTransactionModalProps {
   transaction: Transaction | null
@@ -73,29 +74,54 @@ export default function DeleteTransactionModal({
           <div className="flex justify-between mt-1">
             <span className="text-gray-600">Quantity</span>
             <span>
-              {(() => {
-                if (transaction.asset_type === 'cash') {
-                  const txCurr = (transaction.currency as any) || 'USD'
-                  const trueEurRate = usdToEurRate || 0.92
-                  const usdEq = getAmountInUsd(transaction.quantity, txCurr, trueEurRate)
-                  return formatCurrency(usdEq, preferredCurrency || 'USD', usdToPreferredRate || 1)
-                }
-                return transaction.quantity
-              })()}
+              {transaction.asset_type === 'cash' ? (
+                <SensitiveValue
+                  value={(() => {
+                    const txCurr = (transaction.currency as any) || 'USD'
+                    const trueEurRate = usdToEurRate || 0.92
+                    const usdEq = getAmountInUsd(
+                      transaction.quantity,
+                      txCurr,
+                      trueEurRate
+                    )
+                    return formatCurrency(
+                      usdEq,
+                      preferredCurrency || 'USD',
+                      usdToPreferredRate || 1
+                    )
+                  })()}
+                />
+              ) : (
+                <SensitiveValue value={String(transaction.quantity)} />
+              )}
             </span>
           </div>
           <div className="flex justify-between mt-1">
             <span className="text-gray-600">Price</span>
             <span>
-              {(() => {
-                if (transaction.asset_type === 'cash') {
-                  return formatCurrency(transaction.unit_price, preferredCurrency || 'USD', 1)
-                }
-                const txCurr = (transaction.currency as any) || 'USD'
-                const trueEurRate = usdToEurRate || 0.92
-                const usdEq = getAmountInUsd(transaction.unit_price, txCurr, trueEurRate)
-                return formatCurrency(usdEq, preferredCurrency || 'USD', usdToPreferredRate || 1)
-              })()}
+              <SensitiveValue
+                value={(() => {
+                  if (transaction.asset_type === 'cash') {
+                    return formatCurrency(
+                      transaction.unit_price,
+                      preferredCurrency || 'USD',
+                      1
+                    )
+                  }
+                  const txCurr = (transaction.currency as any) || 'USD'
+                  const trueEurRate = usdToEurRate || 0.92
+                  const usdEq = getAmountInUsd(
+                    transaction.unit_price,
+                    txCurr,
+                    trueEurRate
+                  )
+                  return formatCurrency(
+                    usdEq,
+                    preferredCurrency || 'USD',
+                    usdToPreferredRate || 1
+                  )
+                })()}
+              />
             </span>
           </div>
           <div className="flex justify-between mt-1">

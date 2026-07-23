@@ -5,6 +5,7 @@ import GoalsSidebar from './goals/GoalsSidebar'
 import AIInsightsPanel from './ai-insights/AIInsightsPanel'
 import { Toaster } from 'sonner'
 import { getCurrentUserProfile } from '@/lib/user'
+import { PrivacyModeProvider } from './privacy/PrivacyModeProvider'
 
 export default async function DashboardLayout({
   children,
@@ -27,19 +28,21 @@ export default async function DashboardLayout({
   const hasAiKey = !!process.env.XAI_API_KEY
 
   return (
-    <div className="min-h-screen bg-muted dark:bg-background">
-      <Navbar 
-        user={user} 
-        hasAiKey={hasAiKey} 
-        preferredCurrency={profile?.preferredCurrency || 'USD'}
-        isAdmin={profile?.admin === true}
-      />
-      <main className="max-w-6xl mx-auto px-6 py-8">
-        {children}
-      </main>
-      <Toaster position="top-right" richColors closeButton />
-      <GoalsSidebar preferredCurrency={profile?.preferredCurrency || 'USD'} />
-      <AIInsightsPanel isAdmin={profile?.admin === true} />
-    </div>
+    <PrivacyModeProvider>
+      <div className="min-h-screen bg-muted dark:bg-background">
+        <Navbar
+          user={user}
+          hasAiKey={hasAiKey}
+          preferredCurrency={profile?.preferredCurrency || 'USD'}
+          isAdmin={profile?.admin === true}
+        />
+        <main className="max-w-6xl mx-auto px-6 py-8">
+          {children}
+        </main>
+        <Toaster position="top-right" richColors closeButton />
+        <GoalsSidebar preferredCurrency={profile?.preferredCurrency || 'USD'} />
+        <AIInsightsPanel isAdmin={profile?.admin === true} />
+      </div>
+    </PrivacyModeProvider>
   )
 }

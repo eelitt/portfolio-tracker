@@ -6,6 +6,7 @@ import { getAssetTypeLabel } from '@/lib/utils'
 import type { Transaction } from '@/lib/types'
 import type { PreferredCurrency } from '@/lib/userTypes'
 import { formatQuantityCell, formatPriceCell, type AugmentedTransaction } from './transactionUtils'
+import SensitiveValue from '@/components/SensitiveValue'
 
 interface TransactionRowProps {
   tx: AugmentedTransaction
@@ -34,9 +35,22 @@ export default function TransactionRow({
 
   const isInflow = tx.action === 'buy' || tx.action === 'inflow'
 
+  const qtyLabel = String(
+    formatQuantityCell(tx, preferredCurrency, usdToPreferredRate, usdToEurRate)
+  )
+  const priceLabel = formatPriceCell(
+    tx,
+    preferredCurrency,
+    usdToPreferredRate,
+    usdToEurRate
+  )
+  // Long crypto prices (e.g. €1 676,99) use slightly smaller type so they stay one line
+  const priceTextClass =
+    priceLabel.replace(/\s/g, '').length >= 8 ? 'text-xs' : 'text-sm'
+
   return (
     <tr className="hover:bg-muted/50">
-      <td className="px-4 py-3 text-sm text-gray-600">{displayDate}</td>
+      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{displayDate}</td>
       <td className="px-4 py-3 font-medium">{tx.symbol}</td>
       <td className="px-4 py-3 text-sm">{getAssetTypeLabel(tx.asset_type)}</td>
       <td className="px-4 py-3">
@@ -49,11 +63,13 @@ export default function TransactionRow({
           {tx.action.toUpperCase()}
         </span>
       </td>
-      <td className="px-4 py-3 text-right font-mono">
-        {formatQuantityCell(tx, preferredCurrency, usdToPreferredRate, usdToEurRate)}
+      <td className="px-4 py-3 text-right font-mono text-sm tabular-nums whitespace-nowrap">
+        <SensitiveValue value={qtyLabel} />
       </td>
-      <td className="px-4 py-3 text-right font-mono">
-        {formatPriceCell(tx, preferredCurrency, usdToPreferredRate, usdToEurRate)}
+      <td
+        className={`px-4 py-3 text-right font-mono tabular-nums whitespace-nowrap ${priceTextClass}`}
+      >
+        <SensitiveValue value={priceLabel} />
       </td>
       <td className="px-4 py-3 text-sm text-gray-500 truncate max-w-[200px]" title={tx.notes || ''}>
         {tx.notes || '-'}

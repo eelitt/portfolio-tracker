@@ -4,19 +4,19 @@
  * Holding News server action — public entry for the sidebar / AI Insights UI.
  *
  * Flow:
- *  1. Auth + portfolio + XAI_API_KEY checks
+ *  1. Auth + portfolio checks
  *  2. Load cached user_ai_insights row (feature_type holding_news)
- *  3. If last check < 24h and all selected symbols already covered → return cache
- *     (admins skip cooldown; uncovered symbols always allow live fetch)
- *  4. Live search 7d (or incremental) → merge
- *  5. First-time symbols still empty → one 14d search for those symbols only
- *  6. Impact for changed symbols → persist
- *
- * Cooldown is holding-news specific (lastCheckedAt). 14d is first-time empty only.
+ *  3. If last check < 24h and package has content → return cache (non-admin only)
+ *     (admins skip cooldown; new holdings wait until the next allowed fetch)
+ *  4. Fetch news:
+ *     - stock/etf → Finnhub company-news (date-ranged)
+ *     - crypto → xAI live web/X search
+ *  5. First-time symbols still empty → one 14d retry (same sources)
+ *  6. Impact LLM for changed symbols with bullets → persist
  */
 
 import { getCurrentUser, isCurrentUserAdmin } from '@/lib/user'
-import { getPortfolioData, type PortfolioData } from '@/lib/portfolioData'
+import { getPortfolioData } from '@/lib/portfolioData'
 import {
   updateLastAICallTime,
   getLatestAIInsight,
@@ -25,6 +25,7 @@ import type { HoldingNewsImpactEntry } from '@/lib/schemas'
 import { callXaiResponsesWithSearch } from './xaiLiveSearch'
 import { analyzeNewsImpact } from './analyzeImpact'
 import { saveHoldingNewsPackage } from './persist'
+import { fetchFinnhubCompanyNewsBullets } from './finnhubCompanyNews'
 import {
   buildHoldingNewsSystemPrompt,
   buildHoldingNewsUserPrompt,
@@ -58,6 +59,10 @@ export type HoldingNewsResult =
 
 type NewsHolding = { symbol: string; assetType: string; name: string }
 
+function isEquityAssetType(assetType: string): boolean {
+  return assetType === 'stock' || assetType === 'etf'
+}
+
 /**
  * Fetch live holding news for the user's top holdings, then impact analysis.
  * Non-admin: at most one full package check per 24h unless new uncovered symbols.
@@ -73,8 +78,21 @@ export async function generateHoldingNews(): Promise<HoldingNewsResult> {
     return { error: 'No portfolio data available to analyze.' }
   }
 
-  if (!process.env.XAI_API_KEY) {
+  const holdingsPreview = selectHoldingsForNews(data)
+  const hasCrypto = holdingsPreview.some(h => h.assetType === 'crypto')
+  const hasEquity = holdingsPreview.some(h => isEquityAssetType(h.assetType))
+
+  if (hasCrypto && !process.env.XAI_API_KEY) {
     return { error: 'AI service is not configured.' }
+  }
+  if (hasEquity && !process.env.FINNHUB_API_KEY) {
+    return {
+      error:
+        'Stock/ETF news requires FINNHUB_API_KEY. Crypto-only portfolios can use XAI_API_KEY alone.',
+    }
+  }
+  if (!process.env.XAI_API_KEY && !process.env.FINNHUB_API_KEY) {
+    return { error: 'News services are not configured.' }
   }
 
   try {
@@ -83,15 +101,12 @@ export async function generateHoldingNews(): Promise<HoldingNewsResult> {
       ? parseHoldingNewsStored(cached.result, cached.createdAt)
       : null
 
-    const holdings = selectHoldingsForNews(data)
-    const symbols = holdings.map(h => h.symbol)
-    const uncovered = hasUncoveredHoldings(symbols, stored?.news)
+    const holdings = holdingsPreview
     const admin = await isCurrentUserAdmin()
 
-    // --- 24h cooldown: only when every selected symbol already covered (non-admin) ---
+    // --- 24h cooldown for non-admins only (new/uncovered holdings do not bypass) ---
     if (
       !admin &&
-      !uncovered &&
       cached &&
       stored &&
       newsHasAnyBullets(stored.news)
@@ -147,7 +162,7 @@ export async function generateHoldingNews(): Promise<HoldingNewsResult> {
 }
 
 /**
- * Live pipeline: 7d (or incremental) → optional 14d for first-time empties → impact → persist.
+ * Live pipeline: Finnhub (equity) + xAI (crypto) → optional 14d first-time empty → impact → persist.
  */
 async function runLiveHoldingNewsFetch(
   userId: string,
@@ -163,7 +178,6 @@ async function runLiveHoldingNewsFetch(
   const symbols = holdings.map(h => h.symbol)
   const previousNews = previousStored?.news ?? null
 
-  // Uncovered symbols → full 7d baseline; else incremental since last check
   const needsBaseline = hasUncoveredHoldings(symbols, previousNews)
   const lookbackFrom =
     !needsBaseline && windowBase && previousStored
@@ -171,10 +185,9 @@ async function runLiveHoldingNewsFetch(
       : null
   const pass1Window = computeNewsWindow(lookbackFrom)
 
-  const incoming1 = await liveSearchNews(holdings, pass1Window)
+  const incoming1 = await fetchNewsForHoldings(holdings, pass1Window)
   let merge = mergeHoldingNews(previousNews, incoming1, symbols)
 
-  // First-time only: still empty after 7d → one 14d search for those tickers
   const extendedSymbols = symbolsEligibleForExtendedLookback(
     symbols,
     previousNews,
@@ -191,10 +204,8 @@ async function runLiveHoldingNewsFetch(
     const pass2Window = computeNewsWindowDays(
       HOLDING_NEWS_EXTENDED_LOOKBACK_DAYS
     )
-    const incoming2 = await liveSearchNews(extendedHoldings, pass2Window)
-    // Merge pass2 only onto current merge result as "previous"
+    const incoming2 = await fetchNewsForHoldings(extendedHoldings, pass2Window)
     merge = mergeHoldingNews(merge.news, incoming2, symbols)
-    // Widest window for metadata
     windowFrom = pass2Window.fromDate
     windowTo = pass2Window.toDate
   }
@@ -206,6 +217,7 @@ async function runLiveHoldingNewsFetch(
     previousStored?.contentFetchedAt ?? previousRow?.createdAt ?? nowIso
 
   const impact: Record<string, HoldingNewsImpactEntry> = {}
+  // Carry forward impact only for unchanged symbols that still have bullets
   for (const symbol of symbols) {
     if (
       !merge.changedSymbols.includes(symbol) &&
@@ -216,16 +228,28 @@ async function runLiveHoldingNewsFetch(
     }
   }
 
-  if (merge.changedSymbols.length > 0) {
-    const changedHoldings = holdings.filter(h =>
-      merge.changedSymbols.includes(h.symbol)
-    )
+  // Impact for: content changed, OR bullets exist but impact was never stored
+  // (fixes stocks that got Finnhub news without a prior impact pass)
+  const needImpact = symbols.filter(
+    s =>
+      symbolHasBullets(merge.news[s]) &&
+      (merge.changedSymbols.includes(s) || !previousImpact[s])
+  )
+
+  if (needImpact.length > 0 && process.env.XAI_API_KEY) {
+    const impactHoldings = holdings.filter(h => needImpact.includes(h.symbol))
     const newsForImpact: Record<string, string[]> = {}
-    for (const s of merge.changedSymbols) {
+    for (const s of needImpact) {
       newsForImpact[s] = merge.news[s] ?? []
     }
-    const freshImpact = await analyzeNewsImpact(newsForImpact, changedHoldings)
+    const freshImpact = await analyzeNewsImpact(newsForImpact, impactHoldings)
     Object.assign(impact, freshImpact)
+
+    for (const s of needImpact) {
+      if (!impact[s] && process.env.NODE_ENV === 'development') {
+        console.warn(`Holding news impact missing after LLM for ${s}`)
+      }
+    }
   }
 
   const contentFetchedAt =
@@ -262,7 +286,51 @@ async function runLiveHoldingNewsFetch(
   }
 }
 
-async function liveSearchNews(
+/**
+ * Stock/ETF → Finnhub company-news; crypto → xAI live search.
+ * Always returns a key for every requested holding (possibly []).
+ */
+async function fetchNewsForHoldings(
+  holdings: NewsHolding[],
+  window: { fromDate: string; toDate: string; lookbackDays: number }
+): Promise<Record<string, string[]>> {
+  const equities = holdings.filter(h => isEquityAssetType(h.assetType))
+  const cryptos = holdings.filter(h => h.assetType === 'crypto')
+  const out: Record<string, string[]> = {}
+
+  if (equities.length > 0) {
+    await Promise.all(
+      equities.map(async h => {
+        out[h.symbol] = await fetchFinnhubCompanyNewsBullets(
+          h.symbol,
+          window.fromDate,
+          window.toDate,
+          h.name
+        )
+      })
+    )
+  }
+
+  if (cryptos.length > 0) {
+    if (!process.env.XAI_API_KEY) {
+      for (const h of cryptos) out[h.symbol] = []
+    } else {
+      const cryptoNews = await liveSearchCryptoNews(cryptos, window)
+      Object.assign(out, cryptoNews)
+    }
+  }
+
+  for (const h of holdings) {
+    if (!Object.prototype.hasOwnProperty.call(out, h.symbol)) {
+      out[h.symbol] = []
+    }
+  }
+
+  return out
+}
+
+/** xAI multi-ticker live search for crypto only. */
+async function liveSearchCryptoNews(
   holdings: NewsHolding[],
   window: { fromDate: string; toDate: string; lookbackDays: number }
 ): Promise<Record<string, string[]>> {

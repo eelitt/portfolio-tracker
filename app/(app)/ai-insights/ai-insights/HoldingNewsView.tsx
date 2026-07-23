@@ -5,6 +5,28 @@ import { ArrowLeft, Loader2, RefreshCw } from 'lucide-react'
 import type { HoldingNewsImpactEntry } from '@/lib/schemas'
 import { NewsImpactBlock } from './NewsImpactBlock'
 
+/** Split trailing http(s) URL for a clickable Source link (Finnhub bullets). */
+function NewsBulletText({ text }: { text: string }) {
+  const match = text.match(/^(.*?)\s+(https?:\/\/\S+)\s*$/)
+  if (!match) {
+    return <span>{text}</span>
+  }
+  const [, body, href] = match
+  return (
+    <span>
+      {body}{' '}
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary underline underline-offset-2 hover:opacity-80"
+      >
+        Source
+      </a>
+    </span>
+  )
+}
+
 interface HoldingNewsViewProps {
   news: Record<string, string[]> | null
   impact?: Record<string, HoldingNewsImpactEntry> | null
@@ -162,7 +184,7 @@ export function HoldingNewsView({
                     {bullets.map((bullet, idx) => (
                       <li key={idx} className="flex gap-2">
                         <span className="text-muted-foreground mt-0.5">•</span>
-                        <span>{bullet}</span>
+                        <NewsBulletText text={bullet} />
                       </li>
                     ))}
                   </ul>

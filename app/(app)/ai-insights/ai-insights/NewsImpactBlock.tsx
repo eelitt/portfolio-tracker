@@ -63,21 +63,29 @@ export function NewsImpactBlock({
           </span>
         </div>
       )}
-      <p className={compact ? 'text-xs text-foreground/90' : 'text-sm text-foreground/90'}>
+      <p
+        className={
+          compact
+            ? 'min-w-0 break-words text-xs text-foreground/90 [overflow-wrap:anywhere]'
+            : 'min-w-0 break-words text-sm text-foreground/90 [overflow-wrap:anywhere]'
+        }
+      >
         {impact.outlook}
       </p>
       {impact.points.length > 0 && (
         <ul
           className={
             compact
-              ? 'space-y-0.5 text-xs text-muted-foreground'
-              : 'space-y-1 text-sm text-muted-foreground'
+              ? 'min-w-0 space-y-0.5 text-xs text-muted-foreground'
+              : 'min-w-0 space-y-1 text-sm text-muted-foreground'
           }
         >
           {impact.points.map((point, idx) => (
-            <li key={idx} className="flex gap-1.5">
+            <li key={idx} className="flex min-w-0 gap-1.5">
               <span className="shrink-0">•</span>
-              <span>{point}</span>
+              <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
+                {point}
+              </span>
             </li>
           ))}
         </ul>

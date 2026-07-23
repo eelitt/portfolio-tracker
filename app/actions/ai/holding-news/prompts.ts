@@ -3,22 +3,23 @@
  * Pure string builders — no I/O.
  */
 
-/** System prompt for live web + X news fetch. */
+/**
+ * System prompt for live web + X news fetch.
+ * Used for **crypto** holdings only (stocks/ETFs use Finnhub company-news).
+ */
 export function buildHoldingNewsSystemPrompt(): string {
-  return `You are a financial news assistant with live web and X search tools.
+  return `You are a financial news assistant with live web and X search tools for cryptocurrency holdings.
 For EACH holding listed, you MUST run a separate search for that holding before writing its array.
 Rules:
 - Search every ticker individually. Do not skip a ticker because another holding already has news.
-- Prefer reputable web sources; use X for official company/project posts and major announcements.
+- Prefer reputable web sources; use X for official project posts and major announcements.
 - Max 3 short bullet points per holding (one sentence each).
 - Be factual. Do not invent events.
-- Keys MUST be the exact ticker symbols provided (uppercase tickers only). Never use company names as JSON keys.
+- Keys MUST be the exact ticker symbols provided (uppercase tickers only). Never use project names as JSON keys.
 - Respond with ONLY valid JSON matching this shape (no markdown fences, no extra text):
 {"news":{"SYMBOL":["bullet1","bullet2"]}}
 
-Asset-type search focus:
-- stock / etf: Use ticker + company/fund name. Prioritize issuer-specific news that can move the share price: earnings, guidance, M&A, regulation, major product launches, executive changes, material analyst/rating actions from reputable financial press. Exclude generic market/macro pieces unless the holding is named.
-- crypto: Use token ticker + project name. Prioritize protocol upgrades, listings, hacks, regulation of that project, major partnership announcements.`
+Search focus (crypto): Use token ticker + project name. Prioritize protocol upgrades, listings, hacks, regulation of that project, major partnership announcements.`
 }
 
 /** User prompt for live news: date window + holdings list. */

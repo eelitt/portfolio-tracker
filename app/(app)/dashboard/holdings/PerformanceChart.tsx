@@ -17,6 +17,9 @@ import {
   type SnapshotRangeMode,
 } from '@/lib/aggregateSnapshots'
 import type { PreferredCurrency } from '@/lib/userTypes'
+import SensitiveValue from '@/components/SensitiveValue'
+import { usePrivacyMode } from '@/app/(app)/privacy/PrivacyModeProvider'
+import { MONEY_MASK } from '@/lib/privacyMode'
 
 interface PerformanceChartProps {
   points: SnapshotPoint[]
@@ -49,6 +52,8 @@ export default function PerformanceChart({
   preferredCurrency,
   error,
 }: PerformanceChartProps) {
+  const { hideMoney } = usePrivacyMode()
+
   if (error) {
     return (
       <div className="bg-card border rounded-lg p-6 h-80 flex items-center justify-center text-center text-sm text-muted-foreground">
@@ -96,8 +101,10 @@ export default function PerformanceChart({
               change.absolute >= 0 ? 'font-medium text-green-600' : 'font-medium text-red-600'
             }
           >
-            {formatCurrency(change.absolute, preferredCurrency, 1)} (
-            {change.percent >= 0 ? '+' : ''}
+            <SensitiveValue
+              value={formatCurrency(change.absolute, preferredCurrency, 1)}
+            />{' '}
+            ({change.percent >= 0 ? '+' : ''}
             {change.percent.toFixed(2)}%)
           </span>
         </div>
@@ -129,7 +136,12 @@ export default function PerformanceChart({
               tick={{ fontSize: 11 }}
               width={64}
               tickFormatter={(v) =>
-                formatCurrency(Number(v), preferredCurrency, 1).replace(/[^\d.,\s-]/g, '')
+                hideMoney
+                  ? MONEY_MASK
+                  : formatCurrency(Number(v), preferredCurrency, 1).replace(
+                      /[^\d.,\s-]/g,
+                      ''
+                    )
               }
             />
             <Tooltip
@@ -140,7 +152,9 @@ export default function PerformanceChart({
                   <div className="rounded-md border bg-card px-3 py-2 text-sm shadow-md">
                     <div className="font-medium">{p.date}</div>
                     <div>
-                      {formatCurrency(p.marketValue, preferredCurrency, 1)}
+                      {hideMoney
+                        ? MONEY_MASK
+                        : formatCurrency(p.marketValue, preferredCurrency, 1)}
                     </div>
                     {p.isPartial && (
                       <div className="text-xs text-amber-600 mt-1">

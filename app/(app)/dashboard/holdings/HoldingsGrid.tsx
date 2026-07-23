@@ -7,6 +7,7 @@ import { getAssetTypeLabel } from '@/lib/utils'
 import type { AssetType, EnrichedHolding } from '@/lib/types'
 import type { HoldingNewsImpactEntry } from '@/lib/schemas'
 import { HoldingNewsTooltip } from './HoldingNewsTooltip'
+import SensitiveValue from '@/components/SensitiveValue'
 
 interface HoldingsGridProps {
   holdings: EnrichedHolding[]
@@ -65,12 +66,23 @@ function HoldingCard({
               </div>
               <div className="text-right">
                 <div className="font-medium">
-                  {holding.asset_type === 'cash'
-                    ? formatCurrency(holding.quantity, preferredCurrency, 1)
-                    : formatQuantity(holding.quantity, preferredCurrency)}
+                  {holding.asset_type === 'cash' ? (
+                    <SensitiveValue
+                      value={formatCurrency(holding.quantity, preferredCurrency, 1)}
+                    />
+                  ) : (
+                    <SensitiveValue
+                      value={formatQuantity(holding.quantity, preferredCurrency, {
+                        symbol: holding.symbol,
+                      })}
+                    />
+                  )}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  @ {formatCurrency(holding.avgCost, preferredCurrency, 1)}
+                  @{' '}
+                  <SensitiveValue
+                    value={formatCurrency(holding.avgCost, preferredCurrency, 1)}
+                  />
                 </div>
               </div>
             </div>
@@ -79,17 +91,25 @@ function HoldingCard({
               <div className="flex justify-between">
                 <span>Current Price</span>
                 <span>
-                  {holding.asset_type === 'cash' || holding.priceAvailable !== false
-                    ? formatCurrency(holding.currentPrice, preferredCurrency, 1)
-                    : '—'}
+                  {holding.asset_type === 'cash' || holding.priceAvailable !== false ? (
+                    <SensitiveValue
+                      value={formatCurrency(holding.currentPrice, preferredCurrency, 1)}
+                    />
+                  ) : (
+                    '—'
+                  )}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>Market Value</span>
                 <span>
-                  {holding.asset_type === 'cash' || holding.priceAvailable !== false
-                    ? formatCurrency(holding.marketValue, preferredCurrency, 1)
-                    : '—'}
+                  {holding.asset_type === 'cash' || holding.priceAvailable !== false ? (
+                    <SensitiveValue
+                      value={formatCurrency(holding.marketValue, preferredCurrency, 1)}
+                    />
+                  ) : (
+                    '—'
+                  )}
                 </span>
               </div>
               <div className="flex justify-between font-medium">
@@ -100,8 +120,14 @@ function HoldingCard({
                       holding.unrealizedPnl >= 0 ? 'text-green-600' : 'text-red-600'
                     }
                   >
-                    {formatCurrency(holding.unrealizedPnl, preferredCurrency, 1)} (
-                    {holding.unrealizedPnlPercent.toFixed(1)}%)
+                    <SensitiveValue
+                      value={formatCurrency(holding.unrealizedPnl, preferredCurrency, 1)}
+                    />{' '}
+                    (
+                    <SensitiveValue
+                      value={`${holding.unrealizedPnlPercent.toFixed(1)}%`}
+                    />
+                    )
                   </span>
                 ) : (
                   <span className="text-muted-foreground">—</span>

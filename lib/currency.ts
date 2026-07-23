@@ -86,25 +86,38 @@ export function formatCurrency(
 
 /**
  * Formats a quantity (e.g. number of shares or crypto tokens) for display.
- * Uses 2 decimal places with space as thousand separator (e.g. 25 706,46).
- * Used in holdings display for non-cash assets.
+ * Default: 2 decimal places (stocks, most crypto).
+ * BTC: up to 8 decimals so small amounts (e.g. 0.000391) are not rounded to 0,00.
+ * Space thousand separator, comma decimal (e.g. 25 706,46).
  */
-export function formatQuantity(quantity: number, currency: Currency = 'USD'): string {
-  return formatNumber(quantity)
+export function formatQuantity(
+  quantity: number,
+  _currency: Currency = 'USD',
+  options?: { symbol?: string }
+): string {
+  const isBtc = options?.symbol?.toUpperCase() === 'BTC'
+  return formatNumber(quantity, isBtc ? 8 : 2)
 }
 
 /**
- * Internal helper to format a number with exactly 2 decimals,
- * using space as thousand separator and comma as decimal separator.
- * Example: 25706.46 -> "25 706,46"
+ * Format a number with up to maxDecimals places.
+ * Trailing zeros after the decimal are trimmed for maxDecimals > 2 (BTC).
+ * Space as thousand separator, comma as decimal separator.
  */
-function formatNumber(value: number): string {
+function formatNumber(value: number, maxDecimals: number = 2): string {
   const isNegative = value < 0
   const absValue = Math.abs(value)
-  const fixed = absValue.toFixed(2)
-  const [intPart, decPart] = fixed.split('.')
+  let fixed = absValue.toFixed(maxDecimals)
 
-  // Add space as thousand separator (every 3 digits from the right)
+  if (maxDecimals > 2) {
+    // Trim trailing zeros: 0.00039100 → 0.000391; keep at least one digit after point if non-integer
+    fixed = fixed.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '')
+    if (!fixed.includes('.')) {
+      fixed = `${fixed}.00`
+    }
+  }
+
+  const [intPart, decPart = '00'] = fixed.split('.')
   const withSpaces = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
 
   return (isNegative ? '-' : '') + withSpaces + ',' + decPart

@@ -10,6 +10,9 @@
 import { useMemo, useState } from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { formatCurrency } from '@/lib/currency'
+import SensitiveValue from '@/components/SensitiveValue'
+import { usePrivacyMode } from '@/app/(app)/privacy/PrivacyModeProvider'
+import { MONEY_MASK } from '@/lib/privacyMode'
 import type { PreferredCurrency } from '@/lib/userTypes'
 
 interface AllocationPieProps {
@@ -91,6 +94,7 @@ export default function AllocationPie({
   preferredCurrency,
 }: AllocationPieProps) {
   const currency = preferredCurrency || 'USD'
+  const { hideMoney } = usePrivacyMode()
   const [activeIndex, setActiveIndex] = useState<number | undefined>(undefined)
 
   const slices = useMemo(
@@ -158,7 +162,11 @@ export default function AllocationPie({
                   return (
                     <div className="relative z-50 rounded-md border bg-card px-3 py-2 text-sm shadow-lg">
                       <div className="font-medium">{p.name}</div>
-                      <div>{formatCurrency(p.value, currency, 1)}</div>
+                      <div>
+                        {hideMoney
+                          ? MONEY_MASK
+                          : formatCurrency(p.value, currency, 1)}
+                      </div>
                       <div className="text-muted-foreground">
                         {(p.percent * 100).toFixed(1)}% of portfolio
                       </div>
@@ -174,7 +182,7 @@ export default function AllocationPie({
               Total
             </span>
             <span className="text-base font-semibold tabular-nums sm:text-lg">
-              {formatCurrency(total, currency, 1)}
+              <SensitiveValue value={formatCurrency(total, currency, 1)} />
             </span>
           </div>
         </div>
@@ -203,7 +211,7 @@ export default function AllocationPie({
                   {(s.percent * 100).toFixed(1)}%
                 </span>
                 <span className="w-[5.25rem] shrink-0 text-right tabular-nums">
-                  {formatCurrency(s.value, currency, 1)}
+                  <SensitiveValue value={formatCurrency(s.value, currency, 1)} />
                 </span>
               </button>
             </li>
