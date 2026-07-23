@@ -2,6 +2,10 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { useState, useEffect } from 'react'
+import {
+  ensureAppAccess,
+  APP_ACCESS_DENIED_MESSAGE,
+} from '@/app/actions/users'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -11,6 +15,13 @@ export default function LoginPage() {
   const [loginError, setLoginError] = useState<string | null>(null)
 
   const supabase = createClient()
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('reason') === 'access') {
+      setLoginError(APP_ACCESS_DENIED_MESSAGE)
+    }
+  }, [])
 
   useEffect(() => {
     const checkSupabaseConnection = async () => {
@@ -51,6 +62,11 @@ export default function LoginPage() {
           setLoginError(error.message)
         }
       } else {
+        const access = await ensureAppAccess()
+        if (!access.ok) {
+          setLoginError(access.error)
+          return
+        }
         window.location.href = '/dashboard'
       }
     } catch (err: any) {

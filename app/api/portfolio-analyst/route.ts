@@ -28,6 +28,16 @@ export async function POST(req: Request) {
       return new Response('Not authenticated', { status: 401 })
     }
 
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('access_to_app')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    if (profile?.access_to_app !== true) {
+      return new Response('Access denied', { status: 403 })
+    }
+
     if (!process.env.XAI_API_KEY) {
       return new Response('AI service is not configured.', { status: 503 })
     }

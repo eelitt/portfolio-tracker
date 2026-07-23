@@ -18,7 +18,12 @@ import { formatRelativeTime } from './ai-insights/utils'
 
 type View = 'menu' | 'analyst' | 'portfolio' | 'holding-news' | 'placeholder'
 
-export default function AIInsightsPanel() {
+interface AIInsightsPanelProps {
+  /** Admins skip AI cooldowns (including holding-news refresh button). */
+  isAdmin?: boolean
+}
+
+export default function AIInsightsPanel({ isAdmin = false }: AIInsightsPanelProps) {
   const { isOpen, close } = useAIInsightsSidebar()
   const portfolio = usePortfolioAnalysis()
   const holdingNews = useHoldingNews()
@@ -183,6 +188,7 @@ export default function AIInsightsPanel() {
               nextRefreshAt={holdingNews.nextRefreshAt}
               windowFrom={holdingNews.windowFrom}
               windowTo={holdingNews.windowTo}
+              isAdmin={isAdmin}
               onBack={backToMenu}
               onFetch={async () => {
                 await holdingNews.fetchFreshNews()

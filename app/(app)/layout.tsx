@@ -19,6 +19,11 @@ export default async function DashboardLayout({
   }
 
   const profile = await getCurrentUserProfile()
+  if (!profile?.accessToApp) {
+    await supabase.auth.signOut()
+    redirect('/login?reason=access')
+  }
+
   const hasAiKey = !!process.env.XAI_API_KEY
 
   return (
@@ -26,14 +31,15 @@ export default async function DashboardLayout({
       <Navbar 
         user={user} 
         hasAiKey={hasAiKey} 
-        preferredCurrency={profile?.preferredCurrency || 'USD'} 
+        preferredCurrency={profile?.preferredCurrency || 'USD'}
+        isAdmin={profile?.admin === true}
       />
       <main className="max-w-6xl mx-auto px-6 py-8">
         {children}
       </main>
       <Toaster position="top-right" richColors closeButton />
       <GoalsSidebar />
-      <AIInsightsPanel />
+      <AIInsightsPanel isAdmin={profile?.admin === true} />
     </div>
   )
 }

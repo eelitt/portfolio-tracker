@@ -17,6 +17,8 @@ interface HoldingNewsViewProps {
   nextRefreshAt?: string | null
   windowFrom?: string | null
   windowTo?: string | null
+  /** Admins ignore the 24h client cooldown on the refresh button. */
+  isAdmin?: boolean
   onBack: () => void
   onFetch: () => void
   formatRelativeTime: (isoString: string) => string
@@ -34,13 +36,14 @@ export function HoldingNewsView({
   nextRefreshAt = null,
   windowFrom = null,
   windowTo = null,
+  isAdmin = false,
   onBack,
   onFetch,
   formatRelativeTime,
 }: HoldingNewsViewProps) {
   const hasNews = news && Object.keys(news).length > 0
-  // nextRefreshAt is only set while the 24h cooldown is still active
-  const refreshBlocked = Boolean(nextRefreshAt)
+  // nextRefreshAt is only set while the 24h cooldown is still active (admins never blocked)
+  const refreshBlocked = Boolean(nextRefreshAt) && !isAdmin
 
   return (
     <div className="space-y-4 pt-2">
@@ -102,7 +105,7 @@ export function HoldingNewsView({
         </div>
       )}
 
-      {refreshBlocked && nextRefreshAt && !lastMessage && (
+      {refreshBlocked && nextRefreshAt && !lastMessage && !isAdmin && (
         <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 p-3 rounded text-sm">
           <span>
             News can be refreshed once per day. Next refresh{' '}

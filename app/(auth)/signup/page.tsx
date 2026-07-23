@@ -9,6 +9,7 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false)
   const [supabaseStatus, setSupabaseStatus] = useState<'checking' | 'available' | 'unavailable'>('checking')
   const [loginError, setLoginError] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   const supabase = createClient()
 
@@ -31,9 +32,11 @@ export default function SignupPage() {
     if (supabaseStatus !== 'available') return
 
     setLoading(true)
+    setLoginError(null)
+    setSuccessMessage(null)
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
       })
@@ -47,8 +50,15 @@ export default function SignupPage() {
           setLoginError(error.message)
         }
       } else {
-        alert('Check your email for a confirmation link (if email confirmation is enabled in Supabase).')
-        window.location.href = '/login'
+        // Never leave an unapproved session active (email confirm may be off)
+        if (data.session) {
+          await supabase.auth.signOut()
+        }
+        setSuccessMessage(
+          'Account created. An administrator must approve your access before you can sign in.'
+        )
+        setEmail('')
+        setPassword('')
       }
     } catch (err: any) {
       console.error('Signup error:', err)
@@ -120,7 +130,18 @@ export default function SignupPage() {
           {loginError}
         </div>
       )}
+      {successMessage && (
+        <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-800 text-sm rounded">
+          {successMessage}{' '}
+          <a href="/login" className="underline font-medium">
+            Go to login
+          </a>
+        </div>
+      )}
       <h1 className="text-2xl font-bold">Create Account</h1>
+      <p className="text-sm text-muted-foreground">
+        After signing up, an administrator must approve your account before you can log in.
+      </p>
       <input
         type="email"
         placeholder="Email"

@@ -8,7 +8,7 @@
  * Persistence of reviewed rows is importTransactions in transactions.ts.
  */
 
-import { getCurrentUser } from '@/app/actions/users'
+import { getCurrentUser, isCurrentUserAdmin } from '@/app/actions/users'
 import {
   getLastAICallTime,
   updateLastAICallTime,
@@ -43,13 +43,15 @@ export async function parseCsvWithAI(
     return { error: 'The selected file appears to be empty or invalid.' }
   }
 
-  // Rate limit (same 60s cooldown as other AI features)
-  const lastCall = await getLastAICallTime(user.id)
-  if (lastCall) {
-    const secondsSince = (Date.now() - lastCall.getTime()) / 1000
-    if (secondsSince < 60) {
-      const wait = Math.ceil(60 - secondsSince)
-      return { error: `Please wait ${wait} seconds before using AI import again.` }
+  // Rate limit (same 60s cooldown as other AI features; admins skip for testing)
+  if (!(await isCurrentUserAdmin())) {
+    const lastCall = await getLastAICallTime(user.id)
+    if (lastCall) {
+      const secondsSince = (Date.now() - lastCall.getTime()) / 1000
+      if (secondsSince < 60) {
+        const wait = Math.ceil(60 - secondsSince)
+        return { error: `Please wait ${wait} seconds before using AI import again.` }
+      }
     }
   }
 

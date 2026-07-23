@@ -14,6 +14,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { LogOut, Sun, Moon, Target, Sparkles, DollarSign, Euro, Download, Upload } from 'lucide-react'
 import ImportTransactionsModal from './dashboard/transactions/ImportTransactionsModal'
+import AdminMenu from './admin/AdminMenu'
 import { getTransactionsForExport, getHoldingsForExport } from '@/app/actions/transactions'
 import { exportTransactionsToCsv, exportHoldingsToCsv } from '@/lib/exportToCsv'
 import { useState, useEffect } from 'react'
@@ -23,9 +24,15 @@ interface NavbarProps {
   user: any
   hasAiKey?: boolean
   preferredCurrency?: PreferredCurrency
+  isAdmin?: boolean
 }
 
-export default function Navbar({ user, hasAiKey = true, preferredCurrency = 'USD' }: NavbarProps) {
+export default function Navbar({
+  user,
+  hasAiKey = true,
+  preferredCurrency = 'USD',
+  isAdmin = false,
+}: NavbarProps) {
   const router = useRouter()
   const supabase = createClient()
 
@@ -154,6 +161,9 @@ export default function Navbar({ user, hasAiKey = true, preferredCurrency = 'USD
               <Moon className="h-4 w-4" />
             )}
           </Button>
+
+          {/* Admin tools — dropdown + modals (admins only) */}
+          {isAdmin && user?.id && <AdminMenu currentUserId={user.id} />}
 
           {/* AI Insights */}
           {hasAiKey && (

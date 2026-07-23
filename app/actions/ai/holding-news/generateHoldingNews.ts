@@ -15,7 +15,7 @@
  * Cooldown is holding-news specific (lastCheckedAt).
  */
 
-import { getCurrentUser } from '@/app/actions/users'
+import { getCurrentUser, isCurrentUserAdmin } from '@/app/actions/users'
 import { getPortfolioData, type PortfolioData } from '@/lib/portfolioData'
 import {
   updateLastAICallTime,
@@ -77,8 +77,8 @@ export async function generateHoldingNews(): Promise<HoldingNewsResult> {
       ? parseHoldingNewsStored(cached.result, cached.createdAt)
       : null
 
-    // --- 24h cooldown (only for “real” live-search caches with content) ---
-    if (cached && stored && newsHasAnyBullets(stored.news)) {
+    // --- 24h cooldown (live-search caches with content; admins skip) ---
+    if (!(await isCurrentUserAdmin()) && cached && stored && newsHasAnyBullets(stored.news)) {
       const lastCheck = Date.parse(stored.lastCheckedAt ?? cached.createdAt)
       const elapsed = Date.now() - lastCheck
       const isLiveSearchResult = typeof stored.windowFrom === 'string'

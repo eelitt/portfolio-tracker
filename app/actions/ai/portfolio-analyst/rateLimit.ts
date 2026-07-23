@@ -10,6 +10,7 @@ import {
   getLatestAIInsight,
   saveAIInsight,
 } from '@/app/actions/ai/storage'
+import { isCurrentUserAdmin } from '@/app/actions/users'
 
 const FEATURE_TYPE = 'portfolio_analyst_rate'
 
@@ -52,6 +53,12 @@ function parseState(result: Record<string, unknown> | undefined): RateState | nu
 export async function checkAndConsumeAnalystRateLimit(
   userId: string
 ): Promise<AnalystRateLimitResult> {
+  // Admins skip message caps / min-gap (testing; still require auth at the route).
+  // isCurrentUserAdmin reuses request-cached profile (no extra getUser+select pair).
+  if (await isCurrentUserAdmin()) {
+    return { allowed: true }
+  }
+
   const now = Date.now()
   const cached = await getLatestAIInsight(userId, FEATURE_TYPE)
   const prev = parseState(cached?.result)

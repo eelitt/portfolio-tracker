@@ -15,7 +15,7 @@
  * portfolio content change (hash) + shared 60s rate limit across AI features.
  */
 
-import { getCurrentUser, getCurrentUserProfile } from '@/app/actions/users'
+import { getCurrentUser, getCurrentUserProfile, isCurrentUserAdmin } from '@/app/actions/users'
 import { getPortfolioData, type PortfolioData } from '@/lib/portfolioData'
 import {
   getLastAICallTime,
@@ -82,20 +82,22 @@ export async function generatePortfolioInsights(): Promise<PortfolioInsightsResu
       }
     }
 
-    // Shared with CSV import / other AI that update last_ai_call_at
-    const lastCall = await getLastAICallTime(user.id)
-    if (lastCall) {
-      const secondsSince = (Date.now() - lastCall.getTime()) / 1000
-      if (secondsSince < 60) {
-        if (cached) {
-          return {
-            insights: normalizeInsights(cached.result.insights),
-            cachedAt: cached.createdAt,
-            message: 'Showing cached result (rate limited)',
+    // Shared with CSV import / other AI that update last_ai_call_at (admins skip)
+    if (!(await isCurrentUserAdmin())) {
+      const lastCall = await getLastAICallTime(user.id)
+      if (lastCall) {
+        const secondsSince = (Date.now() - lastCall.getTime()) / 1000
+        if (secondsSince < 60) {
+          if (cached) {
+            return {
+              insights: normalizeInsights(cached.result.insights),
+              cachedAt: cached.createdAt,
+              message: 'Showing cached result (rate limited)',
+            }
           }
+          const wait = Math.ceil(60 - secondsSince)
+          return { error: `Please wait ${wait} seconds before requesting new insights.` }
         }
-        const wait = Math.ceil(60 - secondsSince)
-        return { error: `Please wait ${wait} seconds before requesting new insights.` }
       }
     }
 

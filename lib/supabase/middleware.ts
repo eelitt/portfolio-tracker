@@ -1,6 +1,10 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+function isAuthPath(pathname: string) {
+  return pathname.startsWith('/login') || pathname.startsWith('/signup')
+}
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -41,14 +45,39 @@ export async function updateSession(request: NextRequest) {
     console.error('Supabase connection failed in middleware:', error)
   }
 
-  if (
-    !user &&
-    !request.nextUrl.pathname.startsWith('/login') &&
-    !request.nextUrl.pathname.startsWith('/signup')
-  ) {
+  const pathname = request.nextUrl.pathname
+
+  if (!user && !isAuthPath(pathname)) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
+    url.search = ''
     return NextResponse.redirect(url)
+  }
+
+  // Authenticated but not approved (or access revoked): clear session and send to login
+  if (user && !isAuthPath(pathname)) {
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('access_to_app')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (profile?.access_to_app !== true) {
+        await supabase.auth.signOut()
+        const url = request.nextUrl.clone()
+        url.pathname = '/login'
+        url.search = 'reason=access'
+        return NextResponse.redirect(url)
+      }
+    } catch (error) {
+      console.error('Access check failed in middleware:', error)
+      // Fail closed for app routes if we cannot verify access
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      url.search = 'reason=access'
+      return NextResponse.redirect(url)
+    }
   }
 
   return supabaseResponse
