@@ -16,7 +16,7 @@ import {
   type SnapshotPoint,
   type SnapshotRangeMode,
 } from '@/lib/aggregateSnapshots'
-import type { PreferredCurrency } from '@/app/actions/users'
+import type { PreferredCurrency } from '@/lib/userTypes'
 
 interface PerformanceChartProps {
   points: SnapshotPoint[]

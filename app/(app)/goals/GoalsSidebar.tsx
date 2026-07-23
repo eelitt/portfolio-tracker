@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { getUserGoals, createGoal, updateGoal, deleteGoal, getCurrentPortfolioValue } from '@/app/actions/goals'
-import { getCurrentUserProfile, type PreferredCurrency } from '@/app/actions/users'
+import type { PreferredCurrency } from '@/lib/userTypes'
 import { formatCurrency } from '@/lib/currency'
 import { Goal } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -15,7 +15,14 @@ import {
 import { Plus, Pencil, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 
-export default function GoalsSidebar() {
+interface GoalsSidebarProps {
+  /** From layout profile — do not load via lib/user on the client. */
+  preferredCurrency?: PreferredCurrency
+}
+
+export default function GoalsSidebar({
+  preferredCurrency = 'USD',
+}: GoalsSidebarProps) {
   const [isOpen, setIsOpen] = useState(false)
   const isOpenRef = useRef(false)
   const [goals, setGoals] = useState<Goal[]>([])
@@ -26,8 +33,6 @@ export default function GoalsSidebar() {
   const [notes, setNotes] = useState('')
   const [isCompleted, setIsCompleted] = useState(false)
   const [portfolioValue, setPortfolioValue] = useState(0)
-  const [preferredCurrency, setPreferredCurrency] = useState<PreferredCurrency>('USD')
-  const [usdToPreferredRate, setUsdToPreferredRate] = useState(1)
 
   const loadGoals = async () => {
     const data = await getUserGoals()
@@ -39,17 +44,6 @@ export default function GoalsSidebar() {
     setPortfolioValue(val)
   }
 
-  const loadCurrencyPreference = async () => {
-    const profile = await getCurrentUserProfile()
-    if (profile) {
-      setPreferredCurrency(profile.preferredCurrency)
-      // For client side display, we use a simple rate fetch if needed
-      // Since portfolioValue is already converted in getPortfolioData, we just need symbol
-      // But for full accuracy we could fetch rate, here we rely on pre-converted value
-      setUsdToPreferredRate(1) // not used for display since value is pre-converted
-    }
-  }
-
   // Load sidebar data only when the sidebar is (or becomes) visible.
   // This avoids useless server action + price API calls on every page load
   // when the user has the goals sidebar closed.
@@ -58,7 +52,6 @@ export default function GoalsSidebar() {
     if (isOpen) {
       loadGoals()
       loadPortfolioValue()
-      loadCurrencyPreference()
     }
   }, [isOpen])
 
@@ -80,7 +73,6 @@ export default function GoalsSidebar() {
       // Use ref to avoid stale closure from the empty-deps listener setup
       if (isOpenRef.current) {
         loadPortfolioValue()
-        loadCurrencyPreference()
       }
     }
     window.addEventListener('portfolio-updated', handlePortfolioUpdate)

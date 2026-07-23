@@ -1,6 +1,6 @@
 import { Transaction } from '@/lib/types'
 import { formatCurrency, getAmountInUsd } from '@/lib/currency'
-import type { PreferredCurrency } from '@/app/actions/users'
+import type { PreferredCurrency } from '@/lib/userTypes'
 
 export type AugmentedTransaction = Transaction & { formattedDate?: string }
 

@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
-import { getCurrentUser } from '@/app/actions/users'
+import { getCurrentUser } from '@/lib/user'
 
 export interface AdminUserRow {
   id: string

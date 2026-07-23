@@ -13,7 +13,7 @@ import { Transaction } from '@/lib/types'
 import { Loader2 } from 'lucide-react'
 import { getAssetTypeLabel } from '@/lib/utils'
 import { formatCurrency, getAmountInUsd } from '@/lib/currency'
-import type { PreferredCurrency } from '@/app/actions/users'
+import type { PreferredCurrency } from '@/lib/userTypes'
 
 interface DeleteTransactionModalProps {
   transaction: Transaction | null

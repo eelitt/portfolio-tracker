@@ -10,7 +10,7 @@ import {
   getLatestAIInsight,
   saveAIInsight,
 } from '@/app/actions/ai/storage'
-import { isCurrentUserAdmin } from '@/app/actions/users'
+import { isCurrentUserAdmin } from '@/lib/user'
 
 const FEATURE_TYPE = 'portfolio_analyst_rate'
 

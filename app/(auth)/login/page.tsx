@@ -2,10 +2,8 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { useState, useEffect } from 'react'
-import {
-  ensureAppAccess,
-  APP_ACCESS_DENIED_MESSAGE,
-} from '@/app/actions/users'
+import { ensureAppAccess } from '@/app/actions/users'
+import { APP_ACCESS_DENIED_MESSAGE } from '@/lib/userTypes'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')

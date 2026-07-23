@@ -1,4 +1,4 @@
-import { PreferredCurrency } from '@/app/actions/users'
+import type { PreferredCurrency } from '@/lib/userTypes'
 
 export type Currency = PreferredCurrency
 

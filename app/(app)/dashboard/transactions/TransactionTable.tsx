@@ -17,7 +17,7 @@ import { usePagination } from './usePagination'
 import TransactionModal from './TransactionModal'
 import DeleteTransactionModal from './DeleteTransactionModal'
 import { Transaction } from '@/lib/types'
-import type { PreferredCurrency } from '@/app/actions/users'
+import type { PreferredCurrency } from '@/lib/userTypes'
 import {
   applyFilters,
   applySort,

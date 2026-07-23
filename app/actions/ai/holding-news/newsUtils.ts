@@ -29,6 +29,12 @@ export const HOLDING_NEWS_COOLDOWN_MS = 24 * 60 * 60 * 1000
 export const HOLDING_NEWS_MAX_LOOKBACK_DAYS = 7
 
 /**
+ * One-shot extended lookback for first-time holdings that return empty after the 7d pass.
+ * Does not apply to symbols that already had news or were covered as empty.
+ */
+export const HOLDING_NEWS_EXTENDED_LOOKBACK_DAYS = 14
+
+/**
  * Only the largest positions get news (cost control).
  * Smaller holdings are omitted from the LLM prompt and result keys.
  */
@@ -167,6 +173,48 @@ export function symbolHasBullets(bullets: string[] | null | undefined): boolean 
 export function newsHasAnyBullets(news: Record<string, string[]> | null | undefined): boolean {
   if (!news) return false
   return Object.values(news).some(symbolHasBullets)
+}
+
+/**
+ * True if this ticker was never written into the stored package (missing key).
+ * Covered-as-empty (`[]`) is NOT uncovered — user already got a first-time search.
+ */
+export function isUncoveredSymbol(
+  symbol: string,
+  previousNews: Record<string, string[]> | null | undefined
+): boolean {
+  if (!previousNews) return true
+  const upper = symbol.toUpperCase()
+  if (Object.prototype.hasOwnProperty.call(previousNews, symbol)) return false
+  if (Object.prototype.hasOwnProperty.call(previousNews, upper)) return false
+  // Case-insensitive key scan
+  for (const key of Object.keys(previousNews)) {
+    if (key.toUpperCase() === upper) return false
+  }
+  return true
+}
+
+/** True if any selected symbol has no entry in the stored news map yet. */
+export function hasUncoveredHoldings(
+  selectedSymbols: string[],
+  previousNews: Record<string, string[]> | null | undefined
+): boolean {
+  return selectedSymbols.some(s => isUncoveredSymbol(s, previousNews))
+}
+
+/**
+ * First-time symbols that are still empty after a live pass → eligible for 14d retry.
+ * Never includes symbols that already existed in previousNews (even as []).
+ */
+export function symbolsEligibleForExtendedLookback(
+  selectedSymbols: string[],
+  previousNews: Record<string, string[]> | null | undefined,
+  afterPassNews: Record<string, string[]>
+): string[] {
+  return selectedSymbols.filter(
+    s =>
+      isUncoveredSymbol(s, previousNews) && !symbolHasBullets(afterPassNews[s])
+  )
 }
 
 /**
@@ -309,7 +357,7 @@ export function buildHoldingNewsMergeMessage(merge: HoldingNewsMergeResult): str
 /**
  * Builds an inclusive calendar date range for news coverage.
  *
- * - First ever fetch (no lastFetchedAt): last HOLDING_NEWS_MAX_LOOKBACK_DAYS days.
+ * - First ever fetch / uncovered holdings (no lastFetchedAt): last HOLDING_NEWS_MAX_LOOKBACK_DAYS days.
  * - Later fetches: days since last fetch, clamped to [1, HOLDING_NEWS_MAX_LOOKBACK_DAYS].
  *   (The 24h fetch cooldown means elapsed is almost always ≥ 1 day when re-fetch is allowed.)
  *
@@ -320,19 +368,63 @@ export function computeNewsWindow(lastFetchedAt: Date | null): {
   toDate: string
   lookbackDays: number
 } {
-  const to = new Date()
-  const toDate = toISODate(to)
-
   let lookbackDays = HOLDING_NEWS_MAX_LOOKBACK_DAYS
   if (lastFetchedAt) {
     const elapsedMs = Date.now() - lastFetchedAt.getTime()
     const elapsedDays = Math.max(1, Math.ceil(elapsedMs / (24 * 60 * 60 * 1000)))
     lookbackDays = Math.min(HOLDING_NEWS_MAX_LOOKBACK_DAYS, elapsedDays)
   }
+  return computeNewsWindowDays(lookbackDays)
+}
 
+/** Fixed lookback window ending today (UTC), e.g. 7 or 14 days. */
+export function computeNewsWindowDays(lookbackDays: number): {
+  fromDate: string
+  toDate: string
+  lookbackDays: number
+} {
+  const days = Math.max(1, Math.floor(lookbackDays))
+  const to = new Date()
+  const toDate = toISODate(to)
   const from = new Date(to)
-  from.setUTCDate(from.getUTCDate() - lookbackDays)
-  return { fromDate: toISODate(from), toDate, lookbackDays }
+  from.setUTCDate(from.getUTCDate() - days)
+  return { fromDate: toISODate(from), toDate, lookbackDays: days }
+}
+
+function normalizeAssetName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/\b(inc\.?|corp\.?|ltd\.?|llc|co\.?|company|the)\b/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+/**
+ * Map free-form model keys (company/project names) to tickers for the requested set.
+ * Catalog-driven; not symbol-specific hardcoding.
+ */
+export function resolveNewsKeyToSymbol(
+  rawKey: string,
+  holdings: Array<{ symbol: string; name: string }>
+): string | null {
+  const upper = rawKey.toUpperCase().trim()
+  if (!upper) return null
+  if (holdings.some(h => h.symbol === upper)) return upper
+
+  const keyNorm = normalizeAssetName(rawKey)
+  if (!keyNorm || keyNorm.length < 3) return null
+
+  for (const h of holdings) {
+    const nameNorm = normalizeAssetName(h.name)
+    if (!nameNorm) continue
+    if (nameNorm === keyNorm) return h.symbol
+    // "apple" → "apple inc"
+    if (nameNorm.startsWith(keyNorm) || keyNorm.startsWith(nameNorm)) {
+      return h.symbol
+    }
+  }
+  return null
 }
 
 /** UTC calendar date as YYYY-MM-DD (matches xAI tool date filters). */
@@ -458,6 +550,7 @@ export function parseHoldingNewsJson(raw: string): Record<string, string[]> {
  * Aligns a parsed news map with the holdings we actually requested.
  *
  * - Uppercase keys (tooltips use holding.symbol as-is)
+ * - Map company/project names → tickers when holdings metadata is provided
  * - Drop unknown symbols; ensure every requested symbol has a key (default [])
  * - Cap 3 bullets per symbol
  *
@@ -465,17 +558,28 @@ export function parseHoldingNewsJson(raw: string): Record<string, string[]> {
  */
 export function normalizeHoldingNews(
   raw: Record<string, string[]>,
-  symbols: string[]
+  symbols: string[],
+  holdings?: Array<{ symbol: string; name: string }>
 ): Record<string, string[]> {
   const byUpper = new Map<string, string[]>()
   for (const [key, bullets] of Object.entries(raw)) {
-    const upper = key.toUpperCase().trim()
-    if (!upper) continue
     const cleaned = (Array.isArray(bullets) ? bullets : [])
       .map(b => String(b).trim())
       .filter(Boolean)
       .slice(0, 3)
-    byUpper.set(upper, cleaned)
+
+    let symbol = key.toUpperCase().trim()
+    if (holdings && holdings.length > 0) {
+      const resolved = resolveNewsKeyToSymbol(key, holdings)
+      if (resolved) symbol = resolved
+    }
+    if (!symbol) continue
+
+    // Prefer non-empty if the same symbol appears under ticker + name keys
+    const existing = byUpper.get(symbol)
+    if (!existing || (existing.length === 0 && cleaned.length > 0)) {
+      byUpper.set(symbol, cleaned)
+    }
   }
 
   const out: Record<string, string[]> = {}

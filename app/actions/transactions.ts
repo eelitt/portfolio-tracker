@@ -14,7 +14,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { transactionSchema, type TransactionFormData } from '@/lib/schemas'
 import { revalidatePath } from 'next/cache'
-import { getCurrentUser, getCurrentUserProfile } from './users'
+import { getCurrentUser, getCurrentUserProfile } from '@/lib/user'
 import { getPortfolioData } from '@/lib/portfolioData'
 
 /** Shape returned by mutation actions to the client (used with useActionState). */

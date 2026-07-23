@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import AllocationPie from './AllocationPie'
 import PerformanceChart from './PerformanceChart'
 import type { SnapshotPoint, SnapshotRangeMode } from '@/lib/aggregateSnapshots'
-import type { PreferredCurrency } from '@/app/actions/users'
+import type { PreferredCurrency } from '@/lib/userTypes'
 import type { EnrichedHolding } from '@/lib/types'
 
 type ChartTab = 'allocation' | 'performance'

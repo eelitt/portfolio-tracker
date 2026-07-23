@@ -1,62 +1,17 @@
 'use server'
 
-import { cache } from 'react'
+/**
+ * User-related Server Actions only (async exports).
+ * Loaders/types live in lib/user.ts and lib/userTypes.ts.
+ */
+
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-
-export type PreferredCurrency = 'USD' | 'EUR'
-
-export const getCurrentUser = cache(async () => {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  return user
-})
-
-export interface UserProfile {
-  id: string
-  email?: string
-  preferredCurrency: PreferredCurrency
-  admin: boolean
-  accessToApp: boolean
-}
-
-/**
- * Session user + profile flags. Request-scoped via React cache() so layout,
- * portfolio loaders, and AI rate-limit checks share one auth + profile query.
- */
-export const getCurrentUserProfile = cache(async (): Promise<UserProfile | null> => {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('preferred_currency, admin, access_to_app')
-    .eq('id', user.id)
-    .maybeSingle()
-
-  return {
-    id: user.id,
-    email: user.email,
-    preferredCurrency: (profile?.preferred_currency as PreferredCurrency) || 'USD',
-    admin: profile?.admin === true,
-    accessToApp: profile?.access_to_app === true,
-  }
-})
-
-/** Admin flag for the current session — reuses getCurrentUserProfile (cached). */
-export async function isCurrentUserAdmin(): Promise<boolean> {
-  const profile = await getCurrentUserProfile()
-  return profile?.admin === true
-}
-
-/** Shown when login/session is blocked for missing app access. */
-export const APP_ACCESS_DENIED_MESSAGE =
-  'Your account does not have access to this app yet. An administrator must approve your account.'
+import { getCurrentUser, getCurrentUserProfile } from '@/lib/user'
+import {
+  APP_ACCESS_DENIED_MESSAGE,
+  type PreferredCurrency,
+} from '@/lib/userTypes'
 
 /**
  * After auth: require profiles.access_to_app. Signs out and returns an error if denied.

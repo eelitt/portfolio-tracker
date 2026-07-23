@@ -1,7 +1,7 @@
 import RefreshButton from './components/RefreshButton'
 import TransactionModal from './transactions/TransactionModal'
 import { redirect } from 'next/navigation'
-import { getCurrentUser } from '@/app/actions/users'
+import { getCurrentUser } from '@/lib/user'
 import { Suspense } from 'react'
 import SummarySkeleton from './components/SummarySkeleton'
 import HoldingsSkeleton from './components/HoldingsSkeleton'

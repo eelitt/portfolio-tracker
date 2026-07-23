@@ -8,7 +8,7 @@
  * Persistence of reviewed rows is importTransactions in transactions.ts.
  */
 
-import { getCurrentUser, isCurrentUserAdmin } from '@/app/actions/users'
+import { getCurrentUser, isCurrentUserAdmin } from '@/lib/user'
 import {
   getLastAICallTime,
   updateLastAICallTime,

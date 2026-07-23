@@ -4,7 +4,7 @@ import Navbar from './Navbar'
 import GoalsSidebar from './goals/GoalsSidebar'
 import AIInsightsPanel from './ai-insights/AIInsightsPanel'
 import { Toaster } from 'sonner'
-import { getCurrentUserProfile } from '@/app/actions/users'
+import { getCurrentUserProfile } from '@/lib/user'
 
 export default async function DashboardLayout({
   children,
@@ -38,7 +38,7 @@ export default async function DashboardLayout({
         {children}
       </main>
       <Toaster position="top-right" richColors closeButton />
-      <GoalsSidebar />
+      <GoalsSidebar preferredCurrency={profile?.preferredCurrency || 'USD'} />
       <AIInsightsPanel isAdmin={profile?.admin === true} />
     </div>
   )

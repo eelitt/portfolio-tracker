@@ -18,7 +18,8 @@ import AdminMenu from './admin/AdminMenu'
 import { getTransactionsForExport, getHoldingsForExport } from '@/app/actions/transactions'
 import { exportTransactionsToCsv, exportHoldingsToCsv } from '@/lib/exportToCsv'
 import { useState, useEffect } from 'react'
-import { updatePreferredCurrency, type PreferredCurrency } from '@/app/actions/users'
+import { updatePreferredCurrency } from '@/app/actions/users'
+import type { PreferredCurrency } from '@/lib/userTypes'
 
 interface NavbarProps {
   user: any

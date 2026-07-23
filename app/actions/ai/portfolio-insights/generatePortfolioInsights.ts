@@ -15,7 +15,7 @@
  * portfolio content change (hash) + shared 60s rate limit across AI features.
  */
 
-import { getCurrentUser, getCurrentUserProfile, isCurrentUserAdmin } from '@/app/actions/users'
+import { getCurrentUser, getCurrentUserProfile, isCurrentUserAdmin } from '@/lib/user'
 import { getPortfolioData, type PortfolioData } from '@/lib/portfolioData'
 import {
   getLastAICallTime,

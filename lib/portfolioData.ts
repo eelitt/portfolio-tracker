@@ -2,7 +2,8 @@ import { cache } from 'react'
 import { getUserTransactions } from '@/app/actions/transactions'
 import { calculateHoldings, enrichHoldings } from './calculatePortfolio'
 import { getPricesForHoldings } from './priceService'
-import { getCurrentUserProfile, type PreferredCurrency } from '@/app/actions/users'
+import { getCurrentUserProfile } from '@/lib/user'
+import type { PreferredCurrency } from '@/lib/userTypes'
 import { getUsdToEurRate } from './currency'
 import {
   calculateCashHoldingsInPreferred,

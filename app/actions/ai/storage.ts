@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { getCurrentUser } from '@/app/actions/users'
+import { getCurrentUser } from '@/lib/user'
 
 /**
  * AI-related Supabase database actions.

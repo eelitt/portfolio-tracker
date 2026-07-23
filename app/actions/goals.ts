@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { goalSchema } from '@/lib/schemas'
 import { revalidatePath } from 'next/cache'
-import { getCurrentUser } from './users'
+import { getCurrentUser } from '@/lib/user'
 import { getPortfolioData } from '@/lib/portfolioData'
 import { Goal } from '@/lib/types'
 

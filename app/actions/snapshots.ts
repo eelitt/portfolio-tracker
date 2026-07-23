@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { getCurrentUserProfile } from '@/app/actions/users'
+import { getCurrentUserProfile } from '@/lib/user'
 import { convertAmount, getUsdToEurRate } from '@/lib/currency'
 import type { SnapshotPoint } from '@/lib/aggregateSnapshots'
 

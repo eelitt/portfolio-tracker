@@ -4,7 +4,7 @@ import { Pencil, Trash2, ArrowUp, ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getAssetTypeLabel } from '@/lib/utils'
 import type { Transaction } from '@/lib/types'
-import type { PreferredCurrency } from '@/app/actions/users'
+import type { PreferredCurrency } from '@/lib/userTypes'
 import { formatQuantityCell, formatPriceCell, type AugmentedTransaction } from './transactionUtils'
 
 interface TransactionRowProps {

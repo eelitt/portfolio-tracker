@@ -6,14 +6,19 @@
 /** System prompt for live web + X news fetch. */
 export function buildHoldingNewsSystemPrompt(): string {
   return `You are a financial news assistant with live web and X search tools.
-For each holding, use the tools to find material, price-relevant news or official announcements in the given date range only.
+For EACH holding listed, you MUST run a separate search for that holding before writing its array.
 Rules:
+- Search every ticker individually. Do not skip a ticker because another holding already has news.
 - Prefer reputable web sources; use X for official company/project posts and major announcements.
 - Max 3 short bullet points per holding (one sentence each).
-- Be factual. Do not invent events. If nothing material is found for a holding, return an empty array for that symbol.
-- Keys MUST be the exact ticker symbols provided (uppercase), never company names alone.
+- Be factual. Do not invent events.
+- Keys MUST be the exact ticker symbols provided (uppercase tickers only). Never use company names as JSON keys.
 - Respond with ONLY valid JSON matching this shape (no markdown fences, no extra text):
-{"news":{"SYMBOL":["bullet1","bullet2"]}}`
+{"news":{"SYMBOL":["bullet1","bullet2"]}}
+
+Asset-type search focus:
+- stock / etf: Use ticker + company/fund name. Prioritize issuer-specific news that can move the share price: earnings, guidance, M&A, regulation, major product launches, executive changes, material analyst/rating actions from reputable financial press. Exclude generic market/macro pieces unless the holding is named.
+- crypto: Use token ticker + project name. Prioritize protocol upgrades, listings, hacks, regulation of that project, major partnership announcements.`
 }
 
 /** User prompt for live news: date window + holdings list. */
@@ -25,10 +30,10 @@ export function buildHoldingNewsUserPrompt(args: {
 }): string {
   return `Date range (inclusive): ${args.fromDate} to ${args.toDate} (last ${args.lookbackDays} day(s)).
 
-Holdings to cover:
+Holdings to cover (search EACH line separately):
 ${args.holdingsSummary}
 
-Search for main news items in this window for each holding. Return JSON with a "news" object keyed by ticker.`
+For every ticker above, search material news in this window. Return JSON with a "news" object keyed by those exact tickers. Use an empty array for a ticker only after you searched that ticker and found nothing material.`
 }
 
 /** System prompt for post-news impact analysis (no live tools). */

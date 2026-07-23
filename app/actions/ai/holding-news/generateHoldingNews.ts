@@ -6,16 +6,16 @@
  * Flow:
  *  1. Auth + portfolio + XAI_API_KEY checks
  *  2. Load cached user_ai_insights row (feature_type holding_news)
- *  3. If last check < 24h and result looks valid → return cache (no LLM)
- *  4. Else live search (7d window if any symbol never had news; else elapsed lookback)
- *     → per-symbol merge (first fill vs keep vs update)
- *     → impact only for changed symbols
- *  5. Upsert via saveHoldingNewsPackage
+ *  3. If last check < 24h and all selected symbols already covered → return cache
+ *     (admins skip cooldown; uncovered symbols always allow live fetch)
+ *  4. Live search 7d (or incremental) → merge
+ *  5. First-time symbols still empty → one 14d search for those symbols only
+ *  6. Impact for changed symbols → persist
  *
- * Cooldown is holding-news specific (lastCheckedAt).
+ * Cooldown is holding-news specific (lastCheckedAt). 14d is first-time empty only.
  */
 
-import { getCurrentUser, isCurrentUserAdmin } from '@/app/actions/users'
+import { getCurrentUser, isCurrentUserAdmin } from '@/lib/user'
 import { getPortfolioData, type PortfolioData } from '@/lib/portfolioData'
 import {
   updateLastAICallTime,
@@ -31,10 +31,12 @@ import {
 } from './prompts'
 import {
   HOLDING_NEWS_COOLDOWN_MS,
+  HOLDING_NEWS_EXTENDED_LOOKBACK_DAYS,
   HOLDING_NEWS_FEATURE_TYPE,
   type CachedInsight,
   type HoldingNewsSuccessResult,
   computeNewsWindow,
+  computeNewsWindowDays,
   selectHoldingsForNews,
   parseHoldingNewsJson,
   normalizeHoldingNews,
@@ -45,6 +47,8 @@ import {
   parseHoldingNewsStored,
   toCooldownResult,
   buildNextRefreshAt,
+  hasUncoveredHoldings,
+  symbolsEligibleForExtendedLookback,
 } from './newsUtils'
 
 /** Discriminated result for useHoldingNews (success fields vs error). */
@@ -52,9 +56,11 @@ export type HoldingNewsResult =
   | HoldingNewsSuccessResult
   | { error: string; news?: undefined; impact?: undefined }
 
+type NewsHolding = { symbol: string; assetType: string; name: string }
+
 /**
  * Fetch live holding news for the user's top holdings, then impact analysis.
- * At most one successful live check per 24h; per-symbol keep/first-fill/update merge.
+ * Non-admin: at most one full package check per 24h unless new uncovered symbols.
  */
 export async function generateHoldingNews(): Promise<HoldingNewsResult> {
   const user = await getCurrentUser()
@@ -77,14 +83,30 @@ export async function generateHoldingNews(): Promise<HoldingNewsResult> {
       ? parseHoldingNewsStored(cached.result, cached.createdAt)
       : null
 
-    // --- 24h cooldown (live-search caches with content; admins skip) ---
-    if (!(await isCurrentUserAdmin()) && cached && stored && newsHasAnyBullets(stored.news)) {
+    const holdings = selectHoldingsForNews(data)
+    const symbols = holdings.map(h => h.symbol)
+    const uncovered = hasUncoveredHoldings(symbols, stored?.news)
+    const admin = await isCurrentUserAdmin()
+
+    // --- 24h cooldown: only when every selected symbol already covered (non-admin) ---
+    if (
+      !admin &&
+      !uncovered &&
+      cached &&
+      stored &&
+      newsHasAnyBullets(stored.news)
+    ) {
       const lastCheck = Date.parse(stored.lastCheckedAt ?? cached.createdAt)
       const elapsed = Date.now() - lastCheck
       const isLiveSearchResult = typeof stored.windowFrom === 'string'
-      const shouldEnforceCooldown = isLiveSearchResult && newsHasAnyBullets(stored.news)
+      const shouldEnforceCooldown =
+        isLiveSearchResult && newsHasAnyBullets(stored.news)
 
-      if (elapsed < HOLDING_NEWS_COOLDOWN_MS && shouldEnforceCooldown && !Number.isNaN(lastCheck)) {
+      if (
+        elapsed < HOLDING_NEWS_COOLDOWN_MS &&
+        shouldEnforceCooldown &&
+        !Number.isNaN(lastCheck)
+      ) {
         const nextRefreshAt = buildNextRefreshAt(lastCheck)
         const hoursLeft = Math.max(
           1,
@@ -100,7 +122,13 @@ export async function generateHoldingNews(): Promise<HoldingNewsResult> {
     const windowBase: CachedInsight | null =
       cached && stored && typeof stored.windowFrom === 'string' ? cached : null
 
-    return await runLiveHoldingNewsFetch(user.id, data, windowBase, cached, stored)
+    return await runLiveHoldingNewsFetch(
+      user.id,
+      holdings,
+      windowBase,
+      cached,
+      stored
+    )
   } catch (e) {
     console.error('Holding news error', e)
     const msg = e instanceof Error ? e.message : ''
@@ -119,16 +147,15 @@ export async function generateHoldingNews(): Promise<HoldingNewsResult> {
 }
 
 /**
- * One live pipeline: window → search → per-symbol merge → selective impact → persist.
+ * Live pipeline: 7d (or incremental) → optional 14d for first-time empties → impact → persist.
  */
 async function runLiveHoldingNewsFetch(
   userId: string,
-  data: PortfolioData,
+  holdings: NewsHolding[],
   windowBase: CachedInsight | null,
   previousRow: CachedInsight | null,
   previousStored: ReturnType<typeof parseHoldingNewsStored>
 ): Promise<HoldingNewsResult> {
-  const holdings = selectHoldingsForNews(data)
   if (holdings.length === 0) {
     return { error: 'No non-cash holdings to fetch news for.' }
   }
@@ -136,33 +163,41 @@ async function runLiveHoldingNewsFetch(
   const symbols = holdings.map(h => h.symbol)
   const previousNews = previousStored?.news ?? null
 
-  // Any selected symbol without prior bullets → full 7d baseline window
-  const needsBaseline = symbols.some(s => !symbolHasBullets(previousNews?.[s]))
+  // Uncovered symbols → full 7d baseline; else incremental since last check
+  const needsBaseline = hasUncoveredHoldings(symbols, previousNews)
   const lookbackFrom =
     !needsBaseline && windowBase && previousStored
       ? new Date(previousStored.lastCheckedAt ?? windowBase.createdAt)
       : null
-  const { fromDate, toDate, lookbackDays } = computeNewsWindow(lookbackFrom)
+  const pass1Window = computeNewsWindow(lookbackFrom)
 
-  const holdingsSummary = holdings
-    .map(h => `- ${h.symbol} (${h.assetType}) — ${h.name}`)
-    .join('\n')
+  const incoming1 = await liveSearchNews(holdings, pass1Window)
+  let merge = mergeHoldingNews(previousNews, incoming1, symbols)
 
-  const rawText = await callXaiResponsesWithSearch({
-    system: buildHoldingNewsSystemPrompt(),
-    prompt: buildHoldingNewsUserPrompt({
-      fromDate,
-      toDate,
-      lookbackDays,
-      holdingsSummary,
-    }),
-    fromDate,
-    toDate,
-  })
+  // First-time only: still empty after 7d → one 14d search for those tickers
+  const extendedSymbols = symbolsEligibleForExtendedLookback(
+    symbols,
+    previousNews,
+    merge.news
+  )
 
-  const parsed = parseHoldingNewsJson(rawText)
-  const incoming = normalizeHoldingNews(parsed, symbols)
-  const merge = mergeHoldingNews(previousNews, incoming, symbols)
+  let windowFrom = pass1Window.fromDate
+  let windowTo = pass1Window.toDate
+
+  if (extendedSymbols.length > 0) {
+    const extendedHoldings = holdings.filter(h =>
+      extendedSymbols.includes(h.symbol)
+    )
+    const pass2Window = computeNewsWindowDays(
+      HOLDING_NEWS_EXTENDED_LOOKBACK_DAYS
+    )
+    const incoming2 = await liveSearchNews(extendedHoldings, pass2Window)
+    // Merge pass2 only onto current merge result as "previous"
+    merge = mergeHoldingNews(merge.news, incoming2, symbols)
+    // Widest window for metadata
+    windowFrom = pass2Window.fromDate
+    windowTo = pass2Window.toDate
+  }
 
   const nowIso = new Date().toISOString()
   const nextRefreshAt = buildNextRefreshAt()
@@ -170,7 +205,6 @@ async function runLiveHoldingNewsFetch(
   const previousContentFetchedAt =
     previousStored?.contentFetchedAt ?? previousRow?.createdAt ?? nowIso
 
-  // Carry forward impact for kept symbols; recompute only for first-fill / updates
   const impact: Record<string, HoldingNewsImpactEntry> = {}
   for (const symbol of symbols) {
     if (
@@ -196,13 +230,20 @@ async function runLiveHoldingNewsFetch(
 
   const contentFetchedAt =
     merge.changedSymbols.length > 0 ? nowIso : previousContentFetchedAt
-  const message = buildHoldingNewsMergeMessage(merge)
+  let message = buildHoldingNewsMergeMessage(merge)
+  if (extendedSymbols.length > 0) {
+    const extra =
+      extendedSymbols.length === 1
+        ? `Expanded search to ${HOLDING_NEWS_EXTENDED_LOOKBACK_DAYS}d for a new holding.`
+        : `Expanded search to ${HOLDING_NEWS_EXTENDED_LOOKBACK_DAYS}d for ${extendedSymbols.length} new holdings.`
+    message = message ? `${message} ${extra}` : extra
+  }
 
   await saveHoldingNewsPackage(userId, {
     news: merge.news,
     impact,
-    windowFrom: fromDate,
-    windowTo: toDate,
+    windowFrom,
+    windowTo,
     contentFetchedAt,
     lastCheckedAt: nowIso,
   })
@@ -214,9 +255,34 @@ async function runLiveHoldingNewsFetch(
     contentFetchedAt,
     lastCheckedAt: nowIso,
     cachedAt: contentFetchedAt,
-    windowFrom: fromDate,
-    windowTo: toDate,
+    windowFrom,
+    windowTo,
     nextRefreshAt,
     message,
   }
+}
+
+async function liveSearchNews(
+  holdings: NewsHolding[],
+  window: { fromDate: string; toDate: string; lookbackDays: number }
+): Promise<Record<string, string[]>> {
+  const symbols = holdings.map(h => h.symbol)
+  const holdingsSummary = holdings
+    .map(h => `- ${h.symbol} (${h.assetType}) — ${h.name}`)
+    .join('\n')
+
+  const rawText = await callXaiResponsesWithSearch({
+    system: buildHoldingNewsSystemPrompt(),
+    prompt: buildHoldingNewsUserPrompt({
+      fromDate: window.fromDate,
+      toDate: window.toDate,
+      lookbackDays: window.lookbackDays,
+      holdingsSummary,
+    }),
+    fromDate: window.fromDate,
+    toDate: window.toDate,
+  })
+
+  const parsed = parseHoldingNewsJson(rawText)
+  return normalizeHoldingNews(parsed, symbols, holdings)
 }
