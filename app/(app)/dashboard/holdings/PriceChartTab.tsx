@@ -22,7 +22,6 @@ import type {
   ChartRange,
   HoldingPriceChartResult,
   PriceBar,
-  SeriesKind,
   SyncMode,
   TradeMarker,
 } from '@/lib/priceHistory'
@@ -32,13 +31,7 @@ import HoldingPriceChart from './HoldingPriceChart'
 import { SegmentedControl } from './SegmentedControl'
 
 /** Client-side load UX phases (server returns sync.mode for ready-state copy). */
-type LoadPhase =
-  | 'idle'
-  | 'loading'
-  | 'backfilling'
-  | 'updating'
-  | 'ready'
-  | 'error'
+type LoadPhase = 'idle' | 'loading' | 'backfilling' | 'ready' | 'error'
 
 type Props = {
   holdings: EnrichedHolding[]
@@ -61,8 +54,6 @@ function progressForPhase(phase: LoadPhase): number {
       return 15
     case 'backfilling':
       return 55
-    case 'updating':
-      return 70
     case 'ready':
       return 100
     case 'error':
@@ -81,9 +72,7 @@ function statusLabel(
     case 'loading':
       return `Loading chart for ${symbol}…`
     case 'backfilling':
-      return `Downloading historical prices for ${symbol}…`
-    case 'updating':
-      return `Updating latest prices for ${symbol}…`
+      return `Loading price history for ${symbol}…`
     case 'ready':
       // mode comes from server: full | gap | cache_only
       if (mode === 'full') return `History saved for ${symbol}`
@@ -110,8 +99,6 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [bars, setBars] = useState<PriceBar[]>([])
   const [markers, setMarkers] = useState<TradeMarker[]>([])
-  const [seriesKind, setSeriesKind] = useState<SeriesKind>('candle')
-  const [assetType, setAssetType] = useState<string | null>(null)
   const [syncMode, setSyncMode] = useState<SyncMode | undefined>()
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   /** Soft (non-fatal) message from server, e.g. partial sync / rate limit with cache */
@@ -181,8 +168,6 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
       setProgress(100)
       setBars(result.data.bars)
       setMarkers(result.data.markers)
-      setSeriesKind(result.data.seriesKind)
-      setAssetType(result.data.assetType)
       setLastSyncedAt(result.data.sync.lastSyncedAt)
       // Server may return bars + a soft error (e.g. gap fill failed, cache used)
       setSoftWarning(result.error ?? null)
@@ -217,9 +202,9 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
     )
   }
 
-  const busy =
-    phase === 'loading' || phase === 'backfilling' || phase === 'updating'
+  const busy = phase === 'loading' || phase === 'backfilling'
   const showChart = bars.length > 0 && phase !== 'error'
+  const assetType = selected?.asset_type
 
   return (
     <div className="space-y-4">
@@ -316,7 +301,6 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
         <HoldingPriceChart
           bars={bars}
           markers={markers}
-          seriesKind={seriesKind}
           preferredCurrency={preferredCurrency}
           symbol={selected?.symbol}
         />

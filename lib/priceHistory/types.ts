@@ -2,12 +2,8 @@ import type { AssetType } from '@/lib/types'
 
 export type ChartAssetType = Exclude<AssetType, 'cash'>
 
+/** Who wrote bars to price_bars. `coingecko` may exist on legacy rows only. */
 export type PriceBarSource = 'finnhub' | 'coingecko' | 'binance'
-
-export type SeriesKind = 'candle' | 'line'
-
-/** How honest the OHLC bodies are for free-tier crypto history. */
-export type BarQuality = 'ohlc' | 'mixed' | 'synthetic'
 
 export type SyncMode = 'full' | 'gap' | 'cache_only'
 
@@ -19,6 +15,7 @@ export type PriceBar = {
   high: number
   low: number
   close: number
+  /** Stored when provider sends it (e.g. Binance); not shown in UI yet. */
   volume?: number | null
 }
 
@@ -30,15 +27,6 @@ export type TradeMarker = {
   quantity: number
   currency: 'USD' | 'EUR'
   notes?: string | null
-}
-
-/** OHLC under the crosshair (display currency). */
-export type ChartBarTooltip = {
-  time: string
-  open: number
-  high: number
-  low: number
-  close: number
 }
 
 export type PriceBarSyncMeta = {
@@ -53,7 +41,6 @@ export type PriceBarSyncMeta = {
 export type SyncSymbolResult = {
   mode: SyncMode
   barsUpserted: number
-  seriesKind: SeriesKind
   /** Provider used for the latest successful bar fetch (if any). */
   historySource?: PriceBarSource
   error?: string
@@ -64,9 +51,6 @@ export type HoldingPriceChartResult = {
   data?: {
     symbol: string
     assetType: ChartAssetType
-    seriesKind: SeriesKind
-    barQuality: BarQuality
-    historySource?: PriceBarSource
     bars: PriceBar[]
     markers: TradeMarker[]
     sync: {

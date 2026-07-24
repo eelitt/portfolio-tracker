@@ -13,17 +13,13 @@ import {
   createChart,
   createSeriesMarkers,
   CandlestickSeries,
-  LineSeries,
   ColorType,
-  type IChartApi,
-  type ISeriesApi,
   type CandlestickData,
-  type LineData,
   type Time,
   type SeriesMarker,
   type MouseEventParams,
 } from 'lightweight-charts'
-import type { PriceBar, SeriesKind, TradeMarker } from '@/lib/priceHistory'
+import type { PriceBar, TradeMarker } from '@/lib/priceHistory'
 import {
   dayMarkerStyles,
   groupMarkersByDay,
@@ -36,7 +32,6 @@ import { cn } from '@/lib/utils'
 type Props = {
   bars: PriceBar[]
   markers: TradeMarker[]
-  seriesKind: SeriesKind
   preferredCurrency: PreferredCurrency
   /** Ticker for quantity decimals (e.g. BTC). */
   symbol?: string
@@ -101,16 +96,11 @@ function formatTradeWhen(iso: string): string {
 export default function HoldingPriceChart({
   bars,
   markers,
-  seriesKind,
   preferredCurrency,
   symbol = '',
   height = 360,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const chartRef = useRef<IChartApi | null>(null)
-  const seriesRef = useRef<ISeriesApi<'Candlestick'> | ISeriesApi<'Line'> | null>(
-    null
-  )
   const byDayRef = useRef(new Map<string, TradeMarker[]>())
   const barsByDayRef = useRef(new Map<string, PriceBar>())
   const pinnedDayRef = useRef<string | null>(null)
@@ -157,37 +147,22 @@ export default function HoldingPriceChart({
         mode: 1,
       },
     })
-    chartRef.current = chart
 
-    let series: ISeriesApi<'Candlestick'> | ISeriesApi<'Line'>
-    if (seriesKind === 'candle') {
-      series = chart.addSeries(CandlestickSeries, {
-        upColor: '#16a34a',
-        downColor: '#dc2626',
-        borderVisible: false,
-        wickUpColor: '#16a34a',
-        wickDownColor: '#dc2626',
-      })
-      const data: CandlestickData<Time>[] = bars.map((b) => ({
-        time: b.time as Time,
-        open: b.open,
-        high: b.high,
-        low: b.low,
-        close: b.close,
-      }))
-      series.setData(data)
-    } else {
-      series = chart.addSeries(LineSeries, {
-        color: '#3b82f6',
-        lineWidth: 2,
-      })
-      const data: LineData<Time>[] = bars.map((b) => ({
-        time: b.time as Time,
-        value: b.close,
-      }))
-      series.setData(data)
-    }
-    seriesRef.current = series
+    const series = chart.addSeries(CandlestickSeries, {
+      upColor: '#16a34a',
+      downColor: '#dc2626',
+      borderVisible: false,
+      wickUpColor: '#16a34a',
+      wickDownColor: '#dc2626',
+    })
+    const data: CandlestickData<Time>[] = bars.map((b) => ({
+      time: b.time as Time,
+      open: b.open,
+      high: b.high,
+      low: b.low,
+      close: b.close,
+    }))
+    series.setData(data)
 
     const libMarkers = buildLibraryMarkers(dayStyles, barDays)
     if (libMarkers.length > 0) {
@@ -302,10 +277,8 @@ export default function HoldingPriceChart({
       chart.unsubscribeClick(onClick)
       ro.disconnect()
       chart.remove()
-      chartRef.current = null
-      seriesRef.current = null
     }
-  }, [bars, dayStyles, barDays, seriesKind, height])
+  }, [bars, dayStyles, barDays, height])
 
   return (
     <div

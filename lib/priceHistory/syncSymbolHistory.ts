@@ -12,7 +12,6 @@ import type {
   ChartAssetType,
   PriceBar,
   PriceBarSource,
-  SeriesKind,
   SyncSymbolResult,
 } from './types'
 
@@ -27,10 +26,6 @@ type SyncRow = {
   latest_at: string | null
   last_synced_at: string | null
   last_error: string | null
-}
-
-function seriesKindFor(_assetType: ChartAssetType): SeriesKind {
-  return 'candle'
 }
 
 type FetchBarsResult = {
@@ -202,8 +197,7 @@ async function fetchBarsForRange(
   assetType: ChartAssetType,
   symbol: string,
   fromDay: string,
-  toDay: string,
-  _mode: 'full' | 'gap'
+  toDay: string
 ): Promise<FetchBarsResult> {
   if (assetType === 'crypto') {
     return fetchCryptoBars(symbol, fromDay, toDay)
@@ -225,7 +219,6 @@ export async function syncSymbolHistory(
   now = new Date()
 ): Promise<SyncSymbolResult> {
   const sym = symbol.toUpperCase()
-  const kind = seriesKindFor(assetType)
   const maxDays = maxHistoryDays(assetType)
   const today = toUtcDayIso(now)
 
@@ -235,13 +228,12 @@ export async function syncSymbolHistory(
 
   if (!hasCache) {
     const fromDay = fullBackfillFrom(maxDays, now)
-    const fetched = await fetchBarsForRange(assetType, sym, fromDay, today, 'full')
+    const fetched = await fetchBarsForRange(assetType, sym, fromDay, today)
     if (fetched.error && fetched.bars.length === 0) {
       const metaRow = await refreshSyncMeta(supabase, sym, assetType, fetched.error)
       return {
         mode: 'full',
         barsUpserted: 0,
-        seriesKind: kind,
         historySource: fetched.source,
         error: fetched.error,
         meta: metaFromRow(sym, assetType, metaRow),
@@ -260,7 +252,6 @@ export async function syncSymbolHistory(
       return {
         mode: 'full',
         barsUpserted: 0,
-        seriesKind: kind,
         historySource: fetched.source,
         error: saved.error,
         meta: metaFromRow(sym, assetType, metaRow),
@@ -276,7 +267,6 @@ export async function syncSymbolHistory(
     return {
       mode: 'full',
       barsUpserted: saved.n,
-      seriesKind: kind,
       historySource: fetched.source,
       error: fetched.error,
       meta: metaFromRow(sym, assetType, metaRow),
@@ -289,18 +279,16 @@ export async function syncSymbolHistory(
     return {
       mode: 'cache_only',
       barsUpserted: 0,
-      seriesKind: kind,
       meta: metaFromRow(sym, assetType, existingMeta),
     }
   }
 
-  const fetched = await fetchBarsForRange(assetType, sym, gapFrom, today, 'gap')
+  const fetched = await fetchBarsForRange(assetType, sym, gapFrom, today)
   if (fetched.error && fetched.bars.length === 0) {
     const metaRow = await refreshSyncMeta(supabase, sym, assetType, fetched.error)
     return {
       mode: 'gap',
       barsUpserted: 0,
-      seriesKind: kind,
       historySource: fetched.source,
       error: fetched.error,
       meta: metaFromRow(sym, assetType, metaRow ?? existingMeta),
@@ -319,7 +307,6 @@ export async function syncSymbolHistory(
     return {
       mode: 'gap',
       barsUpserted: 0,
-      seriesKind: kind,
       historySource: fetched.source,
       error: saved.error,
       meta: metaFromRow(sym, assetType, metaRow ?? existingMeta),
@@ -335,7 +322,6 @@ export async function syncSymbolHistory(
   return {
     mode: 'gap',
     barsUpserted: saved.n,
-    seriesKind: kind,
     historySource: fetched.source,
     error: fetched.error,
     meta: metaFromRow(sym, assetType, metaRow),

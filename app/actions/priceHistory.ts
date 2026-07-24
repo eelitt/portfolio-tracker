@@ -62,7 +62,6 @@ export async function getHoldingPriceChart(input: {
 
     const loaded = await loadBarsFromDb(supabase, symbol, assetType, fromDay)
     let bars = loaded.bars
-    const historySource = sync.historySource ?? loaded.source ?? undefined
 
     // Convert USD bars to preferred currency for display
     if (preferredCurrency === 'EUR') {
@@ -119,9 +118,6 @@ export async function getHoldingPriceChart(input: {
       data: {
         symbol,
         assetType,
-        seriesKind: 'candle',
-        barQuality: 'ohlc',
-        historySource,
         bars,
         markers,
         sync: {
