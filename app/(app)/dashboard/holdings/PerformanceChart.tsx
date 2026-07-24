@@ -54,9 +54,10 @@ export default function PerformanceChart({
 }: PerformanceChartProps) {
   const { hideMoney } = usePrivacyMode()
 
+  // Empty/error shells: no nested card — parent HoldingsChartsPanel provides the frame
   if (error) {
     return (
-      <div className="bg-card border rounded-lg p-6 h-80 flex items-center justify-center text-center text-sm text-muted-foreground">
+      <div className="flex h-80 items-center justify-center text-center text-sm text-muted-foreground">
         {error}
       </div>
     )
@@ -64,7 +65,7 @@ export default function PerformanceChart({
 
   if (!points.length) {
     return (
-      <div className="bg-card border rounded-lg p-6 h-80 flex items-center justify-center text-center text-muted-foreground">
+      <div className="flex h-80 items-center justify-center text-center text-muted-foreground">
         <div>
           <p>No performance history yet.</p>
           <p className="text-sm mt-1">
@@ -80,7 +81,7 @@ export default function PerformanceChart({
 
   if (!series.length) {
     return (
-      <div className="bg-card border rounded-lg p-6 h-80 flex items-center justify-center text-center text-muted-foreground">
+      <div className="flex h-80 items-center justify-center text-center text-muted-foreground">
         No data in this range.
       </div>
     )
@@ -92,7 +93,7 @@ export default function PerformanceChart({
   }))
 
   return (
-    <div className="bg-card border rounded-lg p-6">
+    <div>
       {change && (
         <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
           <span className="text-muted-foreground">Change in range</span>

@@ -7,6 +7,8 @@ import {
   addUtcDays,
   toUtcDayIso,
   markersFromTransactions,
+  groupMarkersByDay,
+  dayMarkerStyles,
   getBinanceSpotSymbol,
   parseBinanceKlines,
 } from '@/lib/priceHistory'
@@ -130,5 +132,44 @@ describe('markersFromTransactions', () => {
     const markers = markersFromTransactions(txs, 'BTC', 'EUR', 0.9)
     expect(markers[0].price).toBe(45000)
     expect(markers[0].currency).toBe('EUR')
+  })
+
+  it('groups markers by day and styles multi-trade days', () => {
+    const multi: Transaction[] = [
+      {
+        symbol: 'BTC',
+        asset_type: 'crypto',
+        action: 'buy',
+        quantity: 0.1,
+        unit_price: 50000,
+        executed_at: '2026-01-10T10:00:00.000Z',
+        currency: 'USD',
+      },
+      {
+        symbol: 'BTC',
+        asset_type: 'crypto',
+        action: 'buy',
+        quantity: 0.05,
+        unit_price: 51000,
+        executed_at: '2026-01-10T15:00:00.000Z',
+        currency: 'USD',
+      },
+      {
+        symbol: 'BTC',
+        asset_type: 'crypto',
+        action: 'sell',
+        quantity: 0.02,
+        unit_price: 52000,
+        executed_at: '2026-01-10T18:00:00.000Z',
+        currency: 'USD',
+      },
+    ]
+    const markers = markersFromTransactions(multi, 'BTC', 'USD', 1)
+    const byDay = groupMarkersByDay(markers)
+    expect(byDay.get('2026-01-10')).toHaveLength(3)
+    const styles = dayMarkerStyles(byDay)
+    expect(styles).toHaveLength(1)
+    expect(styles[0].side).toBe('mixed')
+    expect(styles[0].text).toBe('3')
   })
 })

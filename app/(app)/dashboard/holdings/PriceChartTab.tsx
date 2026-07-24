@@ -1,5 +1,20 @@
 'use client'
 
+/**
+ * Price tab UI: pick a holding + time range, load OHLC history, show progress.
+ *
+ * Data flow:
+ * 1. User selects symbol / range (debounced).
+ * 2. Server action getHoldingPriceChart:
+ *    - full backfill if DB empty (crypto: Binance ~3Y; stocks: Finnhub ~2Y)
+ *    - otherwise gap-fill latest days from the same APIs
+ *    - returns bars (display currency) + buy/sell markers from transactions
+ * 3. HoldingPriceChart renders candles + markers.
+ *
+ * Does not run on dashboard first paint — only when this tab is mounted
+ * and a symbol is selected (keeps free API usage lazy).
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { getHoldingPriceChart } from '@/app/actions/priceHistory'
@@ -14,7 +29,9 @@ import type {
 import type { EnrichedHolding } from '@/lib/types'
 import type { PreferredCurrency } from '@/lib/userTypes'
 import HoldingPriceChart from './HoldingPriceChart'
+import { SegmentedControl } from './SegmentedControl'
 
+/** Client-side load UX phases (server returns sync.mode for ready-state copy). */
 type LoadPhase =
   | 'idle'
   | 'loading'
@@ -28,8 +45,14 @@ type Props = {
   preferredCurrency: PreferredCurrency
 }
 
-const RANGES: ChartRange[] = ['1M', '3M', '1Y', 'Max']
+const RANGE_OPTIONS: { value: ChartRange; label: string }[] = [
+  { value: '1M', label: '1M' },
+  { value: '3M', label: '3M' },
+  { value: '1Y', label: '1Y' },
+  { value: 'Max', label: 'Max' },
+]
 
+/** Approximate progress width while the single server action is in flight. */
 function progressForPhase(phase: LoadPhase): number {
   switch (phase) {
     case 'idle':
@@ -62,6 +85,7 @@ function statusLabel(
     case 'updating':
       return `Updating latest prices for ${symbol}…`
     case 'ready':
+      // mode comes from server: full | gap | cache_only
       if (mode === 'full') return `History saved for ${symbol}`
       if (mode === 'gap') return `Latest data updated for ${symbol}`
       return `Showing cached history for ${symbol}`
@@ -73,13 +97,14 @@ function statusLabel(
 }
 
 export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
+  // Cash has no market OHLC — only stock / etf / crypto
   const assetHoldings = useMemo(
     () => holdings.filter((h) => h.asset_type !== 'cash'),
     [holdings]
   )
 
   const [symbol, setSymbol] = useState(assetHoldings[0]?.symbol ?? '')
-  const [range, setRange] = useState<ChartRange>('1Y')
+  const [range, setRange] = useState<ChartRange>('Max')
   const [phase, setPhase] = useState<LoadPhase>('idle')
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -89,14 +114,17 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
   const [assetType, setAssetType] = useState<string | null>(null)
   const [syncMode, setSyncMode] = useState<SyncMode | undefined>()
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
+  /** Soft (non-fatal) message from server, e.g. partial sync / rate limit with cache */
   const [softWarning, setSoftWarning] = useState<string | null>(null)
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Ignore stale responses when user switches symbol/range quickly
   const reqIdRef = useRef(0)
 
-  const selected = assetHoldings.find((h) => h.symbol === symbol) ?? assetHoldings[0]
+  const selected =
+    assetHoldings.find((h) => h.symbol === symbol) ?? assetHoldings[0]
 
-  // Keep selection valid when holdings change
+  // If holdings list changes (tx delete, etc.), keep selected symbol valid
   useEffect(() => {
     if (assetHoldings.length === 0) {
       setSymbol('')
@@ -115,16 +143,16 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
     setProgress(15)
     setError(null)
     setSoftWarning(null)
-    // Avoid showing previous symbol while a new request is in flight
+    // Clear previous series so we never flash the wrong symbol's candles
     setBars([])
     setMarkers([])
 
-    // Staged progress while waiting on the single server action
+    // Fake progress while waiting (one round-trip; real work is on the server)
     const tick = window.setInterval(() => {
       setProgress((p) => Math.min(p + 4, 85))
     }, 400)
 
-    // Cold load = backfill label; warm gap is refined when the action returns
+    // Default copy assumes full download; refined after response via syncMode
     setPhase('backfilling')
 
     try {
@@ -134,6 +162,7 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
         range,
       })
 
+      // A newer request was started — drop this result
       if (reqId !== reqIdRef.current) return
 
       window.clearInterval(tick)
@@ -155,6 +184,7 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
       setSeriesKind(result.data.seriesKind)
       setAssetType(result.data.assetType)
       setLastSyncedAt(result.data.sync.lastSyncedAt)
+      // Server may return bars + a soft error (e.g. gap fill failed, cache used)
       setSoftWarning(result.error ?? null)
       setPhase('ready')
     } catch {
@@ -166,7 +196,7 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
     }
   }, [selected, range])
 
-  // Debounced load on symbol/range change
+  // Debounce so rapid chip/symbol clicks don't spam Binance/Finnhub
   useEffect(() => {
     if (!selected) return
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -187,14 +217,19 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
     )
   }
 
-  const busy = phase === 'loading' || phase === 'backfilling' || phase === 'updating'
+  const busy =
+    phase === 'loading' || phase === 'backfilling' || phase === 'updating'
   const showChart = bars.length > 0 && phase !== 'error'
 
   return (
     <div className="space-y-4">
+      {/* Controls: holding select + range chips */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <label className="text-sm text-muted-foreground" htmlFor="price-chart-symbol">
+          <label
+            className="text-sm text-muted-foreground"
+            htmlFor="price-chart-symbol"
+          >
             Holding
           </label>
           <select
@@ -212,33 +247,27 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
           </select>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {RANGES.map((r) => (
-            <Button
-              key={r}
-              type="button"
-              size="sm"
-              variant={range === r ? 'default' : 'outline'}
-              onClick={() => setRange(r)}
-              disabled={busy}
-            >
-              {r}
-            </Button>
-          ))}
-        </div>
+        <SegmentedControl
+          aria-label="Price chart time range"
+          size="sm"
+          options={RANGE_OPTIONS}
+          value={range}
+          onChange={setRange}
+          disabled={busy}
+        />
       </div>
 
-      {/* Progress */}
+      {/* Progress bar: cold full backfill can take several seconds */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
           <span>
-            {statusLabel(
-              phase,
-              selected?.symbol ?? '',
-              syncMode
-            )}
+            {statusLabel(phase, selected?.symbol ?? '', syncMode)}
           </span>
-          {busy && <span>{Math.round(progressForPhase(phase) || progress)}%</span>}
+          {busy && (
+            <span>
+              {Math.round(progressForPhase(phase) || progress)}%
+            </span>
+          )}
         </div>
         <div
           className="h-2 w-full overflow-hidden rounded-full bg-muted"
@@ -253,7 +282,11 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
               phase === 'error' ? 'bg-red-500' : 'bg-primary'
             }`}
             style={{
-              width: `${phase === 'ready' || phase === 'error' ? 100 : Math.max(progress, progressForPhase(phase))}%`,
+              width: `${
+                phase === 'ready' || phase === 'error'
+                  ? 100
+                  : Math.max(progress, progressForPhase(phase))
+              }%`,
             }}
           />
         </div>
@@ -262,7 +295,12 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
       {error && (
         <div className="flex flex-col gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 sm:flex-row sm:items-center sm:justify-between">
           <span>{error}</span>
-          <Button type="button" size="sm" variant="outline" onClick={() => void load()}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => void load()}
+          >
             Retry
           </Button>
         </div>
@@ -275,7 +313,13 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
       )}
 
       {showChart ? (
-        <HoldingPriceChart bars={bars} markers={markers} seriesKind={seriesKind} />
+        <HoldingPriceChart
+          bars={bars}
+          markers={markers}
+          seriesKind={seriesKind}
+          preferredCurrency={preferredCurrency}
+          symbol={selected?.symbol}
+        />
       ) : (
         !error && (
           <div className="flex h-[360px] items-center justify-center rounded-lg border border-border bg-muted/20 text-sm text-muted-foreground">
@@ -284,6 +328,7 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
         )
       )}
 
+      {/* Legend + data source + display currency */}
       <div className="flex flex-col gap-1 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-3">
           <span>
@@ -296,7 +341,7 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
           </span>
           <span>
             {assetType === 'crypto'
-              ? 'Daily candles · Binance spot (USDT) · up to 3Y · live quotes: CoinGecko'
+              ? 'Daily candles · Binance spot (USDT)'
               : 'Daily candles (Finnhub OHLC)'}
           </span>
         </div>

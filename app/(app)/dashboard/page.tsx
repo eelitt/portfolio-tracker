@@ -21,14 +21,13 @@ export default async function DashboardPage() {
 
   return (
     <div className="max-w-5xl mx-auto p-8">
-      <div className="flex justify-between items-end mb-8">
-        <h1 className="text-3xl font-bold">Portfolio Tracker</h1>
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-3xl font-bold tracking-tight">Portfolio Tracker</h1>
 
-        <div className="flex flex-col items-end gap-1">
-          <div className="flex items-center gap-3">
-            <TransactionModal />
-            <RefreshButton />
-          </div>
+        {/* One primary (Add) + quiet utility (Refresh); spacing owned here */}
+        <div className="flex flex-wrap items-center gap-2">
+          <RefreshButton />
+          <TransactionModal />
         </div>
       </div>
 

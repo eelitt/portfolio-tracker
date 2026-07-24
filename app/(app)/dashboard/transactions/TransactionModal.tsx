@@ -1,9 +1,15 @@
 'use client'
 
+/**
+ * Dialog for add (header trigger / holding prefill) and edit (from table).
+ * Trigger is the sole primary CTA in the dashboard toolbar; form fields share formStyles.
+ */
+
 import { useEffect, useState } from 'react'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -11,11 +17,12 @@ import {
 import AddTransactionForm from './AddTransactionForm'
 import SymbolSelect from './SymbolSelect'
 import { Button } from '@/components/ui/button'
-import { Plus, Pencil, Loader2 } from 'lucide-react'
+import { Plus, Loader2 } from 'lucide-react'
 import { updateTransaction } from '@/app/actions/transactions'
 import { toast } from 'sonner'
 import { Transaction } from '@/lib/types'
 import type { AssetType } from '@/lib/types'
+import { fieldClassName, labelClassName } from './formStyles'
 
 interface TransactionModalProps {
   transaction?: Transaction | null
@@ -31,21 +38,19 @@ export default function TransactionModal({
   const [open, setOpen] = useState(false)
   const [isPending, setIsPending] = useState(false)
 
-  // Controlled state for the dependent asset + symbol fields in edit mode.
   const [editAssetType, setEditAssetType] = useState<AssetType>('stock')
   const [editSymbol, setEditSymbol] = useState('')
-
-  // For cash we still track action (Inflow/Outflow) and unit_price=1.
-  const [editAction, setEditAction] = useState<'buy' | 'sell' | 'inflow' | 'outflow'>('buy')
+  const [editAction, setEditAction] = useState<
+    'buy' | 'sell' | 'inflow' | 'outflow'
+  >('buy')
   const [editUnitPrice, setEditUnitPrice] = useState<number>(1)
 
-  // Prefill state used only by the add instance (when no transaction prop).
-  // Allows holdings cards to open the add form already filled for that symbol (default sell).
-  type AddPrefill = { assetType?: AssetType; symbol?: string; action?: 'buy' | 'sell' | 'inflow' | 'outflow' }
+  type AddPrefill = {
+    assetType?: AssetType
+    symbol?: string
+    action?: 'buy' | 'sell' | 'inflow' | 'outflow'
+  }
   const [addPrefill, setAddPrefill] = useState<AddPrefill | null>(null)
-
-  // Key to force remount of AddTransactionForm on every new add open (normal or prefilled).
-  // This ensures initial* props are used fresh for state in the form.
   const [addFormKey, setAddFormKey] = useState(0)
 
   useEffect(() => {
@@ -58,12 +63,13 @@ export default function TransactionModal({
     }
   }, [transaction])
 
-  // Listen for prefill requests from holdings cards (or other parts of UI).
-  // Only the add instance (no transaction prop) should respond.
+  // Holdings cards dispatch add-transaction; only the add instance listens
   useEffect(() => {
     if (transaction !== undefined) return
 
-    const handleAddForHolding = (e: CustomEvent<{ asset_type?: AssetType; symbol?: string }>) => {
+    const handleAddForHolding = (
+      e: CustomEvent<{ asset_type?: AssetType; symbol?: string }>
+    ) => {
       const d = e.detail || {}
       if (!d.symbol) return
       const isCash = d.asset_type === 'cash'
@@ -72,20 +78,27 @@ export default function TransactionModal({
         symbol: d.symbol,
         action: isCash ? 'inflow' : 'sell',
       })
-      setAddFormKey(k => k + 1)
+      setAddFormKey((k) => k + 1)
       setOpen(true)
     }
 
-    window.addEventListener('add-transaction', handleAddForHolding as EventListener)
-    return () => window.removeEventListener('add-transaction', handleAddForHolding as EventListener)
+    window.addEventListener(
+      'add-transaction',
+      handleAddForHolding as EventListener
+    )
+    return () =>
+      window.removeEventListener(
+        'add-transaction',
+        handleAddForHolding as EventListener
+      )
   }, [transaction])
 
   const isEdit = !!transaction
   const title = isEdit
-    ? 'Edit Transaction'
+    ? 'Edit transaction'
     : addPrefill?.symbol
-      ? `Add Transaction for ${addPrefill.symbol}`
-      : 'Add New Transaction'
+      ? `Add transaction for ${addPrefill.symbol}`
+      : 'Add transaction'
 
   const handleClose = () => {
     setOpen(false)
@@ -93,7 +106,6 @@ export default function TransactionModal({
     onClose?.()
   }
 
-  // Edit form handler (moved from old EditTransactionModal)
   const handleEditSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!transaction) return
@@ -104,7 +116,9 @@ export default function TransactionModal({
     setIsPending(false)
 
     if (result?.error) {
-      toast.error(typeof result.error === 'string' ? result.error : 'Failed to update')
+      toast.error(
+        typeof result.error === 'string' ? result.error : 'Failed to update'
+      )
     } else {
       toast.success('Transaction updated')
       window.dispatchEvent(new CustomEvent('portfolio-updated'))
@@ -115,55 +129,56 @@ export default function TransactionModal({
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen)
     if (!nextOpen) {
-      // Clear any prefill when the dialog closes (via X, outside click, cancel, etc.)
       setAddPrefill(null)
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      {/* Only render the trigger (the "Add Transaction" button) for the standalone add case.
-          The edit instance (inside TransactionTable) passes the `transaction` prop (null or value)
-          and we never want to render a trigger button for it, because that button lives in the
-          transaction history area and would receive focus on close, causing the page to scroll down. */}
+      {/* Trigger only for standalone add (not edit-from-table instance) */}
       {transaction === undefined && (
         <DialogTrigger asChild>
           {trigger || (
             <Button
-              onClick={() => {
-                // Ensure we are doing a fresh normal add, not carrying over a holding prefill.
-                setAddPrefill(null)
-                setAddFormKey(k => k + 1)
-              }}
-              className="flex items-center gap-2 mb-3"
+              type="button"
+              size="sm"
               variant="default"
+              className="gap-1.5"
+              onClick={() => {
+                setAddPrefill(null)
+                setAddFormKey((k) => k + 1)
+              }}
             >
               <Plus className="h-4 w-4" />
-              Add Transaction
+              Add transaction
             </Button>
           )}
         </DialogTrigger>
       )}
 
       <DialogContent
-        className="sm:max-w-[520px] shadow-xl rounded-xl p-6 border ring-0"
+        className="sm:max-w-[520px] gap-4 rounded-xl p-6 shadow-xl"
         aria-describedby={undefined}
         onCloseAutoFocus={(e) => {
-          // For the edit instance (opened from Transaction History table),
-          // avoid scroll/focus side-effects.
-          e.preventDefault();
+          e.preventDefault()
         }}
       >
         <DialogHeader>
           <DialogTitle className="text-xl">{title}</DialogTitle>
+          <DialogDescription className="text-muted-foreground">
+            {isEdit
+              ? 'Update the details of this transaction.'
+              : 'Record a buy, sell, or cash movement.'}
+          </DialogDescription>
         </DialogHeader>
 
         {isEdit ? (
-          // EDIT MODE
           <form onSubmit={handleEditSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label htmlFor="edit-asset-type" className="text-sm font-medium">Asset Type</label>
+              <div className="space-y-1.5">
+                <label htmlFor="edit-asset-type" className={labelClassName}>
+                  Asset type
+                </label>
                 <select
                   id="edit-asset-type"
                   name="asset_type"
@@ -171,13 +186,13 @@ export default function TransactionModal({
                   onChange={(e) => {
                     const newType = e.target.value as AssetType
                     setEditAssetType(newType)
-                    setEditSymbol('') // reset symbol when type changes
+                    setEditSymbol('')
                     if (newType === 'cash') {
                       setEditAction('inflow')
                       setEditUnitPrice(1)
                     }
                   }}
-                  className="border p-2 rounded w-full"
+                  className={fieldClassName}
                   required
                 >
                   <option value="stock">Stock</option>
@@ -187,13 +202,15 @@ export default function TransactionModal({
                 </select>
               </div>
 
-              <div className="space-y-1">
-                <label htmlFor="edit-symbol" className="text-sm font-medium">Symbol</label>
+              <div className="space-y-1.5">
+                <label htmlFor="edit-symbol" className={labelClassName}>
+                  Symbol
+                </label>
                 <SymbolSelect
                   assetType={editAssetType}
                   value={editSymbol}
                   onChange={setEditSymbol}
-                  className="border p-2 rounded w-full"
+                  className={fieldClassName}
                   preserveSymbolForEdit={transaction.symbol}
                   required
                 />
@@ -201,16 +218,26 @@ export default function TransactionModal({
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label htmlFor="edit-action" className="text-sm font-medium">Action</label>
+              <div className="space-y-1.5">
+                <label htmlFor="edit-action" className={labelClassName}>
+                  Action
+                </label>
                 <select
                   id="edit-action"
                   name="action"
-                  value={editAssetType === 'cash' 
-                    ? (editAction === 'buy' || editAction === 'inflow' ? 'inflow' : 'outflow')
-                    : editAction}
-                  onChange={(e) => setEditAction(e.target.value as 'buy' | 'sell' | 'inflow' | 'outflow')}
-                  className="border p-2 rounded w-full"
+                  value={
+                    editAssetType === 'cash'
+                      ? editAction === 'buy' || editAction === 'inflow'
+                        ? 'inflow'
+                        : 'outflow'
+                      : editAction
+                  }
+                  onChange={(e) =>
+                    setEditAction(
+                      e.target.value as 'buy' | 'sell' | 'inflow' | 'outflow'
+                    )
+                  }
+                  className={fieldClassName}
                   required
                 >
                   {editAssetType === 'cash' ? (
@@ -226,31 +253,37 @@ export default function TransactionModal({
                   )}
                 </select>
               </div>
-              <div className="space-y-1">
-                <label htmlFor="edit-quantity" className="text-sm font-medium">Quantity</label>
+              <div className="space-y-1.5">
+                <label htmlFor="edit-quantity" className={labelClassName}>
+                  Quantity
+                </label>
                 <input
                   id="edit-quantity"
                   name="quantity"
                   type="number"
                   step="any"
                   defaultValue={transaction.quantity}
-                  className="border p-2 rounded w-full"
+                  className={fieldClassName}
                   required
                 />
               </div>
             </div>
 
             {editAssetType !== 'cash' ? (
-              <div className="space-y-1">
-                <label htmlFor="edit-unit-price" className="text-sm font-medium">Unit Price</label>
+              <div className="space-y-1.5">
+                <label htmlFor="edit-unit-price" className={labelClassName}>
+                  Unit price
+                </label>
                 <input
                   id="edit-unit-price"
                   name="unit_price"
                   type="number"
                   step="any"
                   value={editUnitPrice}
-                  onChange={(e) => setEditUnitPrice(parseFloat(e.target.value) || 1)}
-                  className="border p-2 rounded w-full"
+                  onChange={(e) =>
+                    setEditUnitPrice(parseFloat(e.target.value) || 1)
+                  }
+                  className={fieldClassName}
                   required
                 />
               </div>
@@ -258,58 +291,55 @@ export default function TransactionModal({
               <input type="hidden" name="unit_price" value={editUnitPrice} />
             )}
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label htmlFor="edit-executed-at" className="text-sm font-medium">Executed At</label>
-                <input
-                  id="edit-executed-at"
-                  name="executed_at"
-                  type="date"
-                  defaultValue={transaction.executed_at.split('T')[0]}
-                  className="border p-2 rounded w-full"
-                  required
-                />
-              </div>
+            <div className="space-y-1.5">
+              <label htmlFor="edit-executed-at" className={labelClassName}>
+                Executed at
+              </label>
+              <input
+                id="edit-executed-at"
+                name="executed_at"
+                type="date"
+                defaultValue={transaction.executed_at.split('T')[0]}
+                className={fieldClassName}
+                required
+              />
             </div>
 
-            <div className="space-y-1">
-              <label htmlFor="edit-notes" className="text-sm font-medium">Notes</label>
+            <div className="space-y-1.5">
+              <label htmlFor="edit-notes" className={labelClassName}>
+                Notes
+              </label>
               <input
                 id="edit-notes"
                 name="notes"
                 defaultValue={transaction.notes || ''}
-                placeholder="Notes (optional)"
-                className="border p-2 rounded w-full"
+                placeholder="Optional"
+                className={fieldClassName}
               />
             </div>
 
-            <div className="flex gap-3 pt-2">
+            <div className="flex justify-end gap-2 pt-2">
               <Button
                 type="button"
                 variant="outline"
+                size="sm"
                 onClick={handleClose}
-                className="flex-1 hover:bg-red-800"
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={isPending}
-                variant="default"
-              >
+              <Button type="submit" disabled={isPending} size="sm">
                 {isPending ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Saving...
+                    Saving…
                   </>
                 ) : (
-                  'Save Changes'
+                  'Save changes'
                 )}
               </Button>
             </div>
           </form>
         ) : (
-          // ADD MODE - reuse existing form (may be prefilled when coming from a holding card)
           <AddTransactionForm
             key={addFormKey}
             onSuccess={handleClose}

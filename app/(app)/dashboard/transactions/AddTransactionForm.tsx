@@ -16,6 +16,7 @@ import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import SymbolSelect from './SymbolSelect'
 import type { AssetType } from '@/lib/types'
+import { fieldClassName, labelClassName } from './formStyles'
 
 const initialState: ActionState = { error: undefined, success: false }
 interface AddTransactionFormProps {
@@ -36,18 +37,18 @@ export default function AddTransactionForm({
   const [state, formAction, isPending] = useActionState(createTransaction, initialState)
 
   // Controlled state for the dependent asset_type + symbol pair.
-  // Symbol options are provided by SymbolSelect based on the current asset type.
-  // Use initials when provided (e.g. clicking a holding to sell).
   const [assetType, setAssetType] = useState<AssetType>(initialAssetType || 'stock')
   const [symbol, setSymbol] = useState(initialSymbol || '')
 
-  // Controlled action so we can default to 'sell' when prefilled from a holding.
-  const defaultAction = initialAction || (initialAssetType === 'cash' ? 'inflow' : 'buy')
-  const [action, setAction] = useState<'buy' | 'sell' | 'inflow' | 'outflow'>(defaultAction)
+  const defaultAction =
+    initialAction || (initialAssetType === 'cash' ? 'inflow' : 'buy')
+  const [action, setAction] = useState<'buy' | 'sell' | 'inflow' | 'outflow'>(
+    defaultAction
+  )
 
   const handleAssetTypeChange = (newType: AssetType) => {
     setAssetType(newType)
-    setSymbol('') // reset symbol when the category changes
+    setSymbol('')
     if (newType === 'cash') {
       setAction('inflow')
     }
@@ -63,86 +64,143 @@ export default function AddTransactionForm({
       const msg = typeof state.error === 'string' ? state.error : 'Validation error'
       toast.error(msg)
     }
-  }, [state])
+  }, [state, onSuccess])
 
   return (
-    <form action={formAction} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <select
-            name="asset_type"
-            value={assetType}
-            onChange={(e) => handleAssetTypeChange(e.target.value as AssetType)}
-            className="border p-2 rounded"
-            required
-          >
-            <option value="stock">Stock</option>
-            <option value="etf">ETF / Index Fund</option>
-            <option value="crypto">Crypto</option>
-            <option value="cash">Cash / Savings</option>
-          </select>
+    <form action={formAction} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="space-y-1.5">
+        <label htmlFor="add-asset-type" className={labelClassName}>
+          Asset type
+        </label>
+        <select
+          id="add-asset-type"
+          name="asset_type"
+          value={assetType}
+          onChange={(e) => handleAssetTypeChange(e.target.value as AssetType)}
+          className={fieldClassName}
+          required
+        >
+          <option value="stock">Stock</option>
+          <option value="etf">ETF / Index Fund</option>
+          <option value="crypto">Crypto</option>
+          <option value="cash">Cash / Savings</option>
+        </select>
+      </div>
 
-          <SymbolSelect
-            assetType={assetType}
-            value={symbol}
-            onChange={setSymbol}
-            className="border p-2 rounded"
+      <div className="space-y-1.5">
+        <label htmlFor="add-symbol" className={labelClassName}>
+          Symbol
+        </label>
+        <SymbolSelect
+          assetType={assetType}
+          value={symbol}
+          onChange={setSymbol}
+          className={fieldClassName}
+          required
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <label htmlFor="add-action" className={labelClassName}>
+          Action
+        </label>
+        <select
+          id="add-action"
+          name="action"
+          value={action}
+          onChange={(e) =>
+            setAction(e.target.value as 'buy' | 'sell' | 'inflow' | 'outflow')
+          }
+          className={fieldClassName}
+          required
+        >
+          {assetType === 'cash' ? (
+            <>
+              <option value="inflow">Inflow</option>
+              <option value="outflow">Outflow</option>
+            </>
+          ) : (
+            <>
+              <option value="buy">Buy</option>
+              <option value="sell">Sell</option>
+            </>
+          )}
+        </select>
+      </div>
+
+      <div className="space-y-1.5">
+        <label htmlFor="add-quantity" className={labelClassName}>
+          Quantity
+        </label>
+        <input
+          id="add-quantity"
+          name="quantity"
+          type="number"
+          step="any"
+          placeholder="0"
+          className={fieldClassName}
+          required
+        />
+      </div>
+
+      {assetType !== 'cash' ? (
+        <div className="space-y-1.5">
+          <label htmlFor="add-unit-price" className={labelClassName}>
+            Unit price
+          </label>
+          <input
+            id="add-unit-price"
+            name="unit_price"
+            type="number"
+            step="any"
+            placeholder="0.00"
+            className={fieldClassName}
             required
           />
+        </div>
+      ) : (
+        <input type="hidden" name="unit_price" value="1" />
+      )}
 
-          <select
-            name="action"
-            value={action}
-            onChange={(e) => setAction(e.target.value as 'buy' | 'sell' | 'inflow' | 'outflow')}
-            className="border-gray-300 focus:border-gray-400 focus:ring-1 focus:ring-gray-200 p-2 rounded transition-colors"
-            required
-          >
-            {assetType === 'cash' ? (
-              <>
-                <option value="inflow">Inflow</option>
-                <option value="outflow">Outflow</option>
-              </>
-            ) : (
-              <>
-                <option value="buy">Buy</option>
-                <option value="sell">Sell</option>
-              </>
-            )}
-          </select>
+      <div className="space-y-1.5">
+        <label htmlFor="add-executed-at" className={labelClassName}>
+          Executed at
+        </label>
+        <input
+          id="add-executed-at"
+          name="executed_at"
+          type="date"
+          className={fieldClassName}
+          required
+          defaultValue={new Date().toISOString().split('T')[0]}
+          suppressHydrationWarning
+        />
+      </div>
 
-          <input name="quantity" type="number" step="any" placeholder="Quantity" className="border p-2 rounded" required />
+      <div className="space-y-1.5 sm:col-span-2">
+        <label htmlFor="add-notes" className={labelClassName}>
+          Notes
+        </label>
+        <input
+          id="add-notes"
+          name="notes"
+          placeholder="Optional"
+          className={fieldClassName}
+        />
+      </div>
 
-          {assetType !== 'cash' && (
-            <input name="unit_price" type="number" step="any" placeholder="Price per unit" className="border p-2 rounded" required />
+      <div className="flex justify-end sm:col-span-2">
+        <Button type="submit" disabled={isPending} variant="default" size="sm">
+          {isPending ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Adding…
+            </>
+          ) : (
+            'Add transaction'
           )}
-
-          <input 
-            name="executed_at" 
-            type="date" 
-            className="border p-2 rounded" 
-            required 
-            defaultValue={new Date().toISOString().split('T')[0]} 
-            suppressHydrationWarning 
-          />
-
-          {/* Hidden unit_price for cash/savings (always 1). Action is now shown as Inflow/Outflow. */}
-          {assetType === 'cash' && (
-            <input type="hidden" name="unit_price" value="1" />
-          )}
-          <input name="notes" placeholder="Notes (optional)" className="border p-2 rounded md:col-span-2" />
-         <Button 
-            type="submit" 
-            disabled={isPending} 
-            className="md:col-span-2"
-            variant="default"
-          >
-            {isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Adding...
-              </>
-            ) : (
-              'Add Transaction'
-            )}
-          </Button>
-        </form>
+        </Button>
+      </div>
+    </form>
   )
 }

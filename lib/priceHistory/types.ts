@@ -32,6 +32,15 @@ export type TradeMarker = {
   notes?: string | null
 }
 
+/** OHLC under the crosshair (display currency). */
+export type ChartBarTooltip = {
+  time: string
+  open: number
+  high: number
+  low: number
+  close: number
+}
+
 export type PriceBarSyncMeta = {
   symbol: string
   assetType: ChartAssetType

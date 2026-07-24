@@ -109,7 +109,7 @@ export default function AllocationPie({
 
   if (slices.length === 0) {
     return (
-      <div className="bg-card border rounded-lg p-6 text-center text-muted-foreground">
+      <div className="py-8 text-center text-muted-foreground">
         No allocation data available.
         <br />
         <span className="text-sm">
@@ -119,8 +119,9 @@ export default function AllocationPie({
     )
   }
 
+  // Outer card chrome lives on HoldingsChartsPanel
   return (
-    <div className="relative z-0 bg-card border rounded-lg p-6 overflow-visible">
+    <div className="relative z-0 overflow-visible">
       {/* Pie + legend: legend wide enough for names like "Emergency Fund" */}
       <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(14rem,18rem)] md:items-center lg:grid-cols-[minmax(0,1fr)_minmax(16rem,20rem)]">
         {/* Donut + center total */}
