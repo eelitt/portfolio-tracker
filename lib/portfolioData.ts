@@ -57,8 +57,12 @@ export const getPortfolioData = cache(async (): Promise<PortfolioData> => {
     const allHoldings = calculateHoldings(transactions || [])
 
     const assetHoldings = allHoldings.filter((h) => h.asset_type !== 'cash')
-    // Live quotes by default (forceFresh) — dashboard KPIs must be trustworthy on first paint
-    const priceData = await getPricesForHoldings(assetHoldings)
+    // 60s tagged Data Cache (`prices`) so currency toggles / concurrent Goals
+    // reloads reuse quotes instead of thrashing CoinGecko (forceFresh no-store).
+    // Explicit Refresh Prices still revalidateTag('prices') then re-fetches.
+    const priceData = await getPricesForHoldings(assetHoldings, {
+      forceFresh: false,
+    })
     const enrichedAssets = enrichHoldings(assetHoldings, priceData)
 
     const preferredAssets = enrichedAssets.map((h) =>

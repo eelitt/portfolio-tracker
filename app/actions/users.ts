@@ -5,7 +5,7 @@
  * Loaders/types live in lib/user.ts and lib/userTypes.ts.
  */
 
-import { revalidatePath, revalidateTag } from 'next/cache'
+import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser, getCurrentUserProfile } from '@/lib/user'
 import {
@@ -52,8 +52,9 @@ export async function updatePreferredCurrency(currency: PreferredCurrency) {
     return { error: error.message }
   }
 
-  // Align with Refresh Prices: clear any tagged price entries + re-render dashboard
-  revalidateTag('prices', { expire: 0 })
+  // Display currency only — do not bust live price cache (quotes are USD).
+  // Busting `prices` forced CoinGecko re-fetches on every toggle and could
+  // rate-limit the free tier, showing "0 of N assets" despite good prior quotes.
   revalidatePath('/dashboard')
   return { success: true }
 }
