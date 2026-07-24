@@ -4,11 +4,12 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import AllocationPie from './AllocationPie'
 import PerformanceChart from './PerformanceChart'
+import PriceChartTab from './PriceChartTab'
 import type { SnapshotPoint, SnapshotRangeMode } from '@/lib/aggregateSnapshots'
 import type { PreferredCurrency } from '@/lib/userTypes'
 import type { EnrichedHolding } from '@/lib/types'
 
-type ChartTab = 'allocation' | 'performance'
+type ChartTab = 'allocation' | 'performance' | 'price'
 
 interface HoldingsChartsPanelProps {
   enrichedHoldings: EnrichedHolding[]
@@ -49,6 +50,14 @@ export default function HoldingsChartsPanel({
           >
             Performance
           </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={tab === 'price' ? 'default' : 'outline'}
+            onClick={() => setTab('price')}
+          >
+            Price
+          </Button>
         </div>
       </div>
 
@@ -80,12 +89,17 @@ export default function HoldingsChartsPanel({
           preferredCurrency={preferredCurrency}
           usdToPreferredRate={usdToPreferredRate}
         />
-      ) : (
+      ) : tab === 'performance' ? (
         <PerformanceChart
           points={snapshots}
           rangeMode={rangeMode}
           preferredCurrency={preferredCurrency}
           error={snapshotsError}
+        />
+      ) : (
+        <PriceChartTab
+          holdings={enrichedHoldings}
+          preferredCurrency={preferredCurrency}
         />
       )}
     </div>
