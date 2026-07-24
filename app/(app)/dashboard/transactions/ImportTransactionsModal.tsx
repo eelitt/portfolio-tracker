@@ -336,14 +336,14 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
 
           {/* General error / blocking message (rate limit, too many rows, parse failure, etc.) */}
           {error && (
-            <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div className="alert-error">
               {error}
             </div>
           )}
 
           {/* Non-fatal warnings returned by the AI parser */}
           {warnings.length > 0 && (
-            <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            <div className="alert-warning">
               <div className="font-medium mb-1">AI warnings:</div>
               <ul className="list-disc pl-5 space-y-0.5 text-xs">
                 {warnings.map((w, i) => <li key={i}>{w}</li>)}
@@ -388,7 +388,10 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
                     {preview.map((tx, index) => {
                       const valid = isRowValid(tx)
                       return (
-                        <tr key={index} className={!valid ? 'bg-red-50/40' : ''}>
+                        <tr
+                          key={index}
+                          className={!valid ? 'bg-destructive/10' : ''}
+                        >
                           {/* Executed date */}
                           <td className="px-2 py-1.5">
                             <input

@@ -57,21 +57,19 @@ export default function PerformanceChart({
   // Empty/error shells: no nested card — parent HoldingsChartsPanel provides the frame
   if (error) {
     return (
-      <div className="flex h-80 items-center justify-center text-center text-sm text-muted-foreground">
-        {error}
+      <div className="empty-state h-80">
+        <p className="text-destructive">{error}</p>
       </div>
     )
   }
 
   if (!points.length) {
     return (
-      <div className="flex h-80 items-center justify-center text-center text-muted-foreground">
-        <div>
-          <p>No performance history yet.</p>
-          <p className="text-sm mt-1">
-            The chart builds as daily portfolio snapshots are recorded.
-          </p>
-        </div>
+      <div className="empty-state h-80">
+        <p className="font-display text-lg font-medium text-foreground">
+          No performance history yet
+        </p>
+        <p>The chart builds as daily portfolio snapshots are recorded.</p>
       </div>
     )
   }
@@ -81,8 +79,8 @@ export default function PerformanceChart({
 
   if (!series.length) {
     return (
-      <div className="flex h-80 items-center justify-center text-center text-muted-foreground">
-        No data in this range.
+      <div className="empty-state h-80">
+        <p>No data in this range.</p>
       </div>
     )
   }
@@ -99,7 +97,9 @@ export default function PerformanceChart({
           <span className="text-muted-foreground">Change in range</span>
           <span
             className={
-              change.absolute >= 0 ? 'font-medium text-green-600' : 'font-medium text-red-600'
+              change.absolute >= 0
+                ? 'font-medium text-pnl-positive'
+                : 'font-medium text-pnl-negative'
             }
           >
             <SensitiveValue

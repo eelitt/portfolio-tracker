@@ -6,7 +6,7 @@ const TONE_STYLES: Record<
 > = {
   positive: {
     label: 'Positive',
-    className: 'bg-green-500/15 text-green-700 dark:text-green-400',
+    className: 'bg-green-500/15 text-green-400',
   },
   neutral: {
     label: 'Neutral',
@@ -14,11 +14,11 @@ const TONE_STYLES: Record<
   },
   negative: {
     label: 'Negative',
-    className: 'bg-red-500/15 text-red-700 dark:text-red-400',
+    className: 'bg-red-500/15 text-red-400',
   },
   mixed: {
     label: 'Mixed',
-    className: 'bg-amber-500/15 text-amber-800 dark:text-amber-400',
+    className: 'bg-amber-500/15 text-amber-400',
   },
 }
 

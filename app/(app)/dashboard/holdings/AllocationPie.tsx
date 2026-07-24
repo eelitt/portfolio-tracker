@@ -109,12 +109,11 @@ export default function AllocationPie({
 
   if (slices.length === 0) {
     return (
-      <div className="py-8 text-center text-muted-foreground">
-        No allocation data available.
-        <br />
-        <span className="text-sm">
-          Live prices may be temporarily unavailable.
-        </span>
+      <div className="empty-state">
+        <p className="font-display text-lg font-medium text-foreground">
+          No allocation data
+        </p>
+        <p>Live prices may be temporarily unavailable.</p>
       </div>
     )
   }

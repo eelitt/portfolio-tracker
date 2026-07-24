@@ -22,7 +22,10 @@ export default async function DashboardPage() {
   return (
     <div className="max-w-5xl mx-auto p-8">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Portfolio Tracker</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">
+          <span className="text-gold">Portfolio</span>{' '}
+          <span className="text-foreground">Tracker</span>
+        </h1>
 
         {/* One primary (Add) + quiet utility (Refresh); spacing owned here */}
         <div className="flex flex-wrap items-center gap-2">
@@ -52,12 +55,19 @@ export default async function DashboardPage() {
 
       <Suspense
         fallback={
-          <div className="mt-10">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Transaction History</h2>
+          <section className="mb-8">
+            <div className="skeleton-block mb-4 h-7 w-48" />
+            <div className="mb-4 rounded-xl border border-subtle bg-surface-elevated p-4">
+              <div className="skeleton-block h-10 w-full" />
             </div>
-            <p className="text-gray-500">Loading transactions...</p>
-          </div>
+            <div className="overflow-hidden rounded-xl border border-subtle bg-surface-elevated p-2">
+              <div className="space-y-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="skeleton-block h-10 w-full" />
+                ))}
+              </div>
+            </div>
+          </section>
         }
       >
         <TransactionHistorySection />

@@ -1,26 +1,16 @@
 import { getPortfolioData } from '@/lib/portfolioData'
 import TransactionTable from './TransactionTable'
-import { formatCurrency } from '@/lib/currency'
 
 /**
- * Async Server Component for the full transaction history section.
- * Exports have been moved to the user dropdown (navbar) for a cleaner interface.
+ * Open section (like Summary/Holdings): title only; table/filters own their surfaces.
  */
 export default async function TransactionHistorySection() {
   const data = await getPortfolioData()
 
   if (data.error) {
-    return (
-      <div className="mt-10 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-        {data.error}
-      </div>
-    )
+    return <div className="alert-error mb-6">{data.error}</div>
   }
 
-  // Pre-format dates on the server for stable hydration (avoids locale formatting differences
-  // between Node.js and the browser in the client component).
-  // Note: data.transactions are already returned in descending executed_at order
-  // from getUserTransactions() so newest transactions appear first in the table.
   const transactionsWithFormattedDate = data.transactions.map((tx) => ({
     ...tx,
     formattedDate: new Date(tx.executed_at).toLocaleDateString('fi-FI', {
@@ -31,17 +21,16 @@ export default async function TransactionHistorySection() {
   }))
 
   return (
-    <div className="mt-10">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold">Transaction History</h2>
-        {/* Exports are available in the user dropdown menu (top right) */}
-      </div>
-      <TransactionTable 
-        transactions={transactionsWithFormattedDate} 
+    <section className="mb-8">
+      <h2 className="section-title mb-4">
+        <span className="section-title-accent">Transaction History</span>
+      </h2>
+      <TransactionTable
+        transactions={transactionsWithFormattedDate}
         preferredCurrency={data.preferredCurrency}
         usdToPreferredRate={data.usdToPreferredRate}
         usdToEurRate={data.usdToEurRate}
       />
-    </div>
+    </section>
   )
 }

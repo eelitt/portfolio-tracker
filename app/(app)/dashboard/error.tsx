@@ -19,7 +19,7 @@ export default function DashboardError({
     <div className="flex flex-col items-center justify-center min-h-[400px] text-center p-8">
       <div className="max-w-md">
         <h2 className="text-2xl font-semibold mb-3">Something went wrong</h2>
-        <p className="text-gray-600 mb-6">
+        <p className="mb-6 text-muted-foreground">
           We couldn&apos;t load your portfolio data right now. This is usually temporary.
         </p>
         

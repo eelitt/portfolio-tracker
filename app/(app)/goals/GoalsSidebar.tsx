@@ -159,7 +159,7 @@ export default function GoalsSidebar({
   if (!isOpen) return null
 
   return (
-    <div className="fixed right-0 top-16 bottom-0 w-80 bg-muted dark:bg-slate-800 shadow-xl z-40 overflow-y-auto p-4">
+    <div className="surface-panel fixed right-0 top-16 bottom-0 z-40 w-80 overflow-y-auto border-l border-border p-4 shadow-xl">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Button

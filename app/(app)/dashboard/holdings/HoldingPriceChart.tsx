@@ -282,7 +282,7 @@ export default function HoldingPriceChart({
 
   return (
     <div
-      className="relative w-full rounded-lg border border-border bg-card/40"
+      className="relative w-full rounded-lg border border-border/70 bg-card/50"
       style={{ height }}
     >
       <div ref={containerRef} className="h-full w-full" />

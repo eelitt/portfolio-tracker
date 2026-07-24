@@ -1,11 +1,18 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import { Toaster } from 'sonner'
+import { Cormorant_Garamond, Source_Sans_3, Geist_Mono } from "next/font/google";
+import { Toaster } from "sonner";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const cormorant = Cormorant_Garamond({
+  variable: "--font-cormorant",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
+const sourceSans = Source_Sans_3({
+  variable: "--font-source-sans",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 const geistMono = Geist_Mono({
@@ -26,14 +33,13 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${cormorant.variable} ${sourceSans.variable} ${geistMono.variable} dark h-full`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
-        {/* 
-          Inline script runs before React hydration.
-          It applies the 'dark' class based on localStorage or system preference.
-          Prevents flash of wrong theme.
+      <body className="flex min-h-full flex-col font-sans">
+        {/*
+          Apply theme before paint. Dark is the product default.
+          Stored preference still wins when present.
         */}
         <script
           dangerouslySetInnerHTML={{
@@ -41,19 +47,32 @@ export default function RootLayout({
               (function() {
                 try {
                   var stored = localStorage.getItem('theme');
-                  var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                  var shouldBeDark = stored === 'dark' || (!stored && prefersDark);
+                  var shouldBeDark = stored !== 'light';
                   if (shouldBeDark) {
                     document.documentElement.classList.add('dark');
                   } else {
                     document.documentElement.classList.remove('dark');
                   }
-                } catch (e) {}
+                } catch (e) {
+                  document.documentElement.classList.add('dark');
+                }
               })();
             `,
           }}
         />
         {children}
+        <Toaster
+          position="top-right"
+          richColors
+          closeButton
+          theme="system"
+          toastOptions={{
+            classNames: {
+              toast:
+                "border border-border bg-card text-card-foreground shadow-lg",
+            },
+          }}
+        />
       </body>
     </html>
   );

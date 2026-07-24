@@ -115,20 +115,20 @@ export function HoldingNewsView({
 
       {error && (
         <div className="bg-card border rounded-lg p-4">
-          <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded">
+          <div className="alert-error">
             {error}
           </div>
         </div>
       )}
 
       {lastMessage && (
-        <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 p-3 rounded text-sm">
+        <div className="alert-info flex items-center gap-2">
           <span>{lastMessage}</span>
         </div>
       )}
 
       {refreshBlocked && nextRefreshAt && !lastMessage && !isAdmin && (
-        <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 p-3 rounded text-sm">
+        <div className="alert-info flex items-center gap-2">
           <span>
             News can be refreshed once per day. Next refresh{' '}
             {formatRelativeTime(nextRefreshAt)}.
@@ -137,7 +137,7 @@ export function HoldingNewsView({
       )}
 
       {isLoading && news && (
-        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 p-3 rounded text-sm">
+        <div className="alert-warning flex items-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin" />
           Searching live news with AI (web + X)...
         </div>
@@ -146,7 +146,7 @@ export function HoldingNewsView({
       {hasNews && (
         <div className="space-y-4">
           {(contentFetchedAt || cachedAt || lastCheckedAt) && (
-            <div className="text-xs bg-blue-50 border border-blue-200 text-blue-700 p-2 rounded space-y-0.5">
+            <div className="alert-info space-y-0.5 text-xs">
               {(contentFetchedAt || cachedAt) && (
                 <div>
                   News as of{' '}

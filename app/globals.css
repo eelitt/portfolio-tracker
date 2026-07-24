@@ -1,104 +1,311 @@
 @import "tailwindcss";
 
-/* Enable class-based dark mode (used by our theme toggle + localStorage) */
+/* Class-based dark mode (theme toggle + localStorage) */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Define raw HSL values (without hsl() wrapper). 
-   These are consumed by Tailwind's @theme and by bg-card etc. */
+/*
+  Full color values (not HSL channels) so Tailwind v4 opacity modifiers
+  and var(--color-*) utilities resolve correctly at runtime.
+  Dark-first: near-black gradient + champagne gold chrome.
+*/
+
 :root {
-  --background: 0 0% 100%;
-  --foreground: 222.2 84% 4.9%;
-  --card: 0 0% 100%;
-  --card-foreground: 222.2 84% 4.9%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 222.2 84% 4.9%;
-  --primary: 215 28% 17%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222.2 47.4% 11.2%;
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
-  --accent: 210 40% 96.1%;
-  --accent-foreground: 222.2 47.4% 11.2%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 214.3 31.8% 91.4%;
-  --input: 214.3 31.8% 91.4%;
-  --ring: 222.2 84% 4.9%;
+  /* Light (secondary) */
+  --background: #f7f6f3;
+  --foreground: #141414;
+  --card: #ffffff;
+  --card-foreground: #141414;
+  --popover: #ffffff;
+  --popover-foreground: #141414;
+  --primary: #9a7b2f;
+  --primary-foreground: #faf8f2;
+  --secondary: #ebe8e1;
+  --secondary-foreground: #1f1f1f;
+  --muted: #ebe8e1;
+  --muted-foreground: #5c5a55;
+  --accent: #f0e9d6;
+  --accent-foreground: #5c4a1a;
+  --destructive: #c43c3c;
+  --destructive-foreground: #fafafa;
+  --border: #b89a4a;
+  --border-subtle: #d4d0c8;
+  --surface-elevated: #f3f1ec;
+  --input: #e0ddd4;
+  --ring: #9a7b2f;
+  --gold: #a68b3c;
+  --gold-bright: #c4a035;
+  --gold-muted: #8a7340;
+  /* P&L: darker greens/reds for light surfaces */
+  --pnl-positive: #15803d;
+  --pnl-negative: #b91c1c;
   --radius: 0.5rem;
+  --app-gradient: linear-gradient(165deg, #f7f6f3 0%, #f0eee8 50%, #ebe6db 100%);
+  /* Dot grid — explicit rgba (color-mix in vars is unreliable in gradients) */
+  --dot-grid-size: 36px;
+  --dot-grid-color: rgba(90, 85, 75, 0.08);
 }
 
-/* Dark mode color tokens */
 .dark {
-  --background: 222.2 84% 4.9%;
-  --foreground: 210 40% 98%;
-  --card: 222.2 84% 12%; /* noticeably lighter than the page background for visual separation */
-  --card-foreground: 210 40% 98%;
-  --popover: 222.2 84% 4.9%;
-  --popover-foreground: 210 40% 98%;
-  --primary: 210 40% 98%;
-  --primary-foreground: 222.2 47.4% 11.2%;
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 212.7 26.8% 83.9%;
+  --background: #050505;
+  --foreground: #f4f3f0;
+  --card: #121212;
+  --card-foreground: #f4f3f0;
+  --popover: #101010;
+  --popover-foreground: #f4f3f0;
+  --primary: #c9a84c;
+  --primary-foreground: #0a0a0a;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #f0efe9;
+  --muted: #1a1a1a;
+  --muted-foreground: #9c9a93;
+  --accent: #1f1b12;
+  --accent-foreground: #e0c36a;
+  --destructive: #a33b3b;
+  --destructive-foreground: #fafafa;
+  /* Gold = accent; subtle = structure (not every frame) */
+  --border: #8b7340;
+  --border-subtle: #2a2a2a;
+  --surface-elevated: #161616;
+  --input: #222222;
+  --ring: #c9a84c;
+  --gold: #c9a84c;
+  --gold-bright: #e0c36a;
+  --gold-muted: #6e5a30;
+  /*
+    P&L on near-black: avoid saturated red-600 (subpixel fringing / “fuzzy” glyphs).
+    Slightly brighter, less pure red + soft green match for balance.
+  */
+  --pnl-positive: #4ade80;
+  --pnl-negative: #fb7185;
+  --app-gradient: linear-gradient(165deg, #050505 0%, #0a0a0b 42%, #0f0e0c 100%);
+  --dot-grid-size: 36px;
+  /* Very soft neutral dots (not gold) so chrome/cards stay the accent */
+  --dot-grid-color: rgba(255, 255, 255, 0.045);
 }
 
-/* Map CSS vars to Tailwind's semantic color utilities (bg-card, text-muted-foreground, etc.) */
+/* Map tokens → Tailwind color utilities (bg-background, border-border, text-gold, …) */
 @theme inline {
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-gold: var(--gold);
+  --color-gold-bright: var(--gold-bright);
+  --color-gold-muted: var(--gold-muted);
+  --color-pnl-positive: var(--pnl-positive);
+  --color-pnl-negative: var(--pnl-negative);
+  --font-sans: var(--font-source-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-cormorant), ui-serif, Georgia, serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
 @layer base {
+  html {
+    @apply antialiased;
+    /* Gradient lives on html so body can own a simple repeating grid */
+    min-height: 100%;
+    background-color: var(--background);
+    background-image: var(--app-gradient);
+    background-attachment: fixed;
+    background-size: cover;
+  }
+
   body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
+    position: relative;
+    min-height: 100%;
+    margin: 0;
+    background-color: transparent;
+    color: var(--foreground);
+    font-family: var(--font-sans);
   }
 
-  .border {
-    border-color: hsl(var(--border));
+  /*
+    Dot grid: fixed layer, low contrast, wider lattice.
+    Radial mask fades dots toward the center so the pattern stays in margins
+    and doesn’t compete with the main column.
+  */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(
+      circle,
+      var(--dot-grid-color) 0.75px,
+      transparent 0.75px
+    );
+    background-size: var(--dot-grid-size) var(--dot-grid-size);
+    background-repeat: repeat;
+    background-position: 0 0;
+    /* Center quieter, edges slightly stronger — “atmosphere” not wallpaper */
+    -webkit-mask-image: radial-gradient(
+      ellipse 75% 70% at 50% 40%,
+      transparent 15%,
+      black 85%
+    );
+    mask-image: radial-gradient(
+      ellipse 75% 70% at 50% 40%,
+      transparent 15%,
+      black 85%
+    );
   }
 
-  /* Soften rings in light mode */
-  .ring,
-  .ring-1,
-  .ring-2,
-  .ring-offset-1,
-  .ring-offset-2 {
-    --tw-ring-color: #e5e7eb !important; /* soft gray-200 */
+  /* Keep app content above the grid layer */
+  body > * {
+    position: relative;
+    z-index: 1;
   }
 
-  /* Soften rings in dark mode */
-  .dark .ring,
-  .dark .ring-1,
-  .dark .ring-2,
-  .dark .ring-offset-1,
-  .dark .ring-offset-2 {
-    --tw-ring-color: #4b5563 !important; /* softer gray-600 */
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  /* Default bare borders use subtle structure (gold via border-gold / border-border) */
+  * {
+    border-color: var(--border-subtle);
+  }
+}
+
+@layer utilities {
+  /* Sidebars / elevated chrome — gold border on near-black surface */
+  .surface-panel {
+    background-color: var(--card);
+    border-color: var(--border);
+    backdrop-filter: blur(12px);
+  }
+
+  .text-gold {
+    color: var(--gold-bright);
+  }
+
+  .border-gold {
+    border-color: var(--border);
+  }
+
+  .border-subtle {
+    border-color: var(--border-subtle);
+  }
+
+  .bg-surface-elevated {
+    background-color: var(--surface-elevated);
+  }
+
+  /* Section titles: short gold underline under the word, not full-width rule */
+  .section-title {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.3;
+  }
+
+  .section-title-accent {
+    display: inline-block;
+    padding-bottom: 0.2rem;
+    box-shadow: inset 0 -2px 0 0 var(--gold);
+  }
+
+  /* Gain / loss — tuned for sharp rendering on dark cards */
+  .text-pnl-positive {
+    color: var(--pnl-positive);
+  }
+
+  .text-pnl-negative {
+    color: var(--pnl-negative);
+  }
+
+  /* Semantic banners — readable on black (no pastel red-50 / blue-50) */
+  .alert-error {
+    border-radius: var(--radius);
+    border: 1px solid color-mix(in srgb, var(--destructive) 55%, transparent);
+    background-color: color-mix(in srgb, var(--destructive) 14%, transparent);
+    color: color-mix(in srgb, var(--destructive) 75%, white);
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  .alert-warning {
+    border-radius: var(--radius);
+    border: 1px solid color-mix(in srgb, var(--gold) 50%, transparent);
+    background-color: color-mix(in srgb, var(--gold) 12%, transparent);
+    color: var(--gold-bright);
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  .alert-info {
+    border-radius: var(--radius);
+    border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    background-color: color-mix(in srgb, var(--muted) 80%, transparent);
+    color: var(--muted-foreground);
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  .alert-success {
+    border-radius: var(--radius);
+    border: 1px solid color-mix(in srgb, #22c55e 45%, transparent);
+    background-color: color-mix(in srgb, #22c55e 12%, transparent);
+    color: #86efac;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  /* Empty / loading shells */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 0.75rem;
+    border: 1px dashed color-mix(in srgb, var(--border) 55%, transparent);
+    background-color: color-mix(in srgb, var(--card) 60%, transparent);
+    padding: 2.5rem 1.5rem;
+    text-align: center;
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
+  }
+
+  .skeleton-block {
+    border-radius: 0.25rem;
+    background: linear-gradient(
+      90deg,
+      var(--muted) 0%,
+      color-mix(in srgb, var(--gold-muted) 25%, var(--muted)) 50%,
+      var(--muted) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
   }
 }

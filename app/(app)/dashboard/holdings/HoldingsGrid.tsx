@@ -46,21 +46,24 @@ function HoldingCard({
 
   return (
     <div
-      className="relative h-full"
+      className="group relative h-full"
       onMouseEnter={() => newsBullets && setTooltipOpen(true)}
       onMouseLeave={() => setTooltipOpen(false)}
     >
       <button
         type="button"
-        onClick={() => openAddTransactionForHolding(holding.symbol, holding.asset_type)}
-        className="h-full w-full rounded-xl text-left transition-all duration-200 hover:scale-[1.02] hover:shadow-xl hover:shadow-black/10 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 active:scale-[0.985] dark:hover:shadow-white/10"
+        onClick={() =>
+          openAddTransactionForHolding(holding.symbol, holding.asset_type)
+        }
+        className="h-full w-full rounded-xl text-left transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-black/20 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background active:scale-[0.985]"
       >
-        <Card className="h-full">
+        {/* Neutral structure; gold border only on hover */}
+        <Card className="h-full border-subtle bg-surface-elevated transition-colors duration-200 group-hover:border-gold">
           <CardContent className="p-4">
             <div className="flex justify-between">
               <div>
                 <div className="text-lg font-semibold">{holding.symbol}</div>
-                <div className="text-sm text-gray-500">
+                <div className="text-sm text-muted-foreground">
                   {getAssetTypeLabel(holding.asset_type)}
                 </div>
               </div>
@@ -117,7 +120,9 @@ function HoldingCard({
                 {holding.asset_type === 'cash' || holding.priceAvailable !== false ? (
                   <span
                     className={
-                      holding.unrealizedPnl >= 0 ? 'text-green-600' : 'text-red-600'
+                      holding.unrealizedPnl >= 0
+                        ? 'text-pnl-positive'
+                        : 'text-pnl-negative'
                     }
                   >
                     <SensitiveValue
@@ -158,8 +163,11 @@ export default function HoldingsGrid({
 }: HoldingsGridProps) {
   if (holdings.length === 0) {
     return (
-      <div className="col-span-full py-4 text-gray-500">
-        No holdings yet. Add your first transaction to get started.
+      <div className="empty-state col-span-full">
+        <p className="font-display text-lg font-medium text-foreground">
+          No holdings yet
+        </p>
+        <p>Add your first transaction to get started.</p>
       </div>
     )
   }

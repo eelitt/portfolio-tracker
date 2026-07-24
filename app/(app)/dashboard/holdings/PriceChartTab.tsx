@@ -196,8 +196,11 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
 
   if (assetHoldings.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
-        Record a stock, ETF, or crypto position to view price history.
+      <div className="empty-state">
+        <p className="font-display text-lg font-medium text-foreground">
+          No chartable holdings
+        </p>
+        <p>Record a stock, ETF, or crypto position to view price history.</p>
       </div>
     )
   }
@@ -264,7 +267,7 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
         >
           <div
             className={`h-full rounded-full transition-all duration-300 ${
-              phase === 'error' ? 'bg-red-500' : 'bg-primary'
+              phase === 'error' ? 'bg-destructive' : 'bg-primary'
             }`}
             style={{
               width: `${
@@ -278,7 +281,7 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
       </div>
 
       {error && (
-        <div className="flex flex-col gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 sm:flex-row sm:items-center sm:justify-between">
+        <div className="alert-error flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <span>{error}</span>
           <Button
             type="button"
@@ -292,7 +295,7 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
       )}
 
       {softWarning && !error && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+        <div className="alert-warning text-xs">
           {softWarning} Showing last saved history where available.
         </div>
       )}
@@ -306,7 +309,7 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
         />
       ) : (
         !error && (
-          <div className="flex h-[360px] items-center justify-center rounded-lg border border-border bg-muted/20 text-sm text-muted-foreground">
+          <div className="empty-state h-[360px]">
             {busy ? 'Preparing chart…' : 'No chart data yet'}
           </div>
         )

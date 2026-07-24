@@ -50,13 +50,17 @@ export default function TransactionRow({
 
   return (
     <tr className="hover:bg-muted/50">
-      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{displayDate}</td>
+      <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
+        {displayDate}
+      </td>
       <td className="px-4 py-3 font-medium">{tx.symbol}</td>
       <td className="px-4 py-3 text-sm">{getAssetTypeLabel(tx.asset_type)}</td>
       <td className="px-4 py-3">
         <span
-          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
-            isInflow ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+          className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${
+            isInflow
+              ? 'bg-green-500/15 text-green-400'
+              : 'bg-red-500/15 text-red-400'
           }`}
         >
           {isInflow ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
@@ -71,7 +75,10 @@ export default function TransactionRow({
       >
         <SensitiveValue value={priceLabel} />
       </td>
-      <td className="px-4 py-3 text-sm text-gray-500 truncate max-w-[200px]" title={tx.notes || ''}>
+      <td
+        className="max-w-[200px] truncate px-4 py-3 text-sm text-muted-foreground"
+        title={tx.notes || ''}
+      >
         {tx.notes || '-'}
       </td>
       <td className="px-4 py-3 text-right">

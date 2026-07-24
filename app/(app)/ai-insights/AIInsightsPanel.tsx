@@ -114,7 +114,7 @@ export default function AIInsightsPanel({ isAdmin = false }: AIInsightsPanelProp
   if (!isOpen) return null
 
   return (
-    <div className="fixed left-0 top-16 bottom-0 w-96 bg-muted dark:bg-slate-800 shadow-xl z-40 overflow-y-auto p-4">
+    <div className="surface-panel fixed left-0 top-16 bottom-0 z-40 w-96 overflow-y-auto border-r border-border p-4 shadow-xl">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">AI Insights</h2>
         <Button

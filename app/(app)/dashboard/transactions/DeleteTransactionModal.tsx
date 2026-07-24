@@ -56,23 +56,23 @@ export default function DeleteTransactionModal({
         </DialogHeader>
 
         {/* Transaction Summary */}
-        <div className="rounded-lg border bg-gray-50 p-4 text-sm">
+        <div className="rounded-lg border border-border/70 bg-muted/40 p-4 text-sm">
           <div className="flex justify-between">
-            <span className="font-medium text-gray-700">Symbol</span>
+            <span className="font-medium text-foreground">Symbol</span>
             <span className="font-semibold">{transaction.symbol}</span>
           </div>
           <div className="flex justify-between mt-1">
-            <span className="text-gray-600">Type</span>
+            <span className="text-muted-foreground">Type</span>
             <span>{getAssetTypeLabel(transaction.asset_type)}</span>
           </div>
           <div className="flex justify-between mt-1">
-            <span className="text-gray-600">Action</span>
+            <span className="text-muted-foreground">Action</span>
             <span className={(transaction.action === 'buy' || transaction.action === 'inflow') ? 'text-green-600' : 'text-red-600'}>
               {transaction.action.toUpperCase()}
             </span>
           </div>
           <div className="flex justify-between mt-1">
-            <span className="text-gray-600">Quantity</span>
+            <span className="text-muted-foreground">Quantity</span>
             <span>
               {transaction.asset_type === 'cash' ? (
                 <SensitiveValue
@@ -97,7 +97,7 @@ export default function DeleteTransactionModal({
             </span>
           </div>
           <div className="flex justify-between mt-1">
-            <span className="text-gray-600">Price</span>
+            <span className="text-muted-foreground">Price</span>
             <span>
               <SensitiveValue
                 value={(() => {
@@ -125,7 +125,7 @@ export default function DeleteTransactionModal({
             </span>
           </div>
           <div className="flex justify-between mt-1">
-            <span className="text-gray-600">Date</span>
+            <span className="text-muted-foreground">Date</span>
             <span suppressHydrationWarning>{formattedDate}</span>
           </div>
         </div>
@@ -135,7 +135,7 @@ export default function DeleteTransactionModal({
           variant="outline" 
           onClick={onClose} 
           disabled={isPending}
-          className="flex-1 hover:bg-gray-200"
+          className="flex-1"
           >
             Cancel
           </Button>
@@ -143,7 +143,7 @@ export default function DeleteTransactionModal({
             variant="destructive"
             onClick={() => onConfirm(transaction.id!)}
             disabled={isPending}
-            className="flex-1 flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white disabled:opacity-70 transition-colors"
+            className="flex flex-1 items-center justify-center gap-2 transition-colors disabled:opacity-70"
           >
             {isPending ? (
               <>

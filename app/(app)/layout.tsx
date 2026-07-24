@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation'
 import Navbar from './Navbar'
 import GoalsSidebar from './goals/GoalsSidebar'
 import AIInsightsPanel from './ai-insights/AIInsightsPanel'
-import { Toaster } from 'sonner'
 import { getCurrentUserProfile } from '@/lib/user'
 import { PrivacyModeProvider } from './privacy/PrivacyModeProvider'
 
@@ -29,17 +28,14 @@ export default async function DashboardLayout({
 
   return (
     <PrivacyModeProvider>
-      <div className="min-h-screen bg-muted dark:bg-background">
+      <div className="min-h-screen bg-transparent">
         <Navbar
           user={user}
           hasAiKey={hasAiKey}
           preferredCurrency={profile?.preferredCurrency || 'USD'}
           isAdmin={profile?.admin === true}
         />
-        <main className="max-w-6xl mx-auto px-6 py-8">
-          {children}
-        </main>
-        <Toaster position="top-right" richColors closeButton />
+        <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
         <GoalsSidebar preferredCurrency={profile?.preferredCurrency || 'USD'} />
         <AIInsightsPanel isAdmin={profile?.admin === true} />
       </div>

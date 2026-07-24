@@ -148,7 +148,14 @@ export default function TransactionTable({
   }, [searchTerm, assetFilter, actionFilter, dateFrom, dateTo, sortColumn, sortDirection, setCurrentPage])
 
   if (transactions.length === 0) {
-    return <p className="text-gray-500">No transactions yet.</p>
+    return (
+      <div className="empty-state">
+        <p className="font-display text-lg font-medium text-foreground">
+          No transactions yet
+        </p>
+        <p>Add a transaction to start building your history.</p>
+      </div>
+    )
   }
 
   // Local wrapper so clearing filters also resets to page 1
@@ -180,60 +187,74 @@ export default function TransactionTable({
       />
 
       {totalFiltered === 0 && hasActiveFilters && (
-        <div className="mb-4 rounded-lg border bg-card p-4 text-sm text-muted-foreground">
+        <div className="alert-info mb-4">
           No transactions match your current filters.{' '}
-          <button onClick={handleClearFilters} className="underline hover:text-foreground">Clear filters</button>
+          <button
+            onClick={handleClearFilters}
+            className="font-medium text-gold underline-offset-4 hover:underline"
+          >
+            Clear filters
+          </button>
         </div>
       )}
 
-      <div className="overflow-x-auto border rounded-lg">
-      <table className="min-w-full divide-y divide-gray-200 bg-background">
-        <thead className="bg-muted/50">
-          <tr>
-            <th 
-              onClick={() => handleSort('date')}
-              className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:text-gray-700"
-            >
-              Date {sortColumn === 'date' && (sortDirection === 'desc' ? '↓' : '↑')}
-            </th>
-            <th 
-              onClick={() => handleSort('symbol')}
-              className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:text-gray-700"
-            >
-              Symbol {sortColumn === 'symbol' && (sortDirection === 'desc' ? '↓' : '↑')}
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
-            <th 
-              onClick={() => handleSort('quantity')}
-              className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:text-gray-700"
-            >
-              Quantity {sortColumn === 'quantity' && (sortDirection === 'desc' ? '↓' : '↑')}
-            </th>
-            <th 
-              onClick={() => handleSort('price')}
-              className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:text-gray-700"
-            >
-              Price {sortColumn === 'price' && (sortDirection === 'desc' ? '↓' : '↑')}
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Notes</th>
-            <th className="px-4 py-3"></th>
-          </tr>
-        </thead>
-        <tbody className="bg-background divide-y divide-border">
-          {paginatedTransactions.map((tx) => (
-            <TransactionRow
-              key={tx.id!}
-              tx={tx as AugmentedTransaction}
-              preferredCurrency={preferredCurrency}
-              usdToPreferredRate={usdToPreferredRate}
-              usdToEurRate={usdToEurRate}
-              onEdit={handleEdit}
-              onDelete={openDeleteModal}
-            />
-          ))}
-        </tbody>
-      </table>
+      <div className="overflow-x-auto rounded-xl border border-subtle bg-surface-elevated shadow-sm">
+        <table className="min-w-full divide-y divide-subtle">
+          <thead className="bg-muted/50">
+            <tr>
+              <th
+                onClick={() => handleSort('date')}
+                className="cursor-pointer select-none px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground hover:text-gold"
+              >
+                Date {sortColumn === 'date' && (sortDirection === 'desc' ? '↓' : '↑')}
+              </th>
+              <th
+                onClick={() => handleSort('symbol')}
+                className="cursor-pointer select-none px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground hover:text-gold"
+              >
+                Symbol{' '}
+                {sortColumn === 'symbol' && (sortDirection === 'desc' ? '↓' : '↑')}
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground">
+                Type
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground">
+                Action
+              </th>
+              <th
+                onClick={() => handleSort('quantity')}
+                className="cursor-pointer select-none px-4 py-3 text-right text-xs font-medium uppercase text-muted-foreground hover:text-gold"
+              >
+                Quantity{' '}
+                {sortColumn === 'quantity' &&
+                  (sortDirection === 'desc' ? '↓' : '↑')}
+              </th>
+              <th
+                onClick={() => handleSort('price')}
+                className="cursor-pointer select-none px-4 py-3 text-right text-xs font-medium uppercase text-muted-foreground hover:text-gold"
+              >
+                Price {sortColumn === 'price' && (sortDirection === 'desc' ? '↓' : '↑')}
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground">
+                Notes
+              </th>
+              <th className="px-4 py-3" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-subtle">
+            {paginatedTransactions.map((tx) => (
+              <TransactionRow
+                key={tx.id!}
+                tx={tx as AugmentedTransaction}
+                preferredCurrency={preferredCurrency}
+                usdToPreferredRate={usdToPreferredRate}
+                usdToEurRate={usdToEurRate}
+                onEdit={handleEdit}
+                onDelete={openDeleteModal}
+              />
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {/* Pagination */}
@@ -246,14 +267,16 @@ export default function TransactionTable({
             <button
               onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
               disabled={currentPage === 1}
-              className="px-3 py-1 border rounded disabled:opacity-50"
+              className="rounded-lg border border-subtle bg-surface-elevated px-3 py-1.5 text-sm transition-colors hover:border-gold disabled:opacity-50"
             >
               Previous
             </button>
             <button
-              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+              onClick={() =>
+                setCurrentPage(Math.min(totalPages, currentPage + 1))
+              }
               disabled={currentPage === totalPages}
-              className="px-3 py-1 border rounded disabled:opacity-50"
+              className="rounded-lg border border-subtle bg-surface-elevated px-3 py-1.5 text-sm transition-colors hover:border-gold disabled:opacity-50"
             >
               Next
             </button>

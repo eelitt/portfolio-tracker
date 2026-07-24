@@ -1,13 +1,12 @@
 'use client'
 
 import type { Transaction } from '@/lib/types'
+import { fieldClassName } from './formStyles'
 
 interface TransactionFiltersProps {
-  // Search
   searchTerm: string
   onSearchChange: (value: string) => void
 
-  // Filters
   assetFilter: 'all' | Transaction['asset_type']
   onAssetFilterChange: (value: 'all' | Transaction['asset_type']) => void
 
@@ -20,11 +19,9 @@ interface TransactionFiltersProps {
   dateTo: string
   onDateToChange: (value: string) => void
 
-  // Actions
   onClear: () => void
   hasActiveFilters: boolean
 
-  // Stats (displayed inside the panel)
   showingCount: number
   totalFiltered: number
   totalOriginal: number
@@ -51,26 +48,32 @@ export default function TransactionFilters({
   inflowCount,
   outflowCount,
 }: TransactionFiltersProps) {
+  const controlClass = `${fieldClassName} h-8`
+
   return (
-    <div className="mb-4 rounded-lg border bg-card p-4">
-      <div className="flex flex-wrap gap-3 items-end">
-        <div className="flex-1 min-w-[180px]">
-          <label className="block text-xs text-muted-foreground mb-1">Search symbol/notes</label>
+    <div className="mb-4 rounded-xl border border-subtle bg-surface-elevated p-4 shadow-sm">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-[180px] flex-1">
+          <label className="mb-1 block text-xs text-muted-foreground">
+            Search symbol/notes
+          </label>
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search..."
-            className="w-full border rounded px-3 py-1.5 text-sm bg-background"
+            className={controlClass}
           />
         </div>
 
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">Type</label>
+          <label className="mb-1 block text-xs text-muted-foreground">Type</label>
           <select
             value={assetFilter}
-            onChange={(e) => onAssetFilterChange(e.target.value as any)}
-            className="border rounded px-3 py-1.5 text-sm bg-background"
+            onChange={(e) =>
+              onAssetFilterChange(e.target.value as typeof assetFilter)
+            }
+            className={controlClass}
           >
             <option value="all">All</option>
             <option value="stock">Stock</option>
@@ -81,11 +84,15 @@ export default function TransactionFilters({
         </div>
 
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">Action</label>
+          <label className="mb-1 block text-xs text-muted-foreground">
+            Action
+          </label>
           <select
             value={actionFilter}
-            onChange={(e) => onActionFilterChange(e.target.value as any)}
-            className="border rounded px-3 py-1.5 text-sm bg-background"
+            onChange={(e) =>
+              onActionFilterChange(e.target.value as typeof actionFilter)
+            }
+            className={controlClass}
           >
             <option value="all">All</option>
             <option value="buy">Buy</option>
@@ -96,45 +103,46 @@ export default function TransactionFilters({
         </div>
 
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">From</label>
+          <label className="mb-1 block text-xs text-muted-foreground">From</label>
           <input
             type="date"
             value={dateFrom}
             onChange={(e) => onDateFromChange(e.target.value)}
-            className="border rounded px-2 py-1.5 text-sm bg-background"
+            className={controlClass}
           />
         </div>
 
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">To</label>
+          <label className="mb-1 block text-xs text-muted-foreground">To</label>
           <input
             type="date"
             value={dateTo}
             onChange={(e) => onDateToChange(e.target.value)}
-            className="border rounded px-2 py-1.5 text-sm bg-background"
+            className={controlClass}
           />
         </div>
 
         <div className="flex gap-2">
           <button
+            type="button"
             onClick={onClear}
             disabled={!hasActiveFilters}
-            className="text-sm px-3 py-1.5 border rounded disabled:opacity-50 hover:bg-muted"
+            className="rounded-lg border border-subtle bg-card px-3 py-1.5 text-sm transition-colors hover:border-gold disabled:opacity-50"
           >
             Clear
           </button>
         </div>
       </div>
 
-      {/* Stats row inside the filter panel */}
-      <div className="mt-3 text-xs text-muted-foreground flex flex-wrap gap-x-4 border-t pt-3">
+      <div className="mt-3 flex flex-wrap gap-x-4 border-t border-subtle pt-3 text-xs text-muted-foreground">
         <span>
-          Showing <span className="font-medium">{showingCount}</span> of{' '}
-          <span className="font-medium">{totalFiltered}</span> transactions
+          Showing <span className="font-medium text-foreground">{showingCount}</span> of{' '}
+          <span className="font-medium text-foreground">{totalFiltered}</span>{' '}
+          transactions
           {hasActiveFilters && ` (filtered from ${totalOriginal})`}
         </span>
         {totalFiltered > 0 && (
-          <span className="text-muted-foreground/70">
+          <span>
             • {inflowCount} inflows • {outflowCount} outflows
           </span>
         )}

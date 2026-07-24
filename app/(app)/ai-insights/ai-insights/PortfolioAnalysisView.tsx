@@ -50,7 +50,7 @@ export function PortfolioAnalysisView({
 
       {error && (
         <div className="bg-card border rounded-lg p-4">
-          <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded">
+          <div className="alert-error">
             {error}
           </div>
         </div>
@@ -59,14 +59,14 @@ export function PortfolioAnalysisView({
       {insights && (
         <div className="bg-card border rounded-lg p-4 space-y-4">
           {isLoading && (
-            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 p-3 rounded text-sm">
+            <div className="alert-warning flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />
               Generating fresh analysis with AI...
             </div>
           )}
 
           {lastAnalysisMessage && (
-            <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 p-3 rounded text-sm">
+            <div className="alert-info flex items-center gap-2">
               <span>
                 {lastAnalysisMessage === 'Showing previous analysis (portfolio unchanged)'
                   ? 'No new analysis was generated — your portfolio data hasn\'t changed since the last analysis.'
@@ -76,7 +76,7 @@ export function PortfolioAnalysisView({
           )}
 
           {cachedAt && !lastAnalysisMessage && (
-            <div className="text-xs bg-blue-50 border border-blue-200 text-blue-700 p-2 rounded">
+            <div className="alert-info text-xs">
               Cached result from {formatRelativeTime(cachedAt)}. 
               You can request a fresh analysis after the cooldown.
             </div>

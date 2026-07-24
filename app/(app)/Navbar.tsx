@@ -39,14 +39,12 @@ export default function Navbar({
   const supabase = createClient()
   const { hideMoney, toggleHideMoney } = usePrivacyMode()
 
-  // Theme state (light | dark). Defaults to light on server; synced on client.
-  const [theme, setTheme] = useState<'light' | 'dark'>('light')
+  // Dark is product default; localStorage 'light' opts out.
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark')
 
-  // On mount: read persisted preference or system, apply to <html>, and sync state.
   useEffect(() => {
     const stored = localStorage.getItem('theme') as 'light' | 'dark' | null
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-    const initial = stored || (prefersDark ? 'dark' : 'light')
+    const initial = stored === 'light' ? 'light' : 'dark'
 
     setTheme(initial)
     if (initial === 'dark') {
@@ -128,22 +126,28 @@ export default function Navbar({
   const userName = user?.email?.split('@')[0] || 'User'
 
   return (
-    <nav className="bg-background dark:bg-slate-900 shadow-md sticky top-0 z-50">
-      <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-        {/* Logo */}
-        <Link href="/dashboard" className="font-semibold text-2xl tracking-tight">
-          Portfolio Tracker
+    <nav className="sticky top-0 z-50 border-b border-border bg-card/80 shadow-md backdrop-blur-md">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+        {/* Brand: Portfolio (gold) + Tracker (white/foreground) */}
+        <Link
+          href="/dashboard"
+          className="font-display text-2xl font-semibold tracking-tight"
+        >
+          <span className="text-gold">Portfolio</span>{' '}
+          <span className="text-foreground">Tracker</span>
         </Link>
 
-        {/* Navigation Links */}
         <div className="flex items-center gap-8 text-sm font-medium">
-          <Link href="/dashboard" className="hover:text-foreground/70 transition-colors">
+          <Link
+            href="/dashboard"
+            className="text-foreground/90 transition-colors hover:text-gold"
+          >
             Dashboard
           </Link>
-          <Link href="#" className="text-muted-foreground cursor-not-allowed">
+          <Link href="#" className="cursor-not-allowed text-muted-foreground">
             Watchlist
           </Link>
-          <Link href="#" className="text-muted-foreground cursor-not-allowed">
+          <Link href="#" className="cursor-not-allowed text-muted-foreground">
             Reports
           </Link>
         </div>
@@ -285,7 +289,7 @@ export default function Navbar({
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleLogout}
-                className="text-red-600 focus:text-red-600 cursor-pointer hover:bg-red-50 dark:hover:bg-red-950"
+                className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive"
               >
                 <LogOut className="mr-2 h-4 w-4" />
                 Logout

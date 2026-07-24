@@ -94,15 +94,17 @@ export default function SignupPage() {
   if (supabaseStatus === 'unavailable') {
     return (
       <div className="w-full max-w-sm">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-          <h1 className="text-xl font-semibold text-red-700 mb-2">Service Unavailable</h1>
-          <p className="text-sm text-red-600 mb-4">
+        <div className="alert-error rounded-xl p-6 text-center shadow-xl">
+          <h1 className="mb-2 font-display text-xl font-semibold">
+            Service unavailable
+          </h1>
+          <p className="mb-4 text-sm opacity-90">
             Portfolio Tracker is currently unable to connect to its backend service.
             Please check your internet connection or try again later.
           </p>
           <button
             onClick={retryConnection}
-            className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Retry
           </button>
@@ -124,30 +126,38 @@ export default function SignupPage() {
   }
 
   return (
-    <form onSubmit={handleSignup} className="space-y-4 w-full max-w-sm">
+    <form
+      onSubmit={handleSignup}
+      className="surface-panel w-full max-w-sm space-y-4 rounded-xl p-6 shadow-xl"
+    >
+      <div className="mb-2 text-center font-display text-2xl font-semibold tracking-tight">
+        <span className="text-gold">Portfolio</span>{' '}
+        <span className="text-foreground">Tracker</span>
+      </div>
       {loginError && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded">
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
           {loginError}
         </div>
       )}
       {successMessage && (
-        <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-800 text-sm rounded">
+        <div className="alert-success">
           {successMessage}{' '}
-          <a href="/login" className="underline font-medium">
+          <a href="/login" className="font-medium text-gold underline-offset-4 hover:underline">
             Go to login
           </a>
         </div>
       )}
-      <h1 className="text-2xl font-bold">Create Account</h1>
+      <h1 className="font-display text-xl font-semibold">Create account</h1>
       <p className="text-sm text-muted-foreground">
-        After signing up, an administrator must approve your account before you can log in.
+        After signing up, an administrator must approve your account before you can
+        log in.
       </p>
       <input
         type="email"
         placeholder="Email"
         value={email}
         onChange={handleEmailChange}
-        className="w-full p-2 border rounded"
+        className="h-9 w-full rounded-lg border border-border/70 bg-card px-3 text-sm focus-visible:border-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/30"
         required
         disabled={isFormDisabled}
       />
@@ -156,7 +166,7 @@ export default function SignupPage() {
         placeholder="Password (min 6 characters)"
         value={password}
         onChange={handlePasswordChange}
-        className="w-full p-2 border rounded"
+        className="h-9 w-full rounded-lg border border-border/70 bg-card px-3 text-sm focus-visible:border-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/30"
         required
         minLength={6}
         disabled={isFormDisabled}
@@ -164,12 +174,15 @@ export default function SignupPage() {
       <button
         type="submit"
         disabled={isFormDisabled}
-        className="w-full p-2 bg-black text-white rounded dark:bg-white dark:text-black dark:hover:bg-gray-200 hover:bg-gray-800 disabled:opacity-70 transition-colors"
+        className="h-9 w-full rounded-lg bg-primary text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-70"
       >
-        {loading ? 'Creating account...' : 'Sign up'}
+        {loading ? 'Creating account…' : 'Sign up'}
       </button>
-      <p className="text-sm text-center">
-        Already have an account? <a href="/login" className="underline">Log in</a>
+      <p className="text-center text-sm text-muted-foreground">
+        Already have an account?{' '}
+        <a href="/login" className="text-gold underline-offset-4 hover:underline">
+          Log in
+        </a>
       </p>
     </form>
   )
