@@ -165,10 +165,10 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
       {/* Capped height so the prompt form sits higher (not pinned to viewport bottom) */}
       <div
         ref={listRef}
-        className="max-h-[min(42vh,420px)] overflow-y-auto space-y-3 pr-1"
+        className="panel-scroll max-h-[min(42vh,420px)] space-y-3 overflow-y-auto pr-0.5"
       >
         {messages.length === 0 && (
-          <div className="bg-card border rounded-lg p-4 space-y-3">
+          <div className="space-y-3 rounded-lg border border-subtle bg-card p-4 transition-colors duration-200 hover:border-gold">
             <p className="text-sm text-muted-foreground">
               I only answer from your portfolio data — holdings, cost basis, P&L,
               allocation, what-if scenarios, and logging a trade you dictate
@@ -181,7 +181,7 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
                   type="button"
                   onClick={() => onSuggested(prompt)}
                   disabled={isBusy}
-                  className="w-full text-left text-xs border rounded-md px-3 py-2 bg-background hover:bg-accent/60 transition-colors disabled:opacity-50"
+                  className="w-full rounded-md border border-subtle bg-background px-3 py-2 text-left text-xs transition-colors hover:border-gold hover:bg-accent/60 disabled:opacity-50"
                 >
                   {prompt}
                 </button>
@@ -196,7 +196,7 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
             className={
               m.role === 'user'
                 ? 'ml-4 bg-indigo-600/15 border border-indigo-500/30 rounded-lg px-3 py-2 text-sm whitespace-pre-wrap'
-                : 'mr-2 bg-card border rounded-lg px-3 py-2 text-sm whitespace-pre-wrap'
+                : 'mr-2 whitespace-pre-wrap rounded-lg border border-subtle bg-card px-3 py-2 text-sm'
             }
           >
             <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
@@ -211,7 +211,7 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
         ))}
 
         {isBusy && messages[messages.length - 1]?.role === 'user' && (
-          <div className="mr-2 bg-card border rounded-lg px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
+          <div className="mr-2 flex items-center gap-2 rounded-lg border border-subtle bg-card px-3 py-2 text-sm text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             Analyzing with tools…
           </div>

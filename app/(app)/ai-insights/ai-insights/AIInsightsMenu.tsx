@@ -30,7 +30,7 @@ export function AIInsightsMenu({
         {/* Portfolio Analyst chat */}
         <button
           onClick={onOpenAnalyst}
-          className="w-full text-left border rounded-lg p-4 bg-card shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-accent/60 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-lg border border-subtle bg-card p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-gold hover:bg-accent/60 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-gold/40"
         >
           <div className="font-medium flex items-center gap-2">
             <MessageSquare className="h-4 w-4" />
@@ -44,7 +44,7 @@ export function AIInsightsMenu({
         {/* Portfolio Analysis*/}
         <button
           onClick={onOpenPortfolio}
-          className="relative w-full text-left border rounded-lg p-4 bg-card shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-accent/60 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-ring"
+          className="relative w-full rounded-lg border border-subtle bg-card p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-gold hover:bg-accent/60 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-gold/40"
         >
           {!portfolioAnalysisTimestamp && (
             <div className="absolute top-1 right-1 flex items-center pointer-events-none z-10">
@@ -71,7 +71,7 @@ export function AIInsightsMenu({
         {/* Holding News - replaces old Goal Suggestions placeholder */}
         <button
           onClick={onOpenHoldingNews}
-          className="w-full text-left border rounded-lg p-4 bg-card shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-accent/60 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-lg border border-subtle bg-card p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-gold hover:bg-accent/60 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-gold/40"
         >
           <div className="font-medium flex items-center gap-2">
             <span>Holding News</span>
@@ -88,7 +88,7 @@ export function AIInsightsMenu({
 
         <button
           onClick={() => onOpenPlaceholder('Rebalancing Advice')}
-          className="w-full text-left border rounded-lg p-4 bg-card shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-accent/60 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-ring opacity-75"
+          className="w-full rounded-lg border border-subtle bg-card p-4 text-left opacity-75 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-gold hover:bg-accent/60 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-gold/40"
         >
           <div className="font-medium">Rebalancing Advice</div>
           <p className="text-sm text-muted-foreground mt-1">

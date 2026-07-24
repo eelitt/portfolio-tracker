@@ -159,104 +159,114 @@ export default function GoalsSidebar({
   if (!isOpen) return null
 
   return (
-    <div className="surface-panel fixed right-0 top-16 bottom-0 z-40 w-80 overflow-y-auto border-l border-border p-4 shadow-xl">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
+    <div className="surface-panel fixed right-0 top-16 bottom-0 z-40 flex w-80 flex-col overflow-hidden border-l border-border shadow-xl">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-subtle bg-card px-4 pb-3 pt-4">
+        <div className="flex min-w-0 items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
             onClick={closeSidebar}
-            className="group h-8 w-8 hover:bg-destructive/10 hover:text-destructive transition-all duration-200"
+            className="group h-8 w-8 shrink-0 hover:bg-destructive/10 hover:text-destructive transition-all duration-200"
             aria-label="Close goals sidebar"
           >
             <X className="h-4 w-4 transition-transform group-hover:scale-110" />
           </Button>
-          <h2 className="text-lg font-semibold">Investing Goals</h2>
+          <h2 className="section-title">
+            <span className="section-title-accent">Investing Goals</span>
+          </h2>
         </div>
-        <Button size="sm" onClick={openAdd}>
+        <Button size="sm" onClick={openAdd} className="shrink-0">
           <Plus className="h-4 w-4" />
         </Button>
       </div>
-      <div className="text-sm text-muted-foreground mb-3">
-        Current portfolio:{' '}
-        <SensitiveValue
-          value={formatCurrency(portfolioValue, preferredCurrency, 1)}
-        />
-      </div>
 
-      {goals.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          No goals yet. Add your first investing goal to track progress.
-        </p>
-      )}
+      <div className="panel-scroll min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div className="mb-4 text-sm text-muted-foreground">
+          Current portfolio:{' '}
+          <span className="font-medium text-foreground">
+            <SensitiveValue
+              value={formatCurrency(portfolioValue, preferredCurrency, 1)}
+            />
+          </span>
+        </div>
 
-      <div className="space-y-3 bg-card shadow-lg">
-        {goals.map((goal) => {
-          const current = portfolioValue
-          const pct = goal.target_amount > 0
-            ? Math.min(100, Math.round((current / goal.target_amount) * 100))
-            : 0
-          const isDone = goal.is_completed
-          return (
-            <div key={goal.id} className={`border rounded p-3 ${isDone ? 'opacity-60' : ''}`}>
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className={`font-medium ${isDone ? 'line-through' : ''}`}>
-                    {goal.name} {isDone && '✓'}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    <SensitiveValue
-                      value={formatCurrency(current, preferredCurrency, 1)}
-                    />{' '}
-                    /{' '}
-                    <SensitiveValue
-                      value={formatCurrency(goal.target_amount, preferredCurrency, 1)}
-                    />
-                  </div>
-                  {goal.notes && (
-                    <div className="text-xs text-muted-foreground mt-1 italic">{goal.notes}</div>
-                  )}
-                  {goal.completed_at && (
-                    <div className="text-[10px] text-green-600 mt-0.5">
-                      Completed {new Date(goal.completed_at).toLocaleDateString()}
+        {goals.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            No goals yet. Add your first investing goal to track progress.
+          </p>
+        )}
+
+        <div className="space-y-3">
+          {goals.map((goal) => {
+            const current = portfolioValue
+            const pct = goal.target_amount > 0
+              ? Math.min(100, Math.round((current / goal.target_amount) * 100))
+              : 0
+            const isDone = goal.is_completed
+            return (
+              <div
+                key={goal.id}
+                className={`rounded-lg border border-subtle bg-card p-3 transition-colors duration-200 hover:border-gold ${isDone ? 'opacity-60' : ''}`}
+              >
+                <div className="flex justify-between items-start gap-2">
+                  <div className="min-w-0">
+                    <div className={`font-medium ${isDone ? 'line-through' : ''}`}>
+                      {goal.name} {isDone && '✓'}
                     </div>
-                  )}
+                    <div className="text-xs text-muted-foreground">
+                      <SensitiveValue
+                        value={formatCurrency(current, preferredCurrency, 1)}
+                      />{' '}
+                      /{' '}
+                      <SensitiveValue
+                        value={formatCurrency(goal.target_amount, preferredCurrency, 1)}
+                      />
+                    </div>
+                    {goal.notes && (
+                      <div className="text-xs text-muted-foreground mt-1 italic">{goal.notes}</div>
+                    )}
+                    {goal.completed_at && (
+                      <div className="mt-0.5 text-[10px] text-pnl-positive">
+                        Completed {new Date(goal.completed_at).toLocaleDateString()}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6"
+                      onClick={() => openEdit(goal)}
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6"
+                      onClick={() => handleDelete(goal.id)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex gap-1">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6"
-                    onClick={() => openEdit(goal)}
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6"
-                    onClick={() => handleDelete(goal.id)}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
+                {!isDone && (
+                  <>
+                    <div className="mt-2 h-2 overflow-hidden rounded bg-muted">
+                      <div
+                        className="h-2 rounded bg-primary"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <div className="mt-0.5 text-right text-[10px] text-muted-foreground">
+                      {pct}%
+                    </div>
+                  </>
+                )}
               </div>
-              {!isDone && (
-                <>
-                  <div className="mt-2 h-2 bg-muted rounded overflow-hidden">
-                    <div
-                      className="h-2 bg-primary rounded"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                  <div className="text-[10px] text-right mt-0.5 text-muted-foreground">
-                    {pct}%
-                  </div>
-                </>
-              )}
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={(o) => {

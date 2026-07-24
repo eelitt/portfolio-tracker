@@ -24,12 +24,12 @@ export function PlaceholderView({ title, onBack }: PlaceholderViewProps) {
         <span className="text-sm font-medium">{title}</span>
       </div>
 
-      <div className="py-8 text-center">
-        <div className="text-sm text-muted-foreground mb-2">
+      <div className="rounded-lg border border-subtle bg-card px-4 py-8 text-center">
+        <div className="mb-2 text-sm text-muted-foreground">
           This feature is coming soon.
         </div>
         <p className="text-xs text-muted-foreground">
-          We're working on more helpful AI tools for your portfolio.
+          We&apos;re working on more helpful AI tools for your portfolio.
         </p>
       </div>
     </div>

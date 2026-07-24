@@ -40,7 +40,7 @@ export function PortfolioAnalysisView({
       </div>
 
       {isLoading && !insights && (
-        <div className="bg-card border rounded-lg p-4">
+        <div className="rounded-lg border border-subtle bg-card transition-colors duration-200 hover:border-gold p-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground py-4 justify-center">
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading previous analysis...
@@ -49,7 +49,7 @@ export function PortfolioAnalysisView({
       )}
 
       {error && (
-        <div className="bg-card border rounded-lg p-4">
+        <div className="rounded-lg border border-subtle bg-card transition-colors duration-200 hover:border-gold p-4">
           <div className="alert-error">
             {error}
           </div>
@@ -57,7 +57,7 @@ export function PortfolioAnalysisView({
       )}
 
       {insights && (
-        <div className="bg-card border rounded-lg p-4 space-y-4">
+        <div className="rounded-lg border border-subtle bg-card transition-colors duration-200 hover:border-gold p-4 space-y-4">
           {isLoading && (
             <div className="alert-warning flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -83,7 +83,7 @@ export function PortfolioAnalysisView({
           )}
 
           {/* Bullet points in their own differentiated container */}
-          <div className={`bg-background border rounded-lg p-4 ${isLoading ? 'opacity-60' : ''}`}>
+          <div className={`rounded-lg border border-subtle bg-background p-4 ${isLoading ? 'opacity-60' : ''}`}>
             <span className="text-sm font-medium">Analysis</span>
             <ul className="list-disc pt-2 pl-5 space-y-1 text-sm leading-relaxed">
               {insights.map((point, i) => (
@@ -92,7 +92,7 @@ export function PortfolioAnalysisView({
             </ul>
           </div>
 
-          <div className="text-xs text-muted-foreground bg-muted p-3 rounded border">
+          <div className="rounded border border-subtle bg-muted p-3 text-xs text-muted-foreground">
             <strong>Disclaimer:</strong> This is AI-generated analysis for informational purposes only. 
             It is not financial advice. Consult a qualified advisor.
           </div>
@@ -116,7 +116,7 @@ export function PortfolioAnalysisView({
       )}
 
       {!isLoading && !error && !insights && (
-        <div className="bg-card border rounded-lg p-4 space-y-4">
+        <div className="rounded-lg border border-subtle bg-card transition-colors duration-200 hover:border-gold p-4 space-y-4">
           <div className="text-sm text-muted-foreground py-2">
             No analysis done yet.
           </div>

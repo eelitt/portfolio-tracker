@@ -105,7 +105,7 @@ export function HoldingNewsView({
       </div>
 
       {isLoading && !news && (
-        <div className="bg-card border rounded-lg p-4">
+        <div className="rounded-lg border border-subtle bg-card transition-colors duration-200 hover:border-gold p-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground py-4 justify-center">
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading previous news...
@@ -114,7 +114,7 @@ export function HoldingNewsView({
       )}
 
       {error && (
-        <div className="bg-card border rounded-lg p-4">
+        <div className="rounded-lg border border-subtle bg-card transition-colors duration-200 hover:border-gold p-4">
           <div className="alert-error">
             {error}
           </div>
@@ -171,7 +171,7 @@ export function HoldingNewsView({
           {Object.entries(news).map(([symbol, bullets]) => {
             const entryImpact = impact?.[symbol]
             return (
-              <div key={symbol} className="bg-card border rounded-lg p-4">
+              <div key={symbol} className="rounded-lg border border-subtle bg-card transition-colors duration-200 hover:border-gold p-4">
                 <div className="font-semibold text-sm mb-2 flex items-center gap-2">
                   <span>{symbol}</span>
                   <span className="text-[10px] text-muted-foreground font-normal">
@@ -208,7 +208,7 @@ export function HoldingNewsView({
       )}
 
       {!hasNews && !isLoading && !error && (
-        <div className="bg-card border rounded-lg p-4 text-center py-8">
+        <div className="rounded-lg border border-subtle bg-card transition-colors duration-200 hover:border-gold p-4 text-center py-8">
           <p className="text-sm text-muted-foreground mb-3">
             No news fetched yet for your current holdings.
           </p>
