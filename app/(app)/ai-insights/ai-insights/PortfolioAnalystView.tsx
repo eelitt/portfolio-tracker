@@ -165,7 +165,7 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
       {/* Capped height so the prompt form sits higher (not pinned to viewport bottom) */}
       <div
         ref={listRef}
-        className="max-h-[min(42vh,340px)] overflow-y-auto space-y-3 pr-1"
+        className="max-h-[min(42vh,420px)] overflow-y-auto space-y-3 pr-1"
       >
         {messages.length === 0 && (
           <div className="bg-card border rounded-lg p-4 space-y-3">
