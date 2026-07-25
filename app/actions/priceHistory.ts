@@ -24,7 +24,7 @@ function isChartAssetType(v: string): v is ChartAssetType {
 
 /**
  * Lazy-load + sync price history for one holding, with buy/sell markers.
- * Crypto: Binance klines (full + gap). Live quotes also Binance (priceService).
+ * Crypto: Binance klines (full + gap). Live quotes: lib/prices (Binance ticker).
  */
 export async function getHoldingPriceChart(input: {
   symbol: string

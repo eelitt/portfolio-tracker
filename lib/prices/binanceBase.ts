@@ -1,4 +1,4 @@
-/** Shared Binance REST base URL (spot). */
+/** Shared Binance REST base URL (spot). Used by live tickers and chart klines. */
 
 const DEFAULT_BASE = 'https://api.binance.com'
 

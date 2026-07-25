@@ -8,7 +8,7 @@ import {
   getSymbolOptions,
 } from '../symbols'
 import { getBinanceSpotSymbol } from '../priceHistory/binanceSymbol'
-import { getStockPrice, getCryptoPrice } from '../priceService'
+import { getStockPrice, getCryptoPrice } from '../prices'
 
 describe('symbols data (curated lists for transaction forms)', () => {
   it('loads stocks, etfs and cryptos with expected structure', () => {

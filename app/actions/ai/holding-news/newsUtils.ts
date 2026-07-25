@@ -26,7 +26,7 @@ import { STOCK_SYMBOLS, ETF_SYMBOLS, CRYPTO_SYMBOLS } from '@/lib/symbols'
 export const HOLDING_NEWS_COOLDOWN_MS = 24 * 60 * 60 * 1000
 
 /** Cap on how far back we search / ask the model to cover (first fetch and max re-fetch). */
-export const HOLDING_NEWS_MAX_LOOKBACK_DAYS = 7
+const HOLDING_NEWS_MAX_LOOKBACK_DAYS = 7
 
 /**
  * One-shot extended lookback for first-time holdings that return empty after the 7d pass.
@@ -38,7 +38,7 @@ export const HOLDING_NEWS_EXTENDED_LOOKBACK_DAYS = 14
  * Only the largest positions get news (cost control).
  * Smaller holdings are omitted from the LLM prompt and result keys.
  */
-export const HOLDING_NEWS_MAX_HOLDINGS = 6
+const HOLDING_NEWS_MAX_HOLDINGS = 6
 
 /** user_ai_insights.feature_type value for this feature (one row per user). */
 export const HOLDING_NEWS_FEATURE_TYPE = 'holding_news'
@@ -227,22 +227,6 @@ export function symbolNewsFingerprint(bullets: string[] | null | undefined): str
     .filter(Boolean)
     .sort()
     .join('|')
-}
-
-/**
- * Stable fingerprint of news content for “nothing new” detection.
- * Order-independent per symbol and across symbols; case-insensitive bullets.
- */
-export function newsContentFingerprint(news: Record<string, string[]>): string {
-  const symbols = Object.keys(news).map(s => s.toUpperCase()).sort()
-  const parts: string[] = []
-  for (const symbol of symbols) {
-    const bullets = news[symbol] ?? news[symbol.toLowerCase()] ?? []
-    const fp = symbolNewsFingerprint(bullets)
-    if (!fp) continue
-    parts.push(`${symbol}:${fp}`)
-  }
-  return parts.join('||')
 }
 
 export type HoldingNewsMergeResult = {

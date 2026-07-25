@@ -12,7 +12,7 @@ import type { ValidatedTxDraft } from '@/lib/portfolioAnalyst'
 const FEATURE_TYPE = 'portfolio_analyst_pending_tx'
 
 /** Drafts older than this cannot be confirmed. */
-export const PENDING_DRAFT_TTL_MS = 30 * 60 * 1000
+const PENDING_DRAFT_TTL_MS = 30 * 60 * 1000
 
 export type PendingTxDraft = {
   sourceText: string

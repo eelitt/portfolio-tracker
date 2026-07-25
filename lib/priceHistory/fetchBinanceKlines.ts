@@ -1,4 +1,4 @@
-import { binanceBaseUrl } from './binanceBase'
+import { binanceBaseUrl } from '@/lib/prices/binanceBase'
 import { getBinanceSpotSymbol } from './binanceSymbol'
 import { utcDayStart } from './constants'
 import type { PriceBar } from './types'

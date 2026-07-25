@@ -1,26 +1,19 @@
 'use server'
 
-import { getCryptoPricing } from './symbols'
+import { getCryptoPricing } from '@/lib/symbols'
 import {
   buildBinance24hrUrl,
   parseBinance24hrTickers,
-} from './priceHistory/fetchBinanceTicker'
+} from './binanceTicker'
 
 /**
- * Price fetching service.
+ * Live portfolio price service (Finnhub stocks/ETFs + Binance crypto).
  *
- * Called from Server Components / Server Actions.
+ * Chart OHLC / history: lib/priceHistory — not this module.
  *
  * Portfolio KPIs (getPricesForHoldings) default to cache: 'no-store' so the
- * first dashboard paint uses live quotes — correctness over a 60s Data Cache.
- * Suspense skeletons cover the wait. Optional forceFresh: false re-enables
- * short-lived tag `prices` caching for non-critical callers.
- *
- * On incomplete first pass, missing symbols are retried once (still fresh).
- *
- * Stock / ETF: Finnhub (FINNHUB_API_KEY).
- * Crypto: Binance public spot ticker (batched 24hr; no API key).
- * Cash / crypto stables: face value 1, change 0.
+ * first dashboard paint uses live quotes. Optional forceFresh: false re-enables
+ * short-lived tag `prices` caching.
  */
 
 export type PriceQuote = { price: number; change24h: number | null }

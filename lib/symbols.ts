@@ -77,7 +77,7 @@ export function getCryptoPricing(ticker: string): CryptoPricing {
     return { kind: 'none' }
   }
 
-  // Legacy / unlisted holdings: convention fallback (charts + priceService)
+  // Legacy / unlisted holdings: convention fallback (charts + live prices)
   const STABLES = new Set([
     'USDT',
     'USDC',

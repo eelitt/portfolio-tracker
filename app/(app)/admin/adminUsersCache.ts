@@ -11,14 +11,6 @@ export function getCachedAdminUsers(): AdminUserRow[] | null {
   return cachedUsers
 }
 
-export function setCachedAdminUsers(users: AdminUserRow[]): void {
-  cachedUsers = users
-}
-
-export function clearCachedAdminUsers(): void {
-  cachedUsers = null
-}
-
 async function fetchAndCache(): Promise<{ data?: AdminUserRow[]; error?: string }> {
   try {
     const result = await listUsersForAdmin()

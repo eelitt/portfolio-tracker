@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { getCryptoPrice, getPricesForHoldings } from '../priceService'
 import {
+  getCryptoPrice,
+  getPricesForHoldings,
   buildBinance24hrUrl,
   parseBinance24hrTickers,
-} from '../priceHistory/fetchBinanceTicker'
+} from '../prices'
 
 // Mock fetch globally
 const mockFetch = vi.fn()

@@ -1,3 +1,8 @@
+/**
+ * Chart / OHLC history only (klines, candles, DB sync, trade markers).
+ * Live portfolio marks: @/lib/prices
+ */
+
 export * from './types'
 export * from './constants'
 export {
@@ -7,8 +12,4 @@ export {
 } from './markersFromTransactions'
 export { syncSymbolHistory, loadBarsFromDb } from './syncSymbolHistory'
 export { getBinanceSpotSymbol } from './binanceSymbol'
-export {
-  buildBinance24hrUrl,
-  parseBinance24hrTickers,
-} from './fetchBinanceTicker'
 export { parseBinanceKlines, fetchBinanceDailyKlines } from './fetchBinanceKlines'

@@ -19,7 +19,7 @@ export type FinnhubCompanyArticle = {
 }
 
 /** Strip legal suffixes for name matching (Apple Inc. → apple). */
-export function normalizeCompanyNameForMatch(name: string): string {
+function normalizeCompanyNameForMatch(name: string): string {
   return name
     .trim()
     .toLowerCase()

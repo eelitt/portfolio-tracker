@@ -1,6 +1,6 @@
 /**
  * Live Binance spot tickers (last price + 24h change %).
- * Pure parsers are exported for unit tests.
+ * Portfolio marks only — chart OHLC lives under lib/priceHistory.
  */
 
 import { binanceBaseUrl } from './binanceBase'
@@ -26,7 +26,9 @@ function parseChangePct(s: unknown): number | null {
  * Build GET /api/v3/ticker/24hr?symbols=[...] URL for a list of pairs.
  */
 export function buildBinance24hrUrl(pairs: string[]): string {
-  const unique = [...new Set(pairs.map((p) => p.trim().toUpperCase()).filter(Boolean))]
+  const unique = [
+    ...new Set(pairs.map((p) => p.trim().toUpperCase()).filter(Boolean)),
+  ]
   const symbolsParam = encodeURIComponent(JSON.stringify(unique))
   return `${binanceBaseUrl()}/api/v3/ticker/24hr?symbols=${symbolsParam}`
 }
@@ -38,7 +40,11 @@ export function parseBinance24hrTickers(
   raw: unknown
 ): Record<string, BinanceTickerQuote> {
   const out: Record<string, BinanceTickerQuote> = {}
-  const rows = Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? [raw] : []
+  const rows = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === 'object'
+      ? [raw]
+      : []
 
   for (const row of rows) {
     if (!row || typeof row !== 'object') continue
