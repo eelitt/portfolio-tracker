@@ -43,6 +43,10 @@
   /* Dot grid — explicit rgba (color-mix in vars is unreliable in gradients) */
   --dot-grid-size: 36px;
   --dot-grid-color: rgba(90, 85, 75, 0.08);
+  /* Side panel diagonal gold lattice */
+  --panel-grid-gap: 24px;
+  /* Explicit rgba — more reliable in gradients than color-mix + var */
+  --panel-grid-line: rgba(166, 139, 60, 0.12);
 }
 
 .dark {
@@ -81,6 +85,8 @@
   --dot-grid-size: 36px;
   /* Very soft neutral dots (not gold) so chrome/cards stay the accent */
   --dot-grid-color: rgba(255, 255, 255, 0.045);
+  --panel-grid-gap: 24px;
+  --panel-grid-line: rgba(201, 168, 76, 0.14);
 }
 
 /* Map tokens → Tailwind color utilities (bg-background, border-border, text-gold, …) */
@@ -193,6 +199,87 @@
     background-color: var(--card);
     border-color: var(--border);
     backdrop-filter: blur(12px);
+  }
+
+  /*
+    Side panel atmosphere: single-direction 45° gold lines (not a crosshatch).
+    Real .panel-gold-grid-bg child for reliable stacking. App drawers only.
+    Left / right use mirrored diagonal lean + edge fade; top fades under header.
+  */
+  .panel-gold-grid {
+    isolation: isolate;
+  }
+
+  .panel-gold-grid-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .panel-gold-grid > *:not(.panel-gold-grid-bg) {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Soft blend: solid chrome at top of header → transparent into body */
+  .panel-gold-grid-header {
+    border-bottom-color: color-mix(in srgb, var(--border-subtle) 55%, transparent);
+    background-image: linear-gradient(
+      to bottom,
+      var(--card) 0%,
+      var(--card) 42%,
+      color-mix(in srgb, var(--card) 72%, transparent) 72%,
+      transparent 100%
+    );
+  }
+
+  /*
+    AI Insights (left): only / diagonals (45°), denser at outer left,
+    fade toward main content + fade under header.
+  */
+  .panel-gold-grid--left > .panel-gold-grid-bg {
+    background-image: repeating-linear-gradient(
+      45deg,
+      var(--panel-grid-line) 0,
+      var(--panel-grid-line) 1px,
+      transparent 1px,
+      transparent var(--panel-grid-gap)
+    );
+    -webkit-mask-image:
+      linear-gradient(to right, #000 0%, #000 40%, transparent 95%),
+      linear-gradient(to bottom, transparent 0%, #000 10%, #000 100%);
+    mask-image:
+      linear-gradient(to right, #000 0%, #000 40%, transparent 95%),
+      linear-gradient(to bottom, transparent 0%, #000 10%, #000 100%);
+    -webkit-mask-composite: source-in;
+    mask-composite: intersect;
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+  }
+
+  /*
+    Goals (right): only \ diagonals (−45°), denser at outer right,
+    fade toward main content + fade under header.
+  */
+  .panel-gold-grid--right > .panel-gold-grid-bg {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      var(--panel-grid-line) 0,
+      var(--panel-grid-line) 1px,
+      transparent 1px,
+      transparent var(--panel-grid-gap)
+    );
+    -webkit-mask-image:
+      linear-gradient(to left, #000 0%, #000 40%, transparent 95%),
+      linear-gradient(to bottom, transparent 0%, #000 10%, #000 100%);
+    mask-image:
+      linear-gradient(to left, #000 0%, #000 40%, transparent 95%),
+      linear-gradient(to bottom, transparent 0%, #000 10%, #000 100%);
+    -webkit-mask-composite: source-in;
+    mask-composite: intersect;
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
   }
 
   /*

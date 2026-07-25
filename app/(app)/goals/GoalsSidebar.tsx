@@ -173,8 +173,9 @@ export default function GoalsSidebar({
   if (!isOpen) return null
 
   return (
-    <div className="surface-panel fixed right-0 top-16 bottom-0 z-40 flex w-80 flex-col overflow-hidden border-l border-border shadow-xl">
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-subtle bg-card px-4 pb-3 pt-4">
+    <div className="surface-panel panel-gold-grid panel-gold-grid--right fixed right-0 top-16 bottom-0 z-40 flex w-80 flex-col overflow-hidden border-l border-border shadow-xl">
+      <div className="panel-gold-grid-bg" aria-hidden />
+      <div className="panel-gold-grid-header relative z-10 flex shrink-0 items-center justify-between gap-2 border-b border-subtle px-4 pb-5 pt-4">
         <div className="flex min-w-0 items-center gap-2">
           <Button
             variant="ghost"

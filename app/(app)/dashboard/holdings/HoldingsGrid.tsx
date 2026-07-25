@@ -7,6 +7,7 @@ import { getAssetTypeLabel } from '@/lib/utils'
 import type { AssetType, EnrichedHolding } from '@/lib/types'
 import type { HoldingNewsImpactEntry } from '@/lib/schemas'
 import { HoldingNewsTooltip } from './HoldingNewsTooltip'
+import { HoldingCardLogo } from './HoldingCardLogo'
 import SensitiveValue from '@/components/SensitiveValue'
 
 interface HoldingsGridProps {
@@ -58,8 +59,12 @@ function HoldingCard({
         className="h-full w-full rounded-xl text-left transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-black/20 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background active:scale-[0.985]"
       >
         {/* Neutral structure; gold border only on hover */}
-        <Card className="h-full border-subtle bg-surface-elevated transition-colors duration-200 group-hover:border-gold">
-          <CardContent className="p-4">
+        <Card className="relative h-full overflow-hidden border-subtle bg-surface-elevated transition-colors duration-200 group-hover:border-gold">
+          <HoldingCardLogo
+            symbol={holding.symbol}
+            assetType={holding.asset_type}
+          />
+          <CardContent className="relative z-10 p-4">
             <div className="flex justify-between">
               <div>
                 <div className="text-lg font-semibold">{holding.symbol}</div>
