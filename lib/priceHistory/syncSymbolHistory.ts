@@ -178,7 +178,7 @@ function metaFromRow(
 
 /**
  * Crypto chart history: Binance daily klines only (full backfill + gap fill).
- * Live portfolio quotes stay on CoinGecko (priceService) — not this path.
+ * Live portfolio quotes use Binance tickers (priceService) — not this path.
  */
 async function fetchCryptoBars(
   symbol: string,

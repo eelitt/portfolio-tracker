@@ -124,8 +124,12 @@ export default function AllocationPie({
       {/* Pie + legend: legend wide enough for names like "Emergency Fund" */}
       <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(14rem,18rem)] md:items-center lg:grid-cols-[minmax(0,1fr)_minmax(16rem,20rem)]">
         {/* Donut + center total */}
-        <div className="relative z-10 mx-auto h-72 w-full max-w-sm overflow-visible">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="relative z-10 mx-auto h-72 w-full min-w-0 max-w-sm overflow-visible">
+          <ResponsiveContainer
+            width="100%"
+            height={288}
+            initialDimension={{ width: 320, height: 288 }}
+          >
             <PieChart>
               <Pie
                 data={slices}

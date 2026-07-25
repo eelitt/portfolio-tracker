@@ -1,9 +1,48 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { getCryptoPrice, getPricesForHoldings } from '../priceService'
+import {
+  buildBinance24hrUrl,
+  parseBinance24hrTickers,
+} from '../priceHistory/fetchBinanceTicker'
 
 // Mock fetch globally
 const mockFetch = vi.fn()
 global.fetch = mockFetch
+
+describe('parseBinance24hrTickers', () => {
+  it('parses array payload into pair → quote', () => {
+    const parsed = parseBinance24hrTickers([
+      {
+        symbol: 'BTCUSDT',
+        lastPrice: '65000.50',
+        priceChangePercent: '1.25',
+      },
+      {
+        symbol: 'ETHUSDT',
+        lastPrice: '2800',
+        priceChangePercent: '-0.5',
+      },
+    ])
+    expect(parsed).toEqual({
+      BTCUSDT: { price: 65000.5, change24h: 1.25 },
+      ETHUSDT: { price: 2800, change24h: -0.5 },
+    })
+  })
+
+  it('rejects zero / invalid lastPrice', () => {
+    const parsed = parseBinance24hrTickers([
+      { symbol: 'BTCUSDT', lastPrice: '0', priceChangePercent: '1' },
+      { symbol: 'ETHUSDT', lastPrice: 'bad', priceChangePercent: '1' },
+    ])
+    expect(parsed).toEqual({})
+  })
+
+  it('buildBinance24hrUrl encodes symbols list', () => {
+    const url = buildBinance24hrUrl(['btcusdt', 'ETHUSDT'])
+    expect(url).toContain('/api/v3/ticker/24hr?symbols=')
+    expect(url).toContain(encodeURIComponent(JSON.stringify(['BTCUSDT', 'ETHUSDT'])))
+  })
+})
 
 describe('priceService', () => {
   beforeEach(() => {
@@ -17,32 +56,37 @@ describe('priceService', () => {
   })
 
   describe('getCryptoPrice', () => {
-    it('should return null for unknown crypto symbols', async () => {
-      const price = await getCryptoPrice('UNKNOWN')
-      expect(price).toBeNull()
+    it('returns stable face value without network', async () => {
+      const price = await getCryptoPrice('USDT')
+      expect(price).toEqual({ price: 1, change24h: 0 })
       expect(mockFetch).not.toHaveBeenCalled()
     })
 
-    it('should fetch and return crypto price correctly', async () => {
+    it('should fetch and return crypto price from Binance 24hr', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ bitcoin: { usd: 65000, usd_24h_change: 1.2 } }),
+        json: async () => [
+          {
+            symbol: 'BTCUSDT',
+            lastPrice: '65000',
+            priceChangePercent: '1.2',
+          },
+        ],
       })
 
       const price = await getCryptoPrice('BTC')
       expect(price?.price).toBe(65000)
       expect(price?.change24h).toBe(1.2)
-      // Single-symbol helper still uses short Data Cache unless forceFresh
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('bitcoin'),
+        expect.stringContaining('/api/v3/ticker/24hr'),
         expect.objectContaining({
           next: expect.objectContaining({ tags: ['prices'] }),
         })
       )
+      expect(mockFetch.mock.calls[0][0]).toContain('BTCUSDT')
     })
 
     it('should return null if API response is not ok', async () => {
-      // Initial + one retry
       mockFetch.mockResolvedValue({ ok: false })
 
       const price = await getCryptoPrice('ETH')
@@ -56,23 +100,33 @@ describe('priceService', () => {
       expect(price).toBeNull()
     })
 
-    it('should return null when usd is zero', async () => {
+    it('should return null when lastPrice is zero', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ bitcoin: { usd: 0 } }),
+        json: async () => [
+          { symbol: 'BTCUSDT', lastPrice: '0', priceChangePercent: '1' },
+        ],
       })
       expect(await getCryptoPrice('BTC')).toBeNull()
     })
   })
 
   describe('getPricesForHoldings', () => {
-    it('should batch crypto into a single CoinGecko request when all succeed', async () => {
+    it('should batch crypto into a single Binance 24hr request when all succeed', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          bitcoin: { usd: 62000, usd_24h_change: 2 },
-          ethereum: { usd: 2800, usd_24h_change: -1 },
-        }),
+        json: async () => [
+          {
+            symbol: 'BTCUSDT',
+            lastPrice: '62000',
+            priceChangePercent: '2',
+          },
+          {
+            symbol: 'ETHUSDT',
+            lastPrice: '2800',
+            priceChangePercent: '-1',
+          },
+        ],
       })
 
       const holdings = [
@@ -83,11 +137,10 @@ describe('priceService', () => {
 
       const prices = await getPricesForHoldings(holdings)
 
-      // One batch request for both cryptos (cash needs no network); no second pass
       expect(mockFetch).toHaveBeenCalledTimes(1)
-      expect(mockFetch.mock.calls[0][0]).toContain('bitcoin')
-      expect(mockFetch.mock.calls[0][0]).toContain('ethereum')
-      // Portfolio path defaults to live quotes (no-store)
+      expect(mockFetch.mock.calls[0][0]).toContain('/api/v3/ticker/24hr')
+      expect(mockFetch.mock.calls[0][0]).toContain('BTCUSDT')
+      expect(mockFetch.mock.calls[0][0]).toContain('ETHUSDT')
       expect(mockFetch.mock.calls[0][1]).toEqual(
         expect.objectContaining({ cache: 'no-store' })
       )
@@ -99,12 +152,24 @@ describe('priceService', () => {
       })
     })
 
+    it('prices stable crypto locally without network', async () => {
+      const prices = await getPricesForHoldings([
+        { symbol: 'USDC', asset_type: 'crypto' },
+      ])
+      expect(prices.USDC).toEqual({ price: 1, change24h: 0 })
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
     it('can opt into Data Cache with forceFresh: false', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          bitcoin: { usd: 62000, usd_24h_change: 2 },
-        }),
+        json: async () => [
+          {
+            symbol: 'BTCUSDT',
+            lastPrice: '62000',
+            priceChangePercent: '2',
+          },
+        ],
       })
 
       await getPricesForHoldings(
@@ -127,9 +192,13 @@ describe('priceService', () => {
         // Pass 2 (forceFresh): success
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({
-            bitcoin: { usd: 61000, usd_24h_change: 1 },
-          }),
+          json: async () => [
+            {
+              symbol: 'BTCUSDT',
+              lastPrice: '61000',
+              priceChangePercent: '1',
+            },
+          ],
         })
 
       const pricesPromise = getPricesForHoldings([
@@ -139,7 +208,6 @@ describe('priceService', () => {
       const prices = await pricesPromise
 
       expect(prices.BTC).toEqual({ price: 61000, change24h: 1 })
-      // Last call should be no-store retry
       const lastInit = mockFetch.mock.calls[mockFetch.mock.calls.length - 1][1]
       expect(lastInit).toEqual(expect.objectContaining({ cache: 'no-store' }))
     })
@@ -148,39 +216,12 @@ describe('priceService', () => {
       mockFetch.mockResolvedValue({ ok: false })
 
       const pricesPromise = getPricesForHoldings([
-        { symbol: 'BTC', asset_type: 'crypto' as const },
-      ])
-      await vi.runAllTimersAsync()
-      const prices = await pricesPromise
-      expect(prices).toEqual({})
-    })
-
-    it('should omit crypto symbols with zero price then retry that symbol', async () => {
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            bitcoin: { usd: 0 },
-            ethereum: { usd: 2800 },
-          }),
-        })
-        // Retry pass for BTC only
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            bitcoin: { usd: 64000, usd_24h_change: 0.5 },
-          }),
-        })
-
-      const pricesPromise = getPricesForHoldings([
         { symbol: 'BTC', asset_type: 'crypto' },
-        { symbol: 'ETH', asset_type: 'crypto' },
       ])
       await vi.runAllTimersAsync()
       const prices = await pricesPromise
 
-      expect(prices.ETH).toEqual({ price: 2800, change24h: null })
-      expect(prices.BTC).toEqual({ price: 64000, change24h: 0.5 })
+      expect(prices.BTC).toBeUndefined()
     })
   })
 })

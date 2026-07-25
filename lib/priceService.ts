@@ -1,6 +1,10 @@
 'use server'
 
-import { getCryptoId } from './symbols'
+import { getCryptoPricing } from './symbols'
+import {
+  buildBinance24hrUrl,
+  parseBinance24hrTickers,
+} from './priceHistory/fetchBinanceTicker'
 
 /**
  * Price fetching service.
@@ -15,8 +19,8 @@ import { getCryptoId } from './symbols'
  * On incomplete first pass, missing symbols are retried once (still fresh).
  *
  * Stock / ETF: Finnhub (FINNHUB_API_KEY).
- * Crypto: CoinGecko (batched when fetching multiple holdings).
- * Cash: face value 1, change 0.
+ * Crypto: Binance public spot ticker (batched 24hr; no API key).
+ * Cash / crypto stables: face value 1, change 0.
  */
 
 export type PriceQuote = { price: number; change24h: number | null }
@@ -110,42 +114,23 @@ export async function getStockPrice(
   }
 }
 
-// ==================== CRYPTO (CoinGecko) ====================
+// ==================== CRYPTO (Binance) ====================
 
 /**
- * Single-symbol crypto price (tests + callers that need one id).
+ * Single-symbol crypto price (tests + single-ticker callers).
  * Prefer getPricesForHoldings for portfolios (batched).
  */
 export async function getCryptoPrice(
   symbol: string,
   options: PriceFetchOptions = {}
 ): Promise<PriceQuote | null> {
-  const id = getCryptoId(symbol)
-  if (!id) return null
-
-  const result = await fetchJson(
-    `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd&include_24hr_change=true`,
-    { forceFresh: options.forceFresh }
-  )
-  if (!result.ok) return null
-
-  const data = result.data as Record<string, { usd?: number; usd_24h_change?: number }>
-  if (process.env.NODE_ENV === 'development') {
-    console.log(`Fetched price for ${symbol}:`, data?.[id]?.usd)
-  }
-
-  const usd = data?.[id]?.usd
-  if (!isValidPrice(usd)) return null
-
-  const ch = data[id]?.usd_24h_change
-  return {
-    price: usd,
-    change24h: typeof ch === 'number' && Number.isFinite(ch) ? ch : null,
-  }
+  const batch = await getCryptoPricesBatch([symbol], options)
+  return batch[symbol] ?? null
 }
 
 /**
- * Batch-fetch crypto prices in one CoinGecko request (avoids free-tier 429s).
+ * Batch-fetch crypto prices in one Binance 24hr request.
+ * Stables resolve locally to face value 1 (no network).
  */
 export async function getCryptoPricesBatch(
   symbols: string[],
@@ -154,31 +139,41 @@ export async function getCryptoPricesBatch(
   const out: Record<string, PriceQuote> = {}
   if (symbols.length === 0) return out
 
-  const idToSymbol = new Map<string, string>()
-  for (const symbol of symbols) {
-    const id = getCryptoId(symbol)
-    if (id) idToSymbol.set(id, symbol)
-  }
-  if (idToSymbol.size === 0) return out
+  /** Binance pair → portfolio ticker(s) — usually 1:1 */
+  const pairToTickers = new Map<string, string[]>()
 
-  const ids = [...idToSymbol.keys()].join(',')
-  const result = await fetchJson(
-    `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd&include_24hr_change=true`,
-    { forceFresh: options.forceFresh }
-  )
+  for (const symbol of symbols) {
+    const pricing = getCryptoPricing(symbol)
+    if (pricing.kind === 'stable') {
+      out[symbol] = { price: 1, change24h: 0 }
+      continue
+    }
+    if (pricing.kind === 'none') continue
+
+    const list = pairToTickers.get(pricing.pair) ?? []
+    list.push(symbol)
+    pairToTickers.set(pricing.pair, list)
+  }
+
+  if (pairToTickers.size === 0) return out
+
+  const pairs = [...pairToTickers.keys()]
+  const url = buildBinance24hrUrl(pairs)
+  const result = await fetchJson(url, { forceFresh: options.forceFresh })
   if (!result.ok) return out
 
-  const data = result.data as Record<string, { usd?: number; usd_24h_change?: number }>
-  for (const [id, symbol] of idToSymbol) {
-    const row = data?.[id]
-    if (!isValidPrice(row?.usd)) continue
-    const ch = row.usd_24h_change
-    out[symbol] = {
-      price: row.usd,
-      change24h: typeof ch === 'number' && Number.isFinite(ch) ? ch : null,
-    }
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`Fetched price for ${symbol}:`, row.usd)
+  const byPair = parseBinance24hrTickers(result.data)
+  for (const [pair, tickers] of pairToTickers) {
+    const quote = byPair[pair]
+    if (!quote || !isValidPrice(quote.price)) continue
+    for (const symbol of tickers) {
+      out[symbol] = {
+        price: quote.price,
+        change24h: quote.change24h,
+      }
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`Fetched price for ${symbol}:`, quote.price)
+      }
     }
   }
 

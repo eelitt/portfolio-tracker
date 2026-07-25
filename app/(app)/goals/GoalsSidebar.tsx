@@ -1,7 +1,13 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { getUserGoals, createGoal, updateGoal, deleteGoal, getCurrentPortfolioValue } from '@/app/actions/goals'
+import {
+  getUserGoals,
+  createGoal,
+  updateGoal,
+  deleteGoal,
+  getCurrentPortfolioValue,
+} from '@/app/actions/goals'
 import type { PreferredCurrency } from '@/lib/userTypes'
 import { formatCurrency } from '@/lib/currency'
 import SensitiveValue from '@/components/SensitiveValue'
@@ -15,6 +21,10 @@ import {
 } from '@/components/ui/dialog'
 import { Plus, Pencil, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  PORTFOLIO_VALUE_EVENT,
+  type PortfolioValueDetail,
+} from '@/app/(app)/dashboard/summary/PortfolioValueSync'
 
 interface GoalsSidebarProps {
   /** From layout profile — do not load via lib/user on the client. */
@@ -26,6 +36,8 @@ export default function GoalsSidebar({
 }: GoalsSidebarProps) {
   const [isOpen, setIsOpen] = useState(false)
   const isOpenRef = useRef(false)
+  /** True once Summary (or fallback) has published a mark this session. */
+  const hasPortfolioValueRef = useRef(false)
   const [goals, setGoals] = useState<Goal[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Goal | null>(null)
@@ -40,19 +52,24 @@ export default function GoalsSidebar({
     setGoals(data)
   }
 
-  const loadPortfolioValue = async () => {
+  /** Fallback only — avoids second price fetch when Summary already broadcast. */
+  const loadPortfolioValueFallback = async () => {
+    if (hasPortfolioValueRef.current) return
     const val = await getCurrentPortfolioValue()
+    hasPortfolioValueRef.current = true
     setPortfolioValue(val)
   }
 
-  // Load sidebar data only when the sidebar is (or becomes) visible.
-  // This avoids useless server action + price API calls on every page load
-  // when the user has the goals sidebar closed.
+  // Load goals list only when the sidebar is visible (no price re-fetch).
   useEffect(() => {
     isOpenRef.current = isOpen
     if (isOpen) {
       loadGoals()
-      loadPortfolioValue()
+      // If Summary has not mounted yet (or never will), one deferred fallback.
+      const t = window.setTimeout(() => {
+        void loadPortfolioValueFallback()
+      }, 1500)
+      return () => window.clearTimeout(t)
     }
   }, [isOpen])
 
@@ -60,32 +77,31 @@ export default function GoalsSidebar({
     const handleToggle = () => {
       const open = localStorage.getItem('goalsSidebarOpen') === 'true'
       setIsOpen(open)
-      // loads are driven by the isOpen effect above; no need to duplicate here
       if (!open) {
-        // close any open inner dialog when sidebar is closed externally
         setDialogOpen(false)
         setEditing(null)
       }
     }
     window.addEventListener('goals-sidebar-toggle', handleToggle)
 
-    const handlePortfolioUpdate = () => {
-      // Only refresh when the sidebar is actually open (saves work when closed)
-      // Use ref to avoid stale closure from the empty-deps listener setup
-      if (isOpenRef.current) {
-        loadPortfolioValue()
-      }
+    // Same mark as Summary — no second getPortfolioData / Binance round-trip.
+    const handlePortfolioValue = (e: Event) => {
+      const detail = (e as CustomEvent<PortfolioValueDetail>).detail
+      if (!detail || typeof detail.value !== 'number') return
+      hasPortfolioValueRef.current = true
+      setPortfolioValue(detail.value)
     }
-    window.addEventListener('portfolio-updated', handlePortfolioUpdate)
+    window.addEventListener(PORTFOLIO_VALUE_EVENT, handlePortfolioValue)
 
-    // Set initial open state from localStorage.
-    // The isOpen effect above will trigger loads if it ends up true.
+    // After tx / refresh, Summary re-renders and re-broadcasts portfolio-value.
+    // Do not call getCurrentPortfolioValue here (that was the double-fetch).
+
     const initial = localStorage.getItem('goalsSidebarOpen') === 'true'
     setIsOpen(initial)
 
     return () => {
       window.removeEventListener('goals-sidebar-toggle', handleToggle)
-      window.removeEventListener('portfolio-updated', handlePortfolioUpdate)
+      window.removeEventListener(PORTFOLIO_VALUE_EVENT, handlePortfolioValue)
     }
   }, [])
 
@@ -141,7 +157,6 @@ export default function GoalsSidebar({
       toast.success(editing ? 'Goal updated' : 'Goal added')
       closeDialog()
       loadGoals()
-      loadPortfolioValue()
     }
   }
 
@@ -152,7 +167,6 @@ export default function GoalsSidebar({
     } else {
       toast.success('Goal deleted')
       loadGoals()
-      loadPortfolioValue()
     }
   }
 

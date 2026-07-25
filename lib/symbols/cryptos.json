@@ -1,128 +1,92 @@
 [
-{
-    "id": "bitcoin",
+  {
     "symbol": "BTC",
     "name": "Bitcoin",
+    "binance_symbol": "BTCUSDT",
     "market_cap_rank": 1
   },
   {
-    "id": "ethereum",
     "symbol": "ETH",
     "name": "Ethereum",
+    "binance_symbol": "ETHUSDT",
     "market_cap_rank": 2
   },
   {
-    "id": "tether",
     "symbol": "USDT",
     "name": "Tether",
+    "stable": true,
     "market_cap_rank": 3
   },
   {
-    "id": "binancecoin",
     "symbol": "BNB",
     "name": "BNB",
+    "binance_symbol": "BNBUSDT",
     "market_cap_rank": 4
   },
   {
-    "id": "usd-coin",
     "symbol": "USDC",
     "name": "USDC",
+    "stable": true,
     "market_cap_rank": 5
   },
   {
-    "id": "ripple",
     "symbol": "XRP",
     "name": "XRP",
+    "binance_symbol": "XRPUSDT",
     "market_cap_rank": 6
   },
   {
-    "id": "solana",
     "symbol": "SOL",
     "name": "Solana",
+    "binance_symbol": "SOLUSDT",
     "market_cap_rank": 7
   },
   {
-    "id": "tron",
     "symbol": "TRX",
     "name": "TRON",
+    "binance_symbol": "TRXUSDT",
     "market_cap_rank": 8
   },
   {
-    "id": "figure-heloc",
-    "symbol": "FIGR_HELOC",
-    "name": "Figure Heloc",
+    "symbol": "DOGE",
+    "name": "Dogecoin",
+    "binance_symbol": "DOGEUSDT",
     "market_cap_rank": 9
   },
   {
-    "id": "hyperliquid",
-    "symbol": "HYPE",
-    "name": "Hyperliquid",
+    "symbol": "USDS",
+    "name": "USDS",
+    "stable": true,
     "market_cap_rank": 10
   },
   {
-    "id": "dogecoin",
-    "symbol": "DOGE",
-    "name": "Dogecoin",
+    "symbol": "ZEC",
+    "name": "Zcash",
+    "binance_symbol": "ZECUSDT",
     "market_cap_rank": 11
   },
   {
-    "id": "usds",
-    "symbol": "USDS",
-    "name": "USDS",
+    "symbol": "ADA",
+    "name": "Cardano",
+    "binance_symbol": "ADAUSDT",
     "market_cap_rank": 12
   },
   {
-    "id": "rain",
-    "symbol": "RAIN",
-    "name": "Rain",
+    "symbol": "XLM",
+    "name": "Stellar",
+    "binance_symbol": "XLMUSDT",
     "market_cap_rank": 13
   },
   {
-    "id": "leo-token",
-    "symbol": "LEO",
-    "name": "LEO Token",
+    "symbol": "XMR",
+    "name": "Monero",
+    "binance_symbol": "XMRUSDT",
     "market_cap_rank": 14
   },
   {
-    "id": "zcash",
-    "symbol": "ZEC",
-    "name": "Zcash",
-    "market_cap_rank": 15
-  },
-  {
-    "id": "whitebit",
-    "symbol": "WBT",
-    "name": "WhiteBIT Coin",
-    "market_cap_rank": 16
-  },
-  {
-    "id": "cardano",
-    "symbol": "ADA",
-    "name": "Cardano",
-    "market_cap_rank": 17
-  },
-  {
-    "id": "stellar",
-    "symbol": "XLM",
-    "name": "Stellar",
-    "market_cap_rank": 18
-  },
-  {
-    "id": "monero",
-    "symbol": "XMR",
-    "name": "Monero",
-    "market_cap_rank": 19
-  },
-  {
-    "id": "chainlink",
     "symbol": "LINK",
     "name": "Chainlink",
-    "market_cap_rank": 20
-  },
-  {
-    "id": "canton-network",
-    "symbol": "CC",
-    "name": "Canton",
-    "market_cap_rank": 21
+    "binance_symbol": "LINKUSDT",
+    "market_cap_rank": 15
   }
 ]

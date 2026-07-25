@@ -4,9 +4,10 @@ import {
   ETF_SYMBOLS,
   CRYPTO_SYMBOLS,
   getSymbolsForType,
-  getCryptoId,
+  getCryptoPricing,
   getSymbolOptions,
 } from '../symbols'
+import { getBinanceSpotSymbol } from '../priceHistory/binanceSymbol'
 import { getStockPrice, getCryptoPrice } from '../priceService'
 
 describe('symbols data (curated lists for transaction forms)', () => {
@@ -20,7 +21,6 @@ describe('symbols data (curated lists for transaction forms)', () => {
     expect(Array.isArray(CRYPTO_SYMBOLS)).toBe(true)
     expect(CRYPTO_SYMBOLS.length).toBeGreaterThan(0)
 
-    // spot checks on shape
     const stock = STOCK_SYMBOLS[0]
     expect(typeof stock.symbol).toBe('string')
     expect(stock.symbol.length).toBeGreaterThan(0)
@@ -31,10 +31,10 @@ describe('symbols data (curated lists for transaction forms)', () => {
     expect(typeof etf.name).toBe('string')
 
     const crypto = CRYPTO_SYMBOLS[0]
-    expect(typeof crypto.id).toBe('string')
-    expect(crypto.id.length).toBeGreaterThan(0)
     expect(typeof crypto.symbol).toBe('string')
     expect(typeof crypto.name).toBe('string')
+    // No CoinGecko id field
+    expect((crypto as { id?: string }).id).toBeUndefined()
   })
 
   it('has no duplicate tickers within each list', () => {
@@ -54,12 +54,24 @@ describe('symbols data (curated lists for transaction forms)', () => {
     checkUnique(CRYPTO_SYMBOLS, 'crypto')
   })
 
-  it('provides crypto ids usable for CoinGecko price fetches', () => {
+  it('every crypto is either stable or has a Binance USDT pair', () => {
     for (const c of CRYPTO_SYMBOLS) {
-      expect(typeof c.id).toBe('string')
-      expect(c.id.trim().length).toBeGreaterThan(0)
-      // typical CoinGecko ids are lowercase slugs
-      expect(c.id).toMatch(/^[a-z0-9-]+$/)
+      if (c.stable === true) {
+        expect(c.binance_symbol == null || c.binance_symbol === '').toBe(true)
+        expect(getCryptoPricing(c.symbol)).toEqual({ kind: 'stable' })
+        expect(getBinanceSpotSymbol(c.symbol)).toBeUndefined()
+      } else {
+        expect(typeof c.binance_symbol).toBe('string')
+        expect(c.binance_symbol!.length).toBeGreaterThan(0)
+        expect(c.binance_symbol).toMatch(/USDT$/)
+        expect(getCryptoPricing(c.symbol)).toEqual({
+          kind: 'binance',
+          pair: c.binance_symbol!.toUpperCase(),
+        })
+        expect(getBinanceSpotSymbol(c.symbol)).toBe(
+          c.binance_symbol!.toUpperCase()
+        )
+      }
     }
   })
 
@@ -71,24 +83,28 @@ describe('symbols data (curated lists for transaction forms)', () => {
     expect(getSymbolsForType('unknown')).toEqual([])
   })
 
-  it('getCryptoId resolves tickers from the curated list (case insensitive)', () => {
-    const first = CRYPTO_SYMBOLS[0]
-    expect(getCryptoId(first.symbol)).toBe(first.id)
-    expect(getCryptoId(first.symbol.toLowerCase())).toBe(first.id)
-    expect(getCryptoId('NONEXISTENT')).toBeUndefined()
+  it('getCryptoPricing is case insensitive and handles legacy fallback', () => {
+    expect(getCryptoPricing('btc')).toEqual({
+      kind: 'binance',
+      pair: 'BTCUSDT',
+    })
+    expect(getCryptoPricing('usdt')).toEqual({ kind: 'stable' })
+    // Unlisted legacy → convention pair
+    expect(getCryptoPricing('FOOCOIN')).toEqual({
+      kind: 'binance',
+      pair: 'FOOCOINUSDT',
+    })
   })
 
   it('getSymbolOptions supports preserveValue for edit scenarios', () => {
     const stockOpts = getSymbolOptions('stock')
     expect(stockOpts.length).toBeGreaterThan(0)
 
-    // pick something unlikely to be the first entry
     const weird = 'WEIRDOLD'
     const withPreserve = getSymbolOptions('stock', weird)
     expect(withPreserve[0].value).toBe(weird)
     expect(withPreserve[0].label).toContain('previous')
 
-    // when already present, it should not duplicate at the front
     const firstSymbol = stockOpts[0].value
     const stillFirst = getSymbolOptions('stock', firstSymbol)
     expect(stillFirst[0].value).toBe(firstSymbol)
@@ -101,7 +117,6 @@ describe('symbols can be used to fetch prices from the APIs', () => {
 
   beforeEach(() => {
     global.fetch = vi.fn()
-    // Finnhub key is required for getStockPrice to actually call fetch
     process.env.FINNHUB_API_KEY = 'test-key-for-symbols-test'
   })
 
@@ -118,8 +133,8 @@ describe('symbols can be used to fetch prices from the APIs', () => {
       json: async () => ({ c: 123.45, dp: 1.23 }),
     } as any)
 
-    // Use a symbol that is extremely likely to be in the stocks list
-    const sample = STOCK_SYMBOLS.find((s) => s.symbol === 'AAPL') || STOCK_SYMBOLS[0]
+    const sample =
+      STOCK_SYMBOLS.find((s) => s.symbol === 'AAPL') || STOCK_SYMBOLS[0]
 
     const result = await getStockPrice(sample.symbol)
 
@@ -147,23 +162,32 @@ describe('symbols can be used to fetch prices from the APIs', () => {
     )
   })
 
-  it('crypto symbols from the json resolve the correct CoinGecko id and hit the right URL', async () => {
+  it('crypto symbols hit Binance with the catalog pair', async () => {
     const mock = global.fetch as unknown as ReturnType<typeof vi.fn>
-    const sampleCrypto = CRYPTO_SYMBOLS[0] // e.g. bitcoin / BTC
+    const sampleCrypto = CRYPTO_SYMBOLS.find((c) => c.binance_symbol)
+    expect(sampleCrypto).toBeDefined()
+    const pair = sampleCrypto!.binance_symbol!.toUpperCase()
 
     mock.mockResolvedValue({
       ok: true,
-      json: async () => ({
-        [sampleCrypto.id]: { usd: 60000, usd_24h_change: 2.5 },
-      }),
+      json: async () => [
+        {
+          symbol: pair,
+          lastPrice: '60000',
+          priceChangePercent: '2.5',
+        },
+      ],
     } as any)
 
-    const result = await getCryptoPrice(sampleCrypto.symbol)
+    const result = await getCryptoPrice(sampleCrypto!.symbol)
 
     expect(result?.price).toBe(60000)
+    expect(result?.change24h).toBe(2.5)
     expect(mock).toHaveBeenCalledWith(
-      expect.stringContaining(`ids=${sampleCrypto.id}`),
+      expect.stringContaining('/api/v3/ticker/24hr'),
       expect.anything()
     )
+    expect(mock.mock.calls[0][0]).toContain(pair)
+    expect(mock.mock.calls[0][0]).not.toContain('coingecko')
   })
 })

@@ -52,9 +52,9 @@ export async function updatePreferredCurrency(currency: PreferredCurrency) {
     return { error: error.message }
   }
 
-  // Display currency only — do not bust live price cache (quotes are USD).
-  // Busting `prices` forced CoinGecko re-fetches on every toggle and could
-  // rate-limit the free tier, showing "0 of N assets" despite good prior quotes.
+  // Display currency only — do not bust live price cache (quotes are USD/USDT).
+  // Busting `prices` forced origin re-fetches on every toggle and could
+  // thrash the free tier, showing "0 of N assets" despite good prior quotes.
   revalidatePath('/dashboard')
   return { success: true }
 }

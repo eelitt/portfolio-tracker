@@ -117,8 +117,12 @@ export default function PerformanceChart({
         </p>
       )}
 
-      <div className="h-80 w-full mt-4">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="mt-4 h-80 w-full min-w-0">
+        <ResponsiveContainer
+          width="100%"
+          height={320}
+          initialDimension={{ width: 640, height: 320 }}
+        >
           <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="mvFill" x1="0" y1="0" x2="0" y2="1">

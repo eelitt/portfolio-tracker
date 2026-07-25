@@ -1,6 +1,7 @@
 import { getPortfolioData } from '@/lib/portfolioData'
 import { formatCurrency } from '@/lib/currency'
 import SensitiveValue from '@/components/SensitiveValue'
+import PortfolioValueSync from './PortfolioValueSync'
 
 /**
  * Open section (no outer gold card): title + KPI strip on the page field.
@@ -17,6 +18,10 @@ export default async function SummarySection() {
 
   return (
     <section className="mb-8">
+      <PortfolioValueSync
+        value={data.totalMarketValue}
+        currency={data.preferredCurrency}
+      />
       <h2 className="section-title mb-4">
         <span className="section-title-accent">Summary</span>
       </h2>

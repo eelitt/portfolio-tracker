@@ -1,33 +1,45 @@
 /**
- * Curated symbol lists for transaction form dropdowns (+ crypto id map).
+ * Curated symbol lists for transaction form dropdowns (+ crypto pricing map).
  *
  * - Users can only pick symbols that exist in these lists for the chosen asset type.
  * - To support a new instrument, add it to the appropriate .json file.
- * - Crypto entries include the CoinGecko "id" so held cryptos can be priced.
+ * - Crypto rows: either `stable: true` (face $1) or `binance_symbol` (Binance USDT pair).
+ *   Confirm the pair exists on Binance spot before adding.
  *
- * Price APIs are never called for the full lists. The price service only looks up
- * CoinGecko ids (getCryptoId) for symbols already in the user's holdings.
+ * Price APIs are never called for the full lists — only for open holdings.
  */
 
-import stocksJson from './symbols/stocks.json' with { type: 'json' };
-import etfsJson from './symbols/etfs.json' with { type: 'json' };
-import cryptosJson from './symbols/cryptos.json' with { type: 'json' };
+import stocksJson from './symbols/stocks.json' with { type: 'json' }
+import etfsJson from './symbols/etfs.json' with { type: 'json' }
+import cryptosJson from './symbols/cryptos.json' with { type: 'json' }
 
 export interface AssetSymbol {
-  symbol: string;
-  name: string;
+  symbol: string
+  name: string
 }
 
 export interface CryptoSymbol {
-  id: string;
-  symbol: string;
-  name: string;
-  market_cap_rank?: number;
+  symbol: string
+  name: string
+  /** Binance spot pair (e.g. BTCUSDT). Omit when stable. */
+  binance_symbol?: string | null
+  /** USD-pegged face value 1 — no live quote. */
+  stable?: boolean
+  market_cap_rank?: number
 }
 
-export const STOCK_SYMBOLS: AssetSymbol[] = stocksJson as AssetSymbol[];
-export const ETF_SYMBOLS: AssetSymbol[] = etfsJson as AssetSymbol[];
-export const CRYPTO_SYMBOLS: CryptoSymbol[] = cryptosJson as CryptoSymbol[];
+export type CryptoPricing =
+  | { kind: 'binance'; pair: string }
+  | { kind: 'stable' }
+  | { kind: 'none' }
+
+export const STOCK_SYMBOLS: AssetSymbol[] = stocksJson as AssetSymbol[]
+export const ETF_SYMBOLS: AssetSymbol[] = etfsJson as AssetSymbol[]
+export const CRYPTO_SYMBOLS: CryptoSymbol[] = cryptosJson as CryptoSymbol[]
+
+const CRYPTO_BY_SYMBOL = new Map(
+  CRYPTO_SYMBOLS.map((c) => [c.symbol.toUpperCase(), c] as const)
+)
 
 /**
  * Returns the list of {symbol, name} for a given asset type.
@@ -38,25 +50,50 @@ export function getSymbolsForType(
 ): AssetSymbol[] {
   switch (assetType) {
     case 'stock':
-      return STOCK_SYMBOLS;
+      return STOCK_SYMBOLS
     case 'etf':
-      return ETF_SYMBOLS;
+      return ETF_SYMBOLS
     case 'crypto':
-      // For crypto we expose ticker + name (the id is internal for pricing).
-      return CRYPTO_SYMBOLS.map((c) => ({ symbol: c.symbol, name: c.name }));
+      return CRYPTO_SYMBOLS.map((c) => ({ symbol: c.symbol, name: c.name }))
     default:
-      return [];
+      return []
   }
 }
 
 /**
- * Returns the CoinGecko id for a crypto ticker (case-insensitive).
- * Returns undefined for unknown tickers (price fetch will then return null).
+ * How to price a crypto ticker for live portfolio quotes.
+ * Catalog first; legacy holdings fall back to `${TICKER}USDT` when not listed
+ * (except known stables).
  */
-export function getCryptoId(ticker: string): string | undefined {
-  const upper = ticker.toUpperCase();
-  const found = CRYPTO_SYMBOLS.find((c) => c.symbol.toUpperCase() === upper);
-  return found?.id;
+export function getCryptoPricing(ticker: string): CryptoPricing {
+  const upper = (ticker || '').trim().toUpperCase()
+  if (!upper) return { kind: 'none' }
+
+  const row = CRYPTO_BY_SYMBOL.get(upper)
+  if (row) {
+    if (row.stable === true) return { kind: 'stable' }
+    const pair = (row.binance_symbol || '').trim().toUpperCase()
+    if (pair) return { kind: 'binance', pair }
+    return { kind: 'none' }
+  }
+
+  // Legacy / unlisted holdings: convention fallback (charts + priceService)
+  const STABLES = new Set([
+    'USDT',
+    'USDC',
+    'BUSD',
+    'DAI',
+    'TUSD',
+    'FDUSD',
+    'USDE',
+    'USDS',
+    'USD',
+  ])
+  if (STABLES.has(upper)) return { kind: 'stable' }
+  if (upper.endsWith('USDT') && upper.length > 4) {
+    return { kind: 'binance', pair: upper }
+  }
+  return { kind: 'binance', pair: `${upper}USDT` }
 }
 
 /**
@@ -70,27 +107,21 @@ export function getSymbolOptions(
   preserveValue?: string
 ): Array<{ value: string; label: string }> {
   if (assetType === 'cash') {
-    return [];
+    return []
   }
 
-  const base = getSymbolsForType(assetType);
+  const base = getSymbolsForType(assetType)
   const options = base.map((entry) => ({
     value: entry.symbol,
     label: `${entry.symbol} — ${entry.name}`,
-  }));
+  }))
 
-  if (preserveValue) {
-    const upper = preserveValue.toUpperCase();
-    const alreadyPresent = options.some(
-      (o) => o.value.toUpperCase() === upper
-    );
-    if (!alreadyPresent) {
-      options.unshift({
-        value: preserveValue,
-        label: `${preserveValue} (previous)`,
-      });
-    }
+  if (preserveValue && !options.some((o) => o.value === preserveValue)) {
+    options.unshift({
+      value: preserveValue,
+      label: `${preserveValue} — (previous)`,
+    })
   }
 
-  return options;
+  return options
 }

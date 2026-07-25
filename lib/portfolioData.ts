@@ -58,7 +58,7 @@ export const getPortfolioData = cache(async (): Promise<PortfolioData> => {
 
     const assetHoldings = allHoldings.filter((h) => h.asset_type !== 'cash')
     // 60s tagged Data Cache (`prices`) so currency toggles / concurrent Goals
-    // reloads reuse quotes instead of thrashing CoinGecko (forceFresh no-store).
+    // reloads reuse quotes instead of thrashing Binance (forceFresh no-store).
     // Explicit Refresh Prices still revalidateTag('prices') then re-fetches.
     const priceData = await getPricesForHoldings(assetHoldings, {
       forceFresh: false,

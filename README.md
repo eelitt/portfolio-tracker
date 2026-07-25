@@ -13,7 +13,7 @@ Investment portfolio app: track stock, ETF, crypto, and cash positions, see live
 - 🔐 **Auth & privacy** — Supabase Auth; per-user data with Postgres RLS
 - 📒 **Transactions as source of truth** — buy/sell (assets) and inflow/outflow (cash); holdings are always computed, not stored
 - 📊 **Live dashboard** — total value, 24h change, allocation pie, holdings with cost basis & unrealized P&L
-- 📈 **Prices** — stocks/ETFs via Finnhub; crypto via CoinGecko (server-side only)
+- 📈 **Prices** — stocks/ETFs via Finnhub; crypto via Binance public spot (server-side only)
 - 📉 **Performance history** — daily portfolio snapshots (Supabase Edge Function) with Daily / Monthly / Yearly charts
 - 💱 **Preferred currency** — USD or EUR display with FX conversion on the dashboard
 - 🎯 **Goals** — target amounts with progress in a sidebar
@@ -80,7 +80,7 @@ All model traffic stays **server-side**. Feature code lives under `app/actions/a
 
 - **Vercel** — production + GitHub preview deployments
 - **Supabase** — Auth, Postgres, RLS; Edge Function `portfolio-snapshots` writes daily MV/cost series
-- **Server-only integrations** — Finnhub, CoinGecko, xAI (keys in env, never bundled to the client)
+- **Server-only integrations** — Finnhub, Binance (public), xAI (keys in env, never bundled to the client)
 - **Live prices for KPIs** — holdings quotes default to no-store on dashboard load (correctness over 60s cache); manual refresh + currency change also revalidate tag `prices`
 
 ## 🏗️ Architecture

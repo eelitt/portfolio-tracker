@@ -3,7 +3,7 @@
  * Concurrency-capped. Totals stored in USD. One upsert per user per UTC date.
  *
  * Mirror of weighted-average holdings in lib/calculatePortfolio.ts — keep in sync.
- * Crypto ids: keep in sync with lib/symbols/cryptos.json.
+ * Crypto pairs: keep in sync with lib/symbols/cryptos.json (Binance USDT spot).
  *
  * Requires SUPABASE_SERVICE_ROLE_KEY in the function env (injected by Supabase).
  * Secrets: FINNHUB_API_KEY, optional SNAPSHOT_CONCURRENCY (default 5), ACTIVE_DAYS (90)
@@ -14,29 +14,38 @@ import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supa
 const CONCURRENCY = Number(Deno.env.get('SNAPSHOT_CONCURRENCY') ?? '5')
 const ACTIVE_DAYS = Number(Deno.env.get('ACTIVE_DAYS') ?? '90')
 
-/** Keep in sync with lib/symbols/cryptos.json */
-const CRYPTO_IDS: Record<string, string> = {
-  BTC: 'bitcoin',
-  ETH: 'ethereum',
-  USDT: 'tether',
-  BNB: 'binancecoin',
-  USDC: 'usd-coin',
-  XRP: 'ripple',
-  SOL: 'solana',
-  TRX: 'tron',
-  FIGR_HELOC: 'figure-heloc',
-  HYPE: 'hyperliquid',
-  DOGE: 'dogecoin',
-  USDS: 'usds',
-  RAIN: 'rain',
-  LEO: 'leo-token',
-  ZEC: 'zcash',
-  WBT: 'whitebit',
-  ADA: 'cardano',
-  XLM: 'stellar',
-  XMR: 'monero',
-  LINK: 'chainlink',
-  CC: 'canton-network',
+const BINANCE_API_BASE = (
+  Deno.env.get('BINANCE_API_BASE') ?? 'https://api.binance.com'
+).replace(/\/$/, '')
+
+/** Face-value stables — keep in sync with lib/symbols/cryptos.json */
+const CRYPTO_STABLES = new Set(['USDT', 'USDC', 'USDS', 'BUSD', 'DAI', 'USD'])
+
+/**
+ * Portfolio ticker → Binance USDT pair. Keep in sync with cryptos.json binance_symbol.
+ * Unknown non-stable tickers fall back to `${SYM}USDT`.
+ */
+const CRYPTO_BINANCE_PAIRS: Record<string, string> = {
+  BTC: 'BTCUSDT',
+  ETH: 'ETHUSDT',
+  BNB: 'BNBUSDT',
+  XRP: 'XRPUSDT',
+  SOL: 'SOLUSDT',
+  TRX: 'TRXUSDT',
+  DOGE: 'DOGEUSDT',
+  ZEC: 'ZECUSDT',
+  ADA: 'ADAUSDT',
+  XLM: 'XLMUSDT',
+  XMR: 'XMRUSDT',
+  LINK: 'LINKUSDT',
+}
+
+function binancePairForTicker(ticker: string): string | null {
+  const upper = ticker.trim().toUpperCase()
+  if (!upper || CRYPTO_STABLES.has(upper)) return null
+  if (CRYPTO_BINANCE_PAIRS[upper]) return CRYPTO_BINANCE_PAIRS[upper]
+  if (upper.endsWith('USDT') && upper.length > 4) return upper
+  return `${upper}USDT`
 }
 
 type Tx = {
@@ -171,22 +180,36 @@ async function fetchCryptoPrices(
   symbols: string[],
 ): Promise<Record<string, number>> {
   const out: Record<string, number> = {}
-  const idToSym = new Map<string, string>()
-  for (const s of symbols) {
-    const id = CRYPTO_IDS[s.toUpperCase()]
-    if (id) idToSym.set(id, s)
-  }
-  if (idToSym.size === 0) return out
+  const pairToSym = new Map<string, string>()
 
-  const ids = [...idToSym.keys()].join(',')
+  for (const s of symbols) {
+    const upper = s.trim().toUpperCase()
+    if (CRYPTO_STABLES.has(upper)) {
+      out[s] = 1
+      continue
+    }
+    const pair = binancePairForTicker(s)
+    if (pair) pairToSym.set(pair, s)
+  }
+
+  if (pairToSym.size === 0) return out
+
+  const pairs = [...pairToSym.keys()]
+  const symbolsParam = encodeURIComponent(JSON.stringify(pairs))
   const res = await fetch(
-    `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd`,
+    `${BINANCE_API_BASE}/api/v3/ticker/24hr?symbols=${symbolsParam}`,
   )
   if (!res.ok) return out
+
   const data = await res.json()
-  for (const [id, sym] of idToSym) {
-    const usd = data?.[id]?.usd
-    if (typeof usd === 'number' && usd > 0) out[sym] = usd
+  const rows = Array.isArray(data) ? data : data ? [data] : []
+  for (const row of rows) {
+    const pair =
+      typeof row?.symbol === 'string' ? row.symbol.trim().toUpperCase() : ''
+    const sym = pairToSym.get(pair)
+    if (!sym) continue
+    const last = Number(row?.lastPrice)
+    if (Number.isFinite(last) && last > 0) out[sym] = last
   }
   return out
 }

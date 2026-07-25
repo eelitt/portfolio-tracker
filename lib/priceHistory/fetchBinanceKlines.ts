@@ -1,8 +1,8 @@
+import { binanceBaseUrl } from './binanceBase'
 import { getBinanceSpotSymbol } from './binanceSymbol'
 import { utcDayStart } from './constants'
 import type { PriceBar } from './types'
 
-const DEFAULT_BASE = 'https://api.binance.com'
 const KLINE_LIMIT = 1000
 
 type BinanceKline = [
@@ -15,14 +15,6 @@ type BinanceKline = [
   number, // close time
   ...unknown[],
 ]
-
-function binanceBaseUrl(): string {
-  const raw =
-    process.env.BINANCE_API_BASE ||
-    process.env.NEXT_PUBLIC_BINANCE_API_BASE ||
-    DEFAULT_BASE
-  return raw.replace(/\/$/, '')
-}
 
 function parsePx(s: unknown): number | null {
   const n = typeof s === 'string' ? Number(s) : typeof s === 'number' ? s : NaN

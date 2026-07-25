@@ -1,29 +1,17 @@
 /**
  * Map portfolio crypto tickers to Binance spot symbols (USDT quote).
- * Returns undefined when we should not call Binance (stables / unknown bases).
+ * Prefers curated catalog (`cryptos.json`); falls back to convention for legacy holdings.
+ * Returns undefined for stables / unpriceable bases (do not call Binance).
  */
 
-const STABLE_BASES = new Set([
-  'USDT',
-  'USDC',
-  'BUSD',
-  'DAI',
-  'TUSD',
-  'FDUSD',
-  'USDE',
-  'USDS',
-  'USD',
-])
+import { getCryptoPricing } from '@/lib/symbols'
 
 /**
  * Portfolio ticker (e.g. BTC) → Binance spot pair (e.g. BTCUSDT).
- * Add a switch/override here if a ticker does not map to `${TICKER}USDT`.
+ * Undefined = stable face value or no pair.
  */
 export function getBinanceSpotSymbol(ticker: string): string | undefined {
-  const upper = (ticker || '').trim().toUpperCase()
-  if (!upper) return undefined
-  if (STABLE_BASES.has(upper)) return undefined
-  // Already a pair?
-  if (upper.endsWith('USDT') && upper.length > 4) return upper
-  return `${upper}USDT`
+  const pricing = getCryptoPricing(ticker)
+  if (pricing.kind === 'binance') return pricing.pair
+  return undefined
 }
