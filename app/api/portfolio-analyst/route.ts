@@ -17,6 +17,29 @@ const MAX_MESSAGES = 20
 
 export const maxDuration = 60
 
+/** Latest user message text (string or multimodal parts). */
+function extractLastUserText(messages: unknown[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i] as { role?: string; content?: unknown } | null
+    if (!m || m.role !== 'user') continue
+    const c = m.content
+    if (typeof c === 'string') return c
+    if (Array.isArray(c)) {
+      return c
+        .map((part) => {
+          if (typeof part === 'string') return part
+          if (part && typeof part === 'object' && 'text' in part) {
+            return String((part as { text?: unknown }).text ?? '')
+          }
+          return ''
+        })
+        .join('')
+    }
+    return ''
+  }
+  return ''
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = await createClient()
@@ -54,12 +77,13 @@ export async function POST(req: Request) {
     }
 
     const messages = rawMessages.slice(-MAX_MESSAGES)
+    const lastUserText = extractLastUserText(messages)
 
     const result = streamText({
       model: xai('grok-4.3'),
       system: PORTFOLIO_ANALYST_SYSTEM_PROMPT,
       messages: convertToCoreMessages(messages),
-      tools: createPortfolioAnalystTools(user.id),
+      tools: createPortfolioAnalystTools(user.id, { lastUserText }),
       maxSteps: 5,
       temperature: 0.2,
       onError: ({ error }) => {

@@ -307,6 +307,9 @@ export async function getHoldingsForExport() {
  * Re-uses the same validation, currency, and auto-cash-credit logic as single create.
  * AI parsing lives in app/actions/ai/csv-import/parseCsvWithAI.ts.
  */
+/** Hard cap — matches csvParsedTransactionsSchema / AI import client limit. */
+const MAX_IMPORT_TRANSACTIONS = 200
+
 export async function importTransactions(
   transactions: TransactionFormData[]
 ): Promise<{ imported: number; errors: string[] }> {
@@ -318,6 +321,15 @@ export async function importTransactions(
 
   if (!transactions || transactions.length === 0) {
     return { imported: 0, errors: ['No transactions to import'] }
+  }
+
+  if (transactions.length > MAX_IMPORT_TRANSACTIONS) {
+    return {
+      imported: 0,
+      errors: [
+        `At most ${MAX_IMPORT_TRANSACTIONS} transactions per import. Split the file and try again.`,
+      ],
+    }
   }
 
   const profile = await getCurrentUserProfile()

@@ -40,7 +40,11 @@ export default function RefreshButton() {
   const handleRefresh = async () => {
     setIsPending(true)
     try {
-      await refreshPortfolioPrices()
+      const result = await refreshPortfolioPrices()
+      if ('error' in result && result.error) {
+        toast.error(result.error)
+        return
+      }
       router.refresh()
       const now = new Date()
       setLastUpdatedTime(now)

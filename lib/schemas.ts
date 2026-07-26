@@ -114,3 +114,25 @@ export const csvParsedTransactionsSchema = z.object({
 })
 
 export type CsvParsedTransactions = z.infer<typeof csvParsedTransactionsSchema>
+
+/**
+ * Zod schema for authenticated password change.
+ * Used by changePassword Server Action (and client-side pre-checks).
+ * Min length matches signup (Supabase default).
+ */
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Current password is required'),
+    newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+    confirmPassword: z.string().min(1, 'Please confirm your new password'),
+  })
+  .refine((d) => d.newPassword === d.confirmPassword, {
+    message: 'New passwords do not match',
+    path: ['confirmPassword'],
+  })
+  .refine((d) => d.newPassword !== d.currentPassword, {
+    message: 'New password must be different from current password',
+    path: ['newPassword'],
+  })
+
+export type ChangePasswordFormData = z.infer<typeof changePasswordSchema>

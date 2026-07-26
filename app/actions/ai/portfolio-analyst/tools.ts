@@ -30,6 +30,44 @@ function round2(n: number) {
   return Number(n.toFixed(2))
 }
 
+/**
+ * True only when the latest user message is a short explicit confirm.
+ * Blocks confirm_transaction during analysis / multi-intent messages.
+ */
+export function isExplicitConfirmMessage(text: string): boolean {
+  const t = text
+    .trim()
+    .toLowerCase()
+    .replace(/[.!]+$/g, '')
+    .trim()
+  if (!t) return false
+
+  const exact = new Set([
+    'confirm',
+    'yes',
+    'y',
+    'ok',
+    'okay',
+    'log it',
+    'save it',
+    'save',
+    'do it',
+    'proceed',
+    'go ahead',
+    'yes log it',
+    'yes, log it',
+    'please confirm',
+  ])
+  if (exact.has(t)) return true
+
+  return /^(yes|confirm|ok|okay)(,?\s+(please|log it|save it|do it))?$/.test(t)
+}
+
+export type PortfolioAnalystToolOptions = {
+  /** Latest user message text for this HTTP request (confirm gate). */
+  lastUserText?: string
+}
+
 async function loadUserPortfolio(): Promise<
   | {
       ok: true
@@ -54,8 +92,16 @@ async function loadUserPortfolio(): Promise<
 /**
  * Build the tool set for a single request.
  * @param userId — authenticated user (pending NL drafts are scoped to this id)
+ * @param options.lastUserText — used to hard-gate confirm_transaction
  */
-export function createPortfolioAnalystTools(userId: string) {
+export function createPortfolioAnalystTools(
+  userId: string,
+  options: PortfolioAnalystToolOptions = {}
+) {
+  /** Blocks prepare + confirm in the same agent HTTP request (maxSteps). */
+  let preparedThisRequest = false
+  const lastUserText = options.lastUserText ?? ''
+
   return {
     get_portfolio_summary: tool({
       description:
@@ -304,12 +350,13 @@ export function createPortfolioAnalystTools(userId: string) {
             warnings: result.warnings,
             preparedAt: new Date().toISOString(),
           })
+          preparedThisRequest = true
 
           return {
             ...result,
             pendingStored: true,
             nextStep:
-              'Show the summary to the user and ask them to reply "confirm" (or yes) to save. Do not save until they confirm.',
+              'Show the summary to the user and ask them to reply "confirm" (or yes) in a NEW message to save. Do not call confirm_transaction in this turn — the server will reject it.',
           }
         }
 
@@ -328,85 +375,74 @@ export function createPortfolioAnalystTools(userId: string) {
 
     confirm_transaction: tool({
       description:
-        'Commit the pending transaction AFTER the user clearly confirms (e.g. "confirm", "yes", "log it"). Prefer usePendingDraft=true so a short "confirm" works without retyping the trade. Do NOT refuse confirmation messages — call this tool instead.',
+        'Commit the pending draft ONLY after the user sends a dedicated confirm message (e.g. "confirm", "yes", "log it") in a NEW turn after prepare. Requires a server-stored pending draft. Do not call in the same turn as prepare_transaction.',
       parameters: z.object({
         usePendingDraft: z
           .boolean()
           .optional()
-          .describe('Default true. Load the last ready draft from prepare_transaction.'),
-        sourceText: z
-          .string()
-          .optional()
-          .describe('Only if usePendingDraft is false: full user wording with €/$ and ticker'),
-        symbol: z.string().optional(),
-        asset_type: assetTypeSchema.optional(),
-        action: z.enum(['buy', 'sell', 'inflow', 'outflow']).optional(),
-        quantity: z.number().optional(),
-        unit_price: z.number().optional(),
-        executed_at: z.string().optional(),
-        notes: z.string().optional(),
-        currency: z.enum(['USD', 'EUR']).optional(),
+          .describe('Must be true (default). Only the pending draft from prepare_transaction can be saved.'),
       }),
       execute: async (args) => {
-        const usePending = args.usePendingDraft !== false
-
-        let sourceText = args.sourceText
-        let symbol = args.symbol
-        let asset_type = args.asset_type
-        let action = args.action
-        let quantity = args.quantity
-        let unit_price = args.unit_price
-        let executed_at = args.executed_at
-        let notes = args.notes
-        let currency = args.currency
-        let fromPending = false
-        let pendingWarnings: string[] = []
-
-        if (usePending) {
-          const pending = await getPendingTxDraft(userId)
-          if (pending) {
-            fromPending = true
-            sourceText = pending.sourceText
-            symbol = pending.draft.symbol
-            asset_type = pending.draft.asset_type
-            action = pending.draft.action
-            quantity = pending.draft.quantity
-            unit_price = pending.draft.unit_price
-            executed_at = pending.draft.executed_at
-            notes = pending.draft.notes
-            currency = pending.draft.currency
-            pendingWarnings = pending.warnings
-          } else if (!sourceText) {
-            return {
-              ok: false as const,
-              errors: [
-                'No pending draft to confirm. Ask the user to describe the trade again, then call prepare_transaction.',
-              ],
-              missing: [],
-              warnings: [],
-            }
-          }
-        }
-
-        if (!sourceText) {
+        if (args.usePendingDraft === false) {
           return {
             ok: false as const,
-            errors: ['sourceText or a pending draft is required to confirm.'],
+            errors: [
+              'Only pending drafts can be confirmed. Call prepare_transaction first, then confirm after the user replies.',
+            ],
             missing: [],
             warnings: [],
           }
         }
 
+        if (preparedThisRequest) {
+          return {
+            ok: false as const,
+            errors: [
+              'Cannot confirm in the same turn as prepare. Show the draft summary and wait for the user to reply "confirm" in a new message.',
+            ],
+            missing: [],
+            warnings: [],
+          }
+        }
+
+        if (!isExplicitConfirmMessage(lastUserText)) {
+          return {
+            ok: false as const,
+            errors: [
+              'User has not sent an explicit confirmation message (e.g. "confirm" or "yes"). Do not save yet.',
+            ],
+            missing: [],
+            warnings: [],
+          }
+        }
+
+        const pending = await getPendingTxDraft(userId)
+        if (!pending) {
+          return {
+            ok: false as const,
+            errors: [
+              'No pending draft to confirm. Ask the user to describe the trade again, then call prepare_transaction.',
+            ],
+            missing: [],
+            warnings: [],
+          }
+        }
+
+        const sourceText = pending.sourceText
+        const d = pending.draft
+        const pendingWarnings = pending.warnings
+        const fromPending = true
+
         const validated = validateTransactionDraft({
           sourceText,
-          symbol,
-          asset_type,
-          action,
-          quantity,
-          unit_price,
-          executed_at,
-          notes,
-          currency,
+          symbol: d.symbol,
+          asset_type: d.asset_type,
+          action: d.action,
+          quantity: d.quantity,
+          unit_price: d.unit_price,
+          executed_at: d.executed_at,
+          notes: d.notes,
+          currency: d.currency,
         })
 
         if (validated.status !== 'ready' || !validated.draft) {
@@ -422,27 +458,27 @@ export function createPortfolioAnalystTools(userId: string) {
           }
         }
 
-        const d = validated.draft
+        const draft = validated.draft
         const loaded = await loadUserPortfolio()
         const warnings = [...pendingWarnings, ...validated.warnings]
         if (loaded.ok) {
           const held = loaded.holdings.find(
-            (h) => h.symbol.toUpperCase() === d.symbol.toUpperCase()
+            (h) => h.symbol.toUpperCase() === draft.symbol.toUpperCase()
           )
-          const w = sellExceedsHoldingWarning(d, held?.quantity)
+          const w = sellExceedsHoldingWarning(draft, held?.quantity)
           if (w) warnings.push(w)
         }
 
         const created = await createTransactionRecord(
           {
-            symbol: d.symbol,
-            asset_type: d.asset_type,
-            action: d.action,
-            quantity: d.quantity,
-            unit_price: d.unit_price,
-            executed_at: d.executed_at,
-            notes: d.notes,
-            currency: d.currency,
+            symbol: draft.symbol,
+            asset_type: draft.asset_type,
+            action: draft.action,
+            quantity: draft.quantity,
+            unit_price: draft.unit_price,
+            executed_at: draft.executed_at,
+            notes: draft.notes,
+            currency: draft.currency,
           },
           { requireCurrency: true }
         )

@@ -12,9 +12,10 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { LogOut, Sun, Moon, Target, Sparkles, DollarSign, Euro, Download, Upload, Eye, EyeOff } from 'lucide-react'
+import { LogOut, KeyRound, Sun, Moon, Target, Sparkles, DollarSign, Euro, Download, Upload, Eye, EyeOff } from 'lucide-react'
 import { usePrivacyMode } from './privacy/PrivacyModeProvider'
 import ImportTransactionsModal from './dashboard/transactions/ImportTransactionsModal'
+import ChangePasswordModal from './ChangePasswordModal'
 import AdminMenu from './admin/AdminMenu'
 import { getTransactionsForExport, getHoldingsForExport } from '@/app/actions/transactions'
 import { exportTransactionsToCsv, exportHoldingsToCsv } from '@/lib/exportToCsv'
@@ -89,6 +90,7 @@ export default function Navbar({
   const [currentCurrency, setCurrentCurrency] = useState<PreferredCurrency>(
     preferredCurrency || 'USD'
   )
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false)
 
   // Sync local state when the server prop changes (e.g. after refresh or currency update)
   useEffect(() => {
@@ -287,6 +289,16 @@ export default function Navbar({
               )}
 
               <DropdownMenuSeparator />
+              <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                Account
+              </div>
+              <DropdownMenuItem
+                onClick={() => setChangePasswordOpen(true)}
+                className="cursor-pointer"
+              >
+                <KeyRound className="mr-2 h-4 w-4" />
+                Change password
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={handleLogout}
                 className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive"
@@ -301,6 +313,10 @@ export default function Navbar({
 
       {/* Mounted for event-driven open from dropdown + internal dialog state */}
       <ImportTransactionsModal />
+      <ChangePasswordModal
+        open={changePasswordOpen}
+        onOpenChange={setChangePasswordOpen}
+      />
     </nav>
   )
 }

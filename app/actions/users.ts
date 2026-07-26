@@ -8,6 +8,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser, getCurrentUserProfile } from '@/lib/user'
+import { changePasswordSchema } from '@/lib/schemas'
 import {
   APP_ACCESS_DENIED_MESSAGE,
   type PreferredCurrency,
@@ -56,5 +57,57 @@ export async function updatePreferredCurrency(currency: PreferredCurrency) {
   // Busting `prices` forced origin re-fetches on every toggle and could
   // thrash the free tier, showing "0 of N assets" despite good prior quotes.
   revalidatePath('/dashboard')
+  return { success: true }
+}
+
+/**
+ * Change password for the signed-in user.
+ * Re-verifies current password, then updates via Supabase Auth.
+ */
+export async function changePassword(input: {
+  currentPassword: string
+  newPassword: string
+  confirmPassword: string
+}): Promise<{ success: true } | { error: string }> {
+  const parsed = changePasswordSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      error: parsed.error.issues[0]?.message ?? 'Invalid password form',
+    }
+  }
+
+  const user = await getCurrentUser()
+  if (!user?.email) {
+    return { error: 'Please log in again' }
+  }
+
+  const supabase = await createClient()
+  const { currentPassword, newPassword } = parsed.data
+
+  const { error: reauthError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: currentPassword,
+  })
+
+  if (reauthError) {
+    return { error: 'Current password is incorrect' }
+  }
+
+  const { error: updateError } = await supabase.auth.updateUser({
+    password: newPassword,
+  })
+
+  if (updateError) {
+    const msg = (updateError.message || '').toLowerCase()
+    if (msg.includes('same password') || msg.includes('should be different')) {
+      return { error: 'New password must be different from current password' }
+    }
+    if (msg.includes('at least') || msg.includes('weak') || msg.includes('password')) {
+      return { error: 'Password does not meet requirements. Use at least 8 characters.' }
+    }
+    console.error('changePassword updateUser error:', updateError.message)
+    return { error: 'Could not update password. Try again.' }
+  }
+
   return { success: true }
 }

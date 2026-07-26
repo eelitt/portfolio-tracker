@@ -163,12 +163,12 @@ export default function SignupPage() {
       />
       <input
         type="password"
-        placeholder="Password (min 6 characters)"
+        placeholder="Password (min 8 characters)"
         value={password}
         onChange={handlePasswordChange}
         className="h-9 w-full rounded-lg border border-border/70 bg-card px-3 text-sm focus-visible:border-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/30"
         required
-        minLength={6}
+        minLength={8}
         disabled={isFormDisabled}
       />
       <button

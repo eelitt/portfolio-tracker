@@ -136,8 +136,10 @@ export function useHoldingNews() {
         }
 
         // Bust price cache so dashboard KPIs re-fetch instead of reusing a partial 60s cache
-        await refreshPortfolioPrices()
-        router.refresh()
+        const priceRefresh = await refreshPortfolioPrices()
+        if (!('error' in priceRefresh && priceRefresh.error)) {
+          router.refresh()
+        }
       }
     } catch {
       setError('Something went wrong while fetching news. Please try again.')

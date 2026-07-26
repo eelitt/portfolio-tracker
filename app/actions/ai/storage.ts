@@ -6,13 +6,23 @@ import { getCurrentUser } from '@/lib/user'
 /**
  * AI-related Supabase database actions.
  * Used for rate limiting and storing the latest AI result per feature type.
+ *
+ * All helpers take userId for call-site clarity but refuse to read/write unless
+ * userId matches the authenticated session (defense-in-depth with RLS).
  */
+
+async function assertSessionUser(userId: string): Promise<boolean> {
+  const user = await getCurrentUser()
+  return !!user && user.id === userId
+}
 
 // ============================================
 // RATE LIMITING (stored in profiles table)
 // ============================================
 
 export async function getLastAICallTime(userId: string): Promise<Date | null> {
+  if (!(await assertSessionUser(userId))) return null
+
   const supabase = await createClient()
 
   const { data: profile } = await supabase
@@ -25,6 +35,8 @@ export async function getLastAICallTime(userId: string): Promise<Date | null> {
 }
 
 export async function updateLastAICallTime(userId: string): Promise<void> {
+  if (!(await assertSessionUser(userId))) return
+
   const supabase = await createClient()
 
   await supabase
@@ -52,6 +64,8 @@ export async function saveAIInsight(
   featureType: string,
   result: Record<string, unknown>
 ): Promise<void> {
+  if (!(await assertSessionUser(userId))) return
+
   const supabase = await createClient()
 
   await supabase.from('user_ai_insights').upsert(
@@ -74,6 +88,8 @@ export async function getLatestAIInsight(
   userId: string,
   featureType: string
 ): Promise<{ result: Record<string, unknown>; createdAt: string } | null> {
+  if (!(await assertSessionUser(userId))) return null
+
   const supabase = await createClient()
 
   const { data } = await supabase

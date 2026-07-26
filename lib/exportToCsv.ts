@@ -5,6 +5,38 @@
  * They are intentionally simple (no server round-trip for exports).
  */
 
+/** Prefix values that Excel/Sheets may treat as formulas. */
+function neutralizeFormula(value: string): string {
+  if (/^[=+\-@\t\r]/.test(value)) return `'${value}`
+  return value
+}
+
+/** RFC4180-style cell: formula-safe + quote when needed. */
+function csvCell(value: unknown): string {
+  const s = neutralizeFormula(String(value ?? ''))
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
+}
+
+function toCsv(headers: string[], rows: unknown[][]): string {
+  return [
+    headers.map(csvCell).join(','),
+    ...rows.map((row) => row.map(csvCell).join(',')),
+  ].join('\n')
+}
+
+function downloadCsv(filename: string, csvContent: string) {
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const link = document.createElement('a')
+  const url = URL.createObjectURL(blob)
+
+  link.href = url
+  link.download = filename
+  link.click()
+
+  URL.revokeObjectURL(url)
+}
+
 /**
  * Exports the full transaction history as CSV.
  * Columns: Date, Symbol, Type, Action, Quantity, Price, Total Value, Notes
@@ -42,20 +74,10 @@ export function exportTransactionsToCsv(transactions: any[]) {
     ]
   })
 
-  const csvContent = [
-    headers.join(','),
-    ...rows.map((row) => row.join(',')),
-  ].join('\n')
-
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-  const link = document.createElement('a')
-  const url = URL.createObjectURL(blob)
-
-  link.href = url
-  link.download = `transactions-${new Date().toISOString().split('T')[0]}.csv`
-  link.click()
-
-  URL.revokeObjectURL(url)
+  downloadCsv(
+    `transactions-${new Date().toISOString().split('T')[0]}.csv`,
+    toCsv(headers, rows)
+  )
 }
 
 /**
@@ -90,18 +112,8 @@ export function exportHoldingsToCsv(holdings: any[]) {
     h.unrealizedPnlPercent.toFixed(2),
   ])
 
-  const csvContent = [
-    headers.join(','),
-    ...rows.map((row) => row.join(',')),
-  ].join('\n')
-
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-  const link = document.createElement('a')
-  const url = URL.createObjectURL(blob)
-
-  link.href = url
-  link.download = `holdings-${new Date().toISOString().split('T')[0]}.csv`
-  link.click()
-
-  URL.revokeObjectURL(url)
+  downloadCsv(
+    `holdings-${new Date().toISOString().split('T')[0]}.csv`,
+    toCsv(headers, rows)
+  )
 }

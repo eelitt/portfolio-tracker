@@ -25,6 +25,9 @@ mcps
 .DS_Store
 *.pem
 
+# local notes (not published)
+Future-scalability-considerations.md
+
 # debug
 npm-debug.log*
 yarn-debug.log*
