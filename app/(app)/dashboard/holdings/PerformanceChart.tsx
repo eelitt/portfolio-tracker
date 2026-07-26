@@ -26,6 +26,8 @@ interface PerformanceChartProps {
   rangeMode: SnapshotRangeMode
   preferredCurrency: PreferredCurrency
   error?: string | null
+  /** e.g. Portfolio or ticker — used in empty-state copy */
+  seriesLabel?: string
 }
 
 function formatTick(date: string, mode: SnapshotRangeMode): string {
@@ -51,6 +53,7 @@ export default function PerformanceChart({
   rangeMode,
   preferredCurrency,
   error,
+  seriesLabel = 'Portfolio',
 }: PerformanceChartProps) {
   const { hideMoney } = usePrivacyMode()
 
@@ -68,8 +71,13 @@ export default function PerformanceChart({
       <div className="empty-state h-80">
         <p className="font-display text-lg font-medium text-foreground">
           No performance history yet
+          {seriesLabel !== 'Portfolio' ? ` for ${seriesLabel}` : ''}
         </p>
-        <p>The chart builds as daily portfolio snapshots are recorded.</p>
+        <p>
+          The chart builds as daily{' '}
+          {seriesLabel === 'Portfolio' ? 'portfolio' : 'holding'} snapshots are
+          recorded.
+        </p>
       </div>
     )
   }

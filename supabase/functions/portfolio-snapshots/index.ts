@@ -1,12 +1,18 @@
 /**
- * Daily portfolio snapshots for ACTIVE users only (tx activity in last ACTIVE_DAYS).
- * Concurrency-capped. Totals stored in USD. One upsert per user per UTC date.
+ * Daily portfolio + per-holding snapshots for ACTIVE users only
+ * (tx activity in last ACTIVE_DAYS). Concurrency-capped.
+ * Totals → portfolio_snapshots; open holdings → holding_snapshots (USD).
+ * One upsert pass per user per UTC date (same price fetch for both).
  *
  * Mirror of weighted-average holdings in lib/calculatePortfolio.ts — keep in sync.
- * Crypto pairs: keep in sync with lib/symbols/cryptos.json (Binance USDT spot).
+ * Crypto: Binance USDT spot (same feed as app lib/prices); pairs ↔ cryptos.json.
+ * Stocks/ETFs: Finnhub.
  *
- * Requires SUPABASE_SERVICE_ROLE_KEY in the function env (injected by Supabase).
- * Secrets: FINNHUB_API_KEY, optional SNAPSHOT_CONCURRENCY (default 5), ACTIVE_DAYS (90)
+ * Invoke with:
+ *   Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>
+ *
+ * Secrets: FINNHUB_API_KEY, optional SNAPSHOT_CONCURRENCY (default 5), ACTIVE_DAYS (90),
+ * optional BINANCE_API_BASE (default https://api.binance.com)
  */
 
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1'
@@ -18,12 +24,22 @@ const BINANCE_API_BASE = (
   Deno.env.get('BINANCE_API_BASE') ?? 'https://api.binance.com'
 ).replace(/\/$/, '')
 
-/** Face-value stables — keep in sync with lib/symbols/cryptos.json */
-const CRYPTO_STABLES = new Set(['USDT', 'USDC', 'USDS', 'BUSD', 'DAI', 'USD'])
+/** Face-value stables — keep in sync with lib/symbols/cryptos.json + getCryptoPricing */
+const CRYPTO_STABLES = new Set([
+  'USDT',
+  'USDC',
+  'USDS',
+  'BUSD',
+  'DAI',
+  'TUSD',
+  'FDUSD',
+  'USDE',
+  'USD',
+])
 
 /**
  * Portfolio ticker → Binance USDT pair. Keep in sync with cryptos.json binance_symbol.
- * Unknown non-stable tickers fall back to `${SYM}USDT`.
+ * Unknown non-stable tickers fall back to `${SYM}USDT` (same as app getCryptoPricing).
  */
 const CRYPTO_BINANCE_PAIRS: Record<string, string> = {
   BTC: 'BTCUSDT',
@@ -176,20 +192,31 @@ async function fetchStockPrice(
   return typeof c === 'number' && Number.isFinite(c) && c > 0 ? c : null
 }
 
+/**
+ * Batch-fetch crypto last prices from Binance 24hr ticker (app-aligned).
+ * Stables resolve to 1 with no network call.
+ */
 async function fetchCryptoPrices(
   symbols: string[],
 ): Promise<Record<string, number>> {
   const out: Record<string, number> = {}
+  if (symbols.length === 0) return out
+
+  /** Binance pair → portfolio ticker(s) */
   const pairToSym = new Map<string, string>()
 
-  for (const s of symbols) {
-    const upper = s.trim().toUpperCase()
-    if (CRYPTO_STABLES.has(upper)) {
-      out[s] = 1
+  for (const raw of symbols) {
+    const sym = raw.trim().toUpperCase()
+    if (!sym) continue
+    if (CRYPTO_STABLES.has(sym)) {
+      out[raw] = 1
+      out[sym] = 1
       continue
     }
-    const pair = binancePairForTicker(s)
-    if (pair) pairToSym.set(pair, s)
+    const pair = binancePairForTicker(sym)
+    if (!pair) continue
+    // First ticker wins if two map to same pair (unusual)
+    if (!pairToSym.has(pair)) pairToSym.set(pair, raw)
   }
 
   if (pairToSym.size === 0) return out
@@ -206,10 +233,13 @@ async function fetchCryptoPrices(
   for (const row of rows) {
     const pair =
       typeof row?.symbol === 'string' ? row.symbol.trim().toUpperCase() : ''
-    const sym = pairToSym.get(pair)
-    if (!sym) continue
+    const portfolioSym = pairToSym.get(pair)
+    if (!portfolioSym) continue
     const last = Number(row?.lastPrice)
-    if (Number.isFinite(last) && last > 0) out[sym] = last
+    if (Number.isFinite(last) && last > 0) {
+      out[portfolioSym] = last
+      out[portfolioSym.toUpperCase()] = last
+    }
   }
   return out
 }
@@ -293,6 +323,7 @@ async function snapshotUser(
   let totalCostUsd = 0
   let pricedAssets = 0
   const assetCount = assets.length
+  const holdingRows: Record<string, unknown>[] = []
 
   for (const h of holdings) {
     const costUsd = toUsd(h.totalCost, h.currency, usdToEur)
@@ -301,6 +332,19 @@ async function snapshotUser(
     if (h.asset_type === 'cash') {
       const faceUsd = toUsd(h.quantity, h.currency, usdToEur)
       totalMvUsd += faceUsd
+      holdingRows.push({
+        user_id: userId,
+        snapshot_date: snapshotDate,
+        symbol: h.symbol,
+        asset_type: h.asset_type,
+        quantity: h.quantity,
+        unit_price: 1,
+        market_value: Number(faceUsd.toFixed(4)),
+        cost_basis: Number(costUsd.toFixed(4)),
+        unrealized_pnl: Number((faceUsd - costUsd).toFixed(4)),
+        is_partial: false,
+        currency: 'USD',
+      })
       continue
     }
 
@@ -308,10 +352,35 @@ async function snapshotUser(
     if (h.asset_type === 'crypto') priceUsd = cryptoPrices[h.symbol]
     else priceUsd = stockPrices[h.symbol]
 
-    if (priceUsd != null && priceUsd > 0) {
-      totalMvUsd += h.quantity * priceUsd
+    const priced = priceUsd != null && priceUsd > 0
+    if (priced) {
+      totalMvUsd += h.quantity * priceUsd!
       pricedAssets++
     }
+
+    const mvUsd = priced ? h.quantity * priceUsd! : 0
+    holdingRows.push({
+      user_id: userId,
+      snapshot_date: snapshotDate,
+      symbol: h.symbol,
+      asset_type: h.asset_type,
+      quantity: h.quantity,
+      unit_price: priced ? Number(priceUsd!.toFixed(8)) : null,
+      market_value: Number(mvUsd.toFixed(4)),
+      cost_basis: Number(costUsd.toFixed(4)),
+      unrealized_pnl: Number((mvUsd - costUsd).toFixed(4)),
+      is_partial: !priced,
+      currency: 'USD',
+    })
+  }
+
+  if (holdingRows.length > 0) {
+    const { error: holdErr } = await supabase
+      .from('holding_snapshots')
+      .upsert(holdingRows, {
+        onConflict: 'user_id,snapshot_date,symbol,asset_type',
+      })
+    if (holdErr) return { userId, ok: false, error: holdErr.message }
   }
 
   const isPartial = pricedAssets < assetCount
@@ -330,6 +399,7 @@ async function snapshotUser(
       is_partial: isPartial,
       meta: {
         asset_count: assetCount,
+        holding_rows: holdingRows.length,
         source: 'edge_portfolio_snapshots',
       },
     },
@@ -341,13 +411,14 @@ async function snapshotUser(
 }
 
 Deno.serve(async (req) => {
-  if (req.method !== 'POST' && req.method !== 'GET') {
-    return json({ error: 'Method not allowed' }, 405)
-  }
 
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
   if (!serviceKey) {
     return json({ error: 'Unauthorized' }, 401)
+  }
+
+  if (req.method !== 'POST' && req.method !== 'GET') {
+    return json({ error: 'Method not allowed' }, 405)
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
