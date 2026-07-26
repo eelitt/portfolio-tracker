@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Navbar from './Navbar'
+import SiteFooter from './SiteFooter'
 import GoalsSidebar from './goals/GoalsSidebar'
 import AIInsightsPanel from './ai-insights/AIInsightsPanel'
 import { getCurrentUserProfile } from '@/lib/user'
@@ -28,14 +29,17 @@ export default async function DashboardLayout({
 
   return (
     <PrivacyModeProvider>
-      <div className="min-h-screen bg-transparent">
+      <div className="flex min-h-screen flex-col bg-transparent">
         <Navbar
           user={user}
           hasAiKey={hasAiKey}
           preferredCurrency={profile?.preferredCurrency || 'USD'}
           isAdmin={profile?.admin === true}
         />
-        <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+        <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
+          {children}
+        </main>
+        <SiteFooter />
         <GoalsSidebar preferredCurrency={profile?.preferredCurrency || 'USD'} />
         <AIInsightsPanel isAdmin={profile?.admin === true} />
       </div>
