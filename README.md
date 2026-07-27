@@ -125,4 +125,4 @@ Sign up â†’ add or import transactions (form, CSV, or Portfolio Analyst chat) â†
 
 ## License
 
-MIT
+Copyright (c) 2026 Based Code. All rights reserved.
