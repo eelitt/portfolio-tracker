@@ -1,3 +1,4 @@
+
 # Portfolio Tracker
 
 Investment portfolio app: track stock, ETF, crypto, and cash positions, see live P&L, and use AI for grounded analysis, CSV import, and holding news.
@@ -7,6 +8,11 @@ Investment portfolio app: track stock, ETF, crypto, and cash positions, see live
 ![Supabase](https://img.shields.io/badge/Supabase-Auth%20%2B%20RLS%20%2B%20Edge-green)
 ![AI](https://img.shields.io/badge/AI-xAI%20Grok%20%2B%20Vercel%20AI%20SDK-purple)
 ![Vercel](https://img.shields.io/badge/Deploy-Vercel-black)
+
+<img width="1903" height="786" alt="portfoliotracker" src="https://github.com/user-attachments/assets/abc1da5b-5d1c-4d25-b9a6-163b84b71538" />
+
+<img width="1906" height="862" alt="portfoliotracker_2" src="https://github.com/user-attachments/assets/8ba7ebd0-1be6-44e7-ad0f-9ef26a28e6e6" />
+
 
 ## ✨ What it does
 
