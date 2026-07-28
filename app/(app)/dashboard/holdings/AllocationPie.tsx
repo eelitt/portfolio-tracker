@@ -11,7 +11,7 @@ import { useMemo, useState } from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { formatCurrency } from '@/lib/currency'
 import SensitiveValue from '@/components/SensitiveValue'
-import { usePrivacyMode } from '@/app/(app)/privacy/PrivacyModeProvider'
+import { useHideMoney } from '@/app/(app)/privacy/PrivacyModeProvider'
 import { MONEY_MASK } from '@/lib/privacyMode'
 import type { PreferredCurrency } from '@/lib/userTypes'
 
@@ -94,7 +94,7 @@ export default function AllocationPie({
   preferredCurrency,
 }: AllocationPieProps) {
   const currency = preferredCurrency || 'USD'
-  const { hideMoney } = usePrivacyMode()
+  const hideMoney = useHideMoney()
   const [activeIndex, setActiveIndex] = useState<number | undefined>(undefined)
 
   const slices = useMemo(

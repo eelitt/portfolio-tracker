@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import type { HoldingNewsImpactEntry, NewsImpactTone } from '@/lib/schemas'
-import { NewsImpactBlock } from '@/app/(app)/ai-insights/ai-insights/NewsImpactBlock'
+import type { HoldingNewsImpactEntry } from '@/lib/schemas'
+import {
+  NewsImpactBlock,
+  NEWS_IMPACT_TONE_STYLES,
+} from '@/app/(app)/ai-insights/ai-insights/NewsImpactBlock'
 
 const PANEL_WIDTH_PX = 360 // w-90-ish; room for Finnhub headline + summary without scrolling
 const VIEWPORT_PAD = 8
@@ -35,24 +38,7 @@ function TooltipBulletText({ text }: { text: string }) {
   )
 }
 
-const TONE_BADGE: Record<NewsImpactTone, { label: string; className: string }> = {
-  positive: {
-    label: 'Positive',
-    className: 'bg-green-500/15 text-green-400',
-  },
-  neutral: {
-    label: 'Neutral',
-    className: 'bg-muted text-muted-foreground',
-  },
-  negative: {
-    label: 'Negative',
-    className: 'bg-red-500/15 text-red-400',
-  },
-  mixed: {
-    label: 'Mixed',
-    className: 'bg-amber-500/15 text-amber-400',
-  },
-}
+
 
 interface HoldingNewsTooltipProps {
   symbol: string
@@ -103,7 +89,9 @@ export function HoldingNewsTooltip({
     e.stopPropagation()
   }
 
-  const tone = impact ? TONE_BADGE[impact.tone] ?? TONE_BADGE.neutral : null
+  const tone = impact
+    ? NEWS_IMPACT_TONE_STYLES[impact.tone] ?? NEWS_IMPACT_TONE_STYLES.neutral
+    : null
 
   // md+: side of card; below on small screens
   const positionClass = placeLeft

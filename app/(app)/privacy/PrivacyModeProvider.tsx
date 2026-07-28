@@ -75,3 +75,22 @@ export function usePrivacyMode(): PrivacyModeContextValue {
   }
   return ctx
 }
+
+/**
+ * Whether to mask money in the UI.
+ *
+ * Always false on the server and on the first client render so SSR HTML
+ * matches hydration. localStorage privacy preference is applied only after
+ * mount — avoids Suspense/hydration mismatches when the provider loads
+ * hideMoney=true before a late child hydrates.
+ */
+export function useHideMoney(): boolean {
+  const { hideMoney } = usePrivacyMode()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  return mounted && hideMoney
+}

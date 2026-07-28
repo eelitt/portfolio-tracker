@@ -117,6 +117,43 @@ export async function getHoldingSnapshots(
       return { error: 'Symbol and asset type are required.' }
     }
 
+    const batch = await getHoldingSnapshotsBatch([{ symbol, assetType }])
+    if (batch.error) return { error: batch.error }
+    const key = `${assetType}:${symbol}`
+    return { data: batch.data?.[key] ?? [] }
+  } catch (e) {
+    console.error('getHoldingSnapshots error:', e)
+    return { error: 'Failed to load holding history.' }
+  }
+}
+
+export type GetHoldingSnapshotsBatchResult = {
+  /** Keys: `${assetType}:${symbol}` */
+  data?: Record<string, SnapshotPoint[]>
+  error?: string
+}
+
+/**
+ * Load holding_snapshots for many open symbols in one query (Performance multi-chart).
+ */
+export async function getHoldingSnapshotsBatch(
+  holdings: HoldingSnapshotQuery[]
+): Promise<GetHoldingSnapshotsBatchResult> {
+  try {
+    const cleaned = holdings
+      .map((h) => ({
+        symbol: h.symbol?.trim(),
+        assetType: h.assetType,
+      }))
+      .filter((h) => h.symbol && h.assetType) as {
+      symbol: string
+      assetType: HoldingSnapshotQuery['assetType']
+    }[]
+
+    if (cleaned.length === 0) {
+      return { data: {} }
+    }
+
     const supabase = await createClient()
     const {
       data: { user },
@@ -129,26 +166,48 @@ export async function getHoldingSnapshots(
     const preferred = profile?.preferredCurrency || 'USD'
     const usdToEurRate = await getUsdToEurRate()
 
+    const symbols = [...new Set(cleaned.map((h) => h.symbol))]
+
     const { data: rows, error } = await supabase
       .from('holding_snapshots')
       .select(
-        'snapshot_date, market_value, cost_basis, is_partial, currency'
+        'snapshot_date, symbol, asset_type, market_value, cost_basis, is_partial, currency'
       )
       .eq('user_id', user.id)
-      .eq('symbol', symbol)
-      .eq('asset_type', assetType)
+      .in('symbol', symbols)
       .order('snapshot_date', { ascending: true })
 
     if (error) {
-      console.error('holding_snapshots fetch error:', error)
+      console.error('holding_snapshots batch fetch error:', error)
       return { error: 'Failed to load holding history.' }
     }
 
-    return {
-      data: toChartPoints(rows ?? [], preferred, usdToEurRate, 'holding'),
+    const wanted = new Set(
+      cleaned.map((h) => `${h.assetType}:${h.symbol}`)
+    )
+    const grouped: Record<string, typeof rows> = {}
+    for (const row of rows ?? []) {
+      const sym = typeof row.symbol === 'string' ? row.symbol : ''
+      const at = typeof row.asset_type === 'string' ? row.asset_type : ''
+      const key = `${at}:${sym}`
+      if (!wanted.has(key)) continue
+      if (!grouped[key]) grouped[key] = []
+      grouped[key]!.push(row)
     }
+
+    const data: Record<string, SnapshotPoint[]> = {}
+    for (const key of wanted) {
+      data[key] = toChartPoints(
+        grouped[key] ?? [],
+        preferred,
+        usdToEurRate,
+        'holding'
+      )
+    }
+
+    return { data }
   } catch (e) {
-    console.error('getHoldingSnapshots error:', e)
+    console.error('getHoldingSnapshotsBatch error:', e)
     return { error: 'Failed to load holding history.' }
   }
 }

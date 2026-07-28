@@ -97,3 +97,92 @@ export function seriesRangeChange(points: SnapshotPoint[]): {
   const percent = first !== 0 ? (absolute / first) * 100 : 0
   return { absolute, percent }
 }
+
+export type PerformanceScaleMode = 'absolute' | 'indexed'
+
+/**
+ * Rebase market values so the first point is 0% and later points are
+ * percent change from that start (within the already windowed series).
+ * Returns null if the series is empty or the first value is 0.
+ */
+export function indexSnapshotSeries(
+  points: SnapshotPoint[]
+): SnapshotPoint[] | null {
+  if (!points.length) return null
+  const first = points[0].marketValue
+  if (!Number.isFinite(first) || first === 0) return null
+  return points.map((p) => ({
+    ...p,
+    marketValue: ((p.marketValue - first) / first) * 100,
+    // costBasis unused for indexed display; keep original for debugging
+  }))
+}
+
+/** Stable chart series id for portfolio totals. */
+export const PORTFOLIO_SERIES_ID = 'portfolio'
+
+export function holdingSeriesId(
+  assetType: string,
+  symbol: string
+): string {
+  return `${assetType}:${symbol}`
+}
+
+/**
+ * Build a Recharts-friendly row array: one row per date, columns = series ids.
+ * Missing dates for a series leave that key undefined (gaps in the line).
+ */
+export function mergeSeriesToChartRows(
+  seriesMap: Record<string, SnapshotPoint[]>,
+  seriesIds: string[]
+): Array<Record<string, string | number | boolean | undefined>> {
+  const dateSet = new Set<string>()
+  for (const id of seriesIds) {
+    for (const p of seriesMap[id] ?? []) {
+      dateSet.add(p.date)
+    }
+  }
+  const dates = [...dateSet].sort((a, b) => a.localeCompare(b))
+  const byIdDate = new Map<string, Map<string, SnapshotPoint>>()
+  for (const id of seriesIds) {
+    const m = new Map<string, SnapshotPoint>()
+    for (const p of seriesMap[id] ?? []) {
+      m.set(p.date, p)
+    }
+    byIdDate.set(id, m)
+  }
+
+  return dates.map((date) => {
+    const row: Record<string, string | number | boolean | undefined> = { date }
+    let anyPartial = false
+    for (const id of seriesIds) {
+      const p = byIdDate.get(id)?.get(date)
+      if (p) {
+        row[id] = p.marketValue
+        if (p.isPartial) anyPartial = true
+      }
+    }
+    row.isPartial = anyPartial
+    return row
+  })
+}
+
+/** Distinct strokes for multi-line chart (portfolio uses index 0). */
+export const PERFORMANCE_SERIES_COLORS = [
+  '#c9a227', // gold-ish — portfolio
+  '#64748b',
+  '#38bdf8',
+  '#a78bfa',
+  '#34d399',
+  '#f472b6',
+  '#fb923c',
+  '#2dd4bf',
+  '#e879f9',
+  '#94a3b8',
+  '#fbbf24',
+  '#60a5fa',
+] as const
+
+export function colorForSeriesIndex(i: number): string {
+  return PERFORMANCE_SERIES_COLORS[i % PERFORMANCE_SERIES_COLORS.length]
+}

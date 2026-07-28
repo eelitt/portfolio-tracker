@@ -1,12 +1,17 @@
 import type { HoldingNewsImpactEntry, NewsImpactTone } from '@/lib/schemas'
 
-const TONE_STYLES: Record<
+/**
+ * Tone badges: darker text on light surfaces (sharp), brighter pastels on dark.
+ * Shared with HoldingNewsTooltip.
+ */
+export const NEWS_IMPACT_TONE_STYLES: Record<
   NewsImpactTone,
   { label: string; className: string }
 > = {
   positive: {
     label: 'Positive',
-    className: 'bg-green-500/15 text-green-400',
+    className:
+      'bg-emerald-600/12 text-emerald-800 dark:bg-green-500/15 dark:text-green-400',
   },
   neutral: {
     label: 'Neutral',
@@ -14,11 +19,13 @@ const TONE_STYLES: Record<
   },
   negative: {
     label: 'Negative',
-    className: 'bg-red-500/15 text-red-400',
+    className:
+      'bg-red-600/12 text-red-800 dark:bg-red-500/15 dark:text-red-400',
   },
   mixed: {
     label: 'Mixed',
-    className: 'bg-amber-500/15 text-amber-400',
+    className:
+      'bg-amber-600/15 text-amber-900 dark:bg-amber-500/15 dark:text-amber-400',
   },
 }
 
@@ -35,7 +42,7 @@ export function NewsImpactBlock({
   compact = false,
   hideHeader = false,
 }: NewsImpactBlockProps) {
-  const tone = TONE_STYLES[impact.tone] ?? TONE_STYLES.neutral
+  const tone = NEWS_IMPACT_TONE_STYLES[impact.tone] ?? NEWS_IMPACT_TONE_STYLES.neutral
 
   return (
     <div

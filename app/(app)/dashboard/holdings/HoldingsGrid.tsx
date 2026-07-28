@@ -120,29 +120,41 @@ function HoldingCard({
                   )}
                 </span>
               </div>
-              <div className="flex justify-between font-medium">
-                <span>Unrealized P&amp;L</span>
-                {holding.asset_type === 'cash' || holding.priceAvailable !== false ? (
-                  <span
-                    className={
-                      holding.unrealizedPnl >= 0
-                        ? 'text-pnl-positive'
-                        : 'text-pnl-negative'
-                    }
-                  >
+              {holding.asset_type !== 'cash' && (
+                <div className="flex justify-between font-medium">
+                  <span>Unrealized P&amp;L</span>
+                  {holding.priceAvailable !== false ? (
+                    <span
+                      className={
+                        holding.unrealizedPnl >= 0
+                          ? 'text-pnl-positive'
+                          : 'text-pnl-negative'
+                      }
+                    >
+                      <SensitiveValue
+                        value={formatCurrency(holding.unrealizedPnl, preferredCurrency, 1)}
+                      />{' '}
+                      (
+                      <SensitiveValue
+                        value={`${holding.unrealizedPnlPercent.toFixed(1)}%`}
+                      />
+                      )
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </div>
+              )}
+              {holding.asset_type !== 'cash' && (
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Cost basis</span>
+                  <span className="tabular-nums text-foreground">
                     <SensitiveValue
-                      value={formatCurrency(holding.unrealizedPnl, preferredCurrency, 1)}
-                    />{' '}
-                    (
-                    <SensitiveValue
-                      value={`${holding.unrealizedPnlPercent.toFixed(1)}%`}
+                      value={formatCurrency(holding.totalCost, preferredCurrency, 1)}
                     />
-                    )
                   </span>
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

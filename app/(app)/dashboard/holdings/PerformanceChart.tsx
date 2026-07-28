@@ -1,9 +1,10 @@
 'use client'
 
 import {
-  Area,
-  AreaChart,
   CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -12,22 +13,43 @@ import {
 import { formatCurrency } from '@/lib/currency'
 import {
   aggregateSnapshotSeries,
+  colorForSeriesIndex,
+  indexSnapshotSeries,
+  mergeSeriesToChartRows,
+  PORTFOLIO_SERIES_ID,
   seriesRangeChange,
+  type PerformanceScaleMode,
   type SnapshotPoint,
   type SnapshotRangeMode,
 } from '@/lib/aggregateSnapshots'
 import type { PreferredCurrency } from '@/lib/userTypes'
 import SensitiveValue from '@/components/SensitiveValue'
-import { usePrivacyMode } from '@/app/(app)/privacy/PrivacyModeProvider'
+import { useHideMoney } from '@/app/(app)/privacy/PrivacyModeProvider'
 import { MONEY_MASK } from '@/lib/privacyMode'
+import { cn } from '@/lib/utils'
+
+export type PerformanceSeriesMeta = {
+  id: string
+  label: string
+  /** Stroke color */
+  color: string
+  /** Thicker line for portfolio */
+  emphasis?: boolean
+}
 
 interface PerformanceChartProps {
-  points: SnapshotPoint[]
+  /** id → raw daily points (pre-aggregation) */
+  seriesById: Record<string, SnapshotPoint[]>
+  /** Legend order and labels */
+  seriesMeta: PerformanceSeriesMeta[]
+  /** Which series ids are drawn */
+  visibleIds: string[]
+  onToggleSeries: (id: string) => void
   rangeMode: SnapshotRangeMode
+  scaleMode: PerformanceScaleMode
   preferredCurrency: PreferredCurrency
   error?: string | null
-  /** e.g. Portfolio or ticker — used in empty-state copy */
-  seriesLabel?: string
+  loading?: boolean
 }
 
 function formatTick(date: string, mode: SnapshotRangeMode): string {
@@ -49,15 +71,19 @@ function formatTick(date: string, mode: SnapshotRangeMode): string {
 }
 
 export default function PerformanceChart({
-  points,
+  seriesById,
+  seriesMeta,
+  visibleIds,
+  onToggleSeries,
   rangeMode,
+  scaleMode,
   preferredCurrency,
   error,
-  seriesLabel = 'Portfolio',
+  loading,
 }: PerformanceChartProps) {
-  const { hideMoney } = usePrivacyMode()
+  const hideMoney = useHideMoney()
+  const isIndexed = scaleMode === 'indexed'
 
-  // Empty/error shells: no nested card — parent HoldingsChartsPanel provides the frame
   if (error) {
     return (
       <div className="empty-state h-80">
@@ -66,129 +92,256 @@ export default function PerformanceChart({
     )
   }
 
-  if (!points.length) {
+  if (loading) {
+    return (
+      <div className="empty-state h-80">
+        <p className="text-muted-foreground">Loading performance history…</p>
+      </div>
+    )
+  }
+
+  const aggregated: Record<string, SnapshotPoint[]> = {}
+  for (const meta of seriesMeta) {
+    const raw = seriesById[meta.id] ?? []
+    const windowed = aggregateSnapshotSeries(raw, rangeMode)
+    if (isIndexed) {
+      const indexed = indexSnapshotSeries(windowed)
+      aggregated[meta.id] = indexed ?? []
+    } else {
+      aggregated[meta.id] = windowed
+    }
+  }
+
+  const visibleWithData = visibleIds.filter(
+    (id) => (aggregated[id]?.length ?? 0) > 0
+  )
+
+  const hasAnyHistory = seriesMeta.some(
+    (m) => (seriesById[m.id]?.length ?? 0) > 0
+  )
+
+  if (!hasAnyHistory) {
     return (
       <div className="empty-state h-80">
         <p className="font-display text-lg font-medium text-foreground">
           No performance history yet
-          {seriesLabel !== 'Portfolio' ? ` for ${seriesLabel}` : ''}
         </p>
-        <p>
-          The chart builds as daily{' '}
-          {seriesLabel === 'Portfolio' ? 'portfolio' : 'holding'} snapshots are
-          recorded.
-        </p>
+        <p>The chart builds as daily portfolio snapshots are recorded.</p>
       </div>
     )
   }
 
-  const series = aggregateSnapshotSeries(points, rangeMode)
-  const change = seriesRangeChange(series)
+  const chartRows = mergeSeriesToChartRows(aggregated, visibleWithData).map(
+    (row) => ({
+      ...row,
+      label: formatTick(String(row.date), rangeMode),
+    })
+  )
 
-  if (!series.length) {
-    return (
-      <div className="empty-state h-80">
-        <p>No data in this range.</p>
-      </div>
-    )
-  }
+  const portfolioAgg = aggregated[PORTFOLIO_SERIES_ID] ?? []
+  const portfolioChange =
+    !isIndexed && visibleIds.includes(PORTFOLIO_SERIES_ID)
+      ? seriesRangeChange(portfolioAgg)
+      : null
 
-  const chartData = series.map((p) => ({
-    ...p,
-    label: formatTick(p.date, rangeMode),
-  }))
+  const metaById = new Map(seriesMeta.map((m) => [m.id, m]))
 
   return (
     <div>
-      {change && (
+      {portfolioChange && (
         <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-muted-foreground">Change in range</span>
+          <span className="text-muted-foreground">Portfolio change in range</span>
           <span
             className={
-              change.absolute >= 0
+              portfolioChange.absolute >= 0
                 ? 'font-medium text-pnl-positive'
                 : 'font-medium text-pnl-negative'
             }
           >
             <SensitiveValue
-              value={formatCurrency(change.absolute, preferredCurrency, 1)}
+              value={formatCurrency(
+                portfolioChange.absolute,
+                preferredCurrency,
+                1
+              )}
             />{' '}
-            ({change.percent >= 0 ? '+' : ''}
-            {change.percent.toFixed(2)}%)
+            ({portfolioChange.percent >= 0 ? '+' : ''}
+            {portfolioChange.percent.toFixed(2)}%)
           </span>
         </div>
       )}
 
-      {series.length === 1 && (
+      {isIndexed && (
         <p className="mb-2 text-xs text-muted-foreground">
-          Only one snapshot in this range — need more days for a trend.
+          Indexed: each series starts at 0% at the beginning of the range.
         </p>
       )}
 
-      <div className="mt-4 h-80 w-full min-w-0">
-        <ResponsiveContainer
-          width="100%"
-          height={320}
-          initialDimension={{ width: 640, height: 320 }}
-        >
-          <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="mvFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#64748b" stopOpacity={0.35} />
-                <stop offset="100%" stopColor="#64748b" stopOpacity={0.02} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-            <XAxis
-              dataKey="label"
-              tick={{ fontSize: 11 }}
-              interval="preserveStartEnd"
-              minTickGap={28}
-            />
-            <YAxis
-              tick={{ fontSize: 11 }}
-              width={64}
-              tickFormatter={(v) =>
-                hideMoney
-                  ? MONEY_MASK
-                  : formatCurrency(Number(v), preferredCurrency, 1).replace(
-                      /[^\d.,\s-]/g,
-                      ''
-                    )
-              }
-            />
-            <Tooltip
-              content={({ active, payload }) => {
-                if (!active || !payload?.[0]) return null
-                const p = payload[0].payload as SnapshotPoint & { label: string }
-                return (
-                  <div className="rounded-md border bg-card px-3 py-2 text-sm shadow-md">
-                    <div className="font-medium">{p.date}</div>
-                    <div>
-                      {hideMoney
-                        ? MONEY_MASK
-                        : formatCurrency(p.marketValue, preferredCurrency, 1)}
+      {chartRows.length === 0 || visibleWithData.length === 0 ? (
+        <div className="empty-state h-64">
+          <p className="text-muted-foreground">
+            {visibleIds.length === 0
+              ? 'Turn on one or more series in the legend below.'
+              : 'No data in this range for the selected series.'}
+          </p>
+        </div>
+      ) : (
+        <div className="mt-2 h-80 w-full min-w-0">
+          <ResponsiveContainer
+            width="100%"
+            height={320}
+            initialDimension={{ width: 640, height: 320 }}
+          >
+            <LineChart
+              data={chartRows}
+              margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+              <XAxis
+                dataKey="label"
+                tick={{ fontSize: 11 }}
+                interval="preserveStartEnd"
+                minTickGap={28}
+              />
+              <YAxis
+                tick={{ fontSize: 11 }}
+                width={64}
+                tickFormatter={(v) => {
+                  if (isIndexed) {
+                    return `${Number(v).toFixed(0)}%`
+                  }
+                  if (hideMoney) return MONEY_MASK
+                  return formatCurrency(Number(v), preferredCurrency, 1).replace(
+                    /[^\d.,\s-]/g,
+                    ''
+                  )
+                }}
+              />
+              <Tooltip
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null
+                  const date = payload[0]?.payload?.date as string | undefined
+                  return (
+                    <div className="max-w-xs rounded-md border bg-card px-3 py-2 text-sm shadow-md">
+                      <div className="mb-1 font-medium">{date}</div>
+                      <ul className="space-y-0.5">
+                        {payload.map((entry) => {
+                          const id = String(entry.dataKey)
+                          const meta = metaById.get(id)
+                          const raw = entry.value
+                          if (raw == null || !Number.isFinite(Number(raw))) {
+                            return null
+                          }
+                          const n = Number(raw)
+                          return (
+                            <li
+                              key={id}
+                              className="flex items-center justify-between gap-3"
+                            >
+                              <span className="flex items-center gap-1.5 text-muted-foreground">
+                                <span
+                                  className="inline-block h-2 w-2 rounded-full"
+                                  style={{ backgroundColor: entry.color }}
+                                />
+                                {meta?.label ?? id}
+                              </span>
+                              <span className="tabular-nums">
+                                {isIndexed
+                                  ? `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`
+                                  : hideMoney
+                                    ? MONEY_MASK
+                                    : formatCurrency(n, preferredCurrency, 1)}
+                              </span>
+                            </li>
+                          )
+                        })}
+                      </ul>
                     </div>
-                    {p.isPartial && (
-                      <div className="text-xs text-amber-600 mt-1">
-                        Incomplete prices that day
-                      </div>
-                    )}
-                  </div>
+                  )
+                }}
+              />
+              <Legend content={() => null} />
+              {visibleWithData.map((id) => {
+                const meta = metaById.get(id)
+                if (!meta) return null
+                return (
+                  <Line
+                    key={id}
+                    type="monotone"
+                    dataKey={id}
+                    name={meta.label}
+                    stroke={meta.color}
+                    strokeWidth={meta.emphasis ? 2.5 : 1.75}
+                    dot={false}
+                    connectNulls
+                    isAnimationActive={false}
+                  />
                 )
-              }}
-            />
-            <Area
-              type="monotone"
-              dataKey="marketValue"
-              stroke="#64748b"
-              strokeWidth={2}
-              fill="url(#mvFill)"
-              isAnimationActive={false}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+              })}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Clickable legend */}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        {seriesMeta.map((meta) => {
+          const on = visibleIds.includes(meta.id)
+          const hasData = (seriesById[meta.id]?.length ?? 0) > 0
+          return (
+            <button
+              key={meta.id}
+              type="button"
+              onClick={() => onToggleSeries(meta.id)}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
+                on
+                  ? 'border-border bg-muted/60 text-foreground'
+                  : 'border-transparent bg-transparent text-muted-foreground hover:bg-muted/40',
+                !hasData && 'opacity-50'
+              )}
+              title={
+                hasData
+                  ? on
+                    ? `Hide ${meta.label}`
+                    : `Show ${meta.label}`
+                  : `${meta.label}: no history yet`
+              }
+            >
+              <span
+                className="inline-block h-2 w-2 shrink-0 rounded-full"
+                style={{
+                  backgroundColor: on ? meta.color : 'transparent',
+                  boxShadow: on ? undefined : `inset 0 0 0 1px ${meta.color}`,
+                }}
+              />
+              {meta.label}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
+}
+
+/** Assign colors: portfolio first gold, then holdings in order. */
+export function buildSeriesMeta(
+  holdings: { id: string; label: string }[]
+): PerformanceSeriesMeta[] {
+  const meta: PerformanceSeriesMeta[] = [
+    {
+      id: PORTFOLIO_SERIES_ID,
+      label: 'Portfolio',
+      color: colorForSeriesIndex(0),
+      emphasis: true,
+    },
+  ]
+  holdings.forEach((h, i) => {
+    meta.push({
+      id: h.id,
+      label: h.label,
+      color: colorForSeriesIndex(i + 1),
+    })
+  })
+  return meta
 }

@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   aggregateSnapshotSeries,
+  indexSnapshotSeries,
+  mergeSeriesToChartRows,
   seriesRangeChange,
   type SnapshotPoint,
 } from '../aggregateSnapshots'
@@ -89,5 +91,42 @@ describe('seriesRangeChange', () => {
     ])
     expect(change?.absolute).toBe(50)
     expect(change?.percent).toBe(50)
+  })
+})
+
+describe('indexSnapshotSeries', () => {
+  it('returns null for empty or zero base', () => {
+    expect(indexSnapshotSeries([])).toBeNull()
+    expect(indexSnapshotSeries([pt('2026-01-01', 0), pt('2026-01-02', 10)])).toBeNull()
+  })
+
+  it('rebases first point to 0% and later to relative change', () => {
+    const indexed = indexSnapshotSeries([
+      pt('2026-01-01', 100),
+      pt('2026-01-02', 110),
+      pt('2026-01-03', 90),
+    ])
+    expect(indexed?.map((p) => p.marketValue)).toEqual([0, 10, -10])
+  })
+})
+
+describe('mergeSeriesToChartRows', () => {
+  it('merges dates across series', () => {
+    const rows = mergeSeriesToChartRows(
+      {
+        portfolio: [pt('2026-01-01', 100), pt('2026-01-02', 110)],
+        'crypto:BTC': [pt('2026-01-02', 50), pt('2026-01-03', 55)],
+      },
+      ['portfolio', 'crypto:BTC']
+    )
+    expect(rows.map((r) => r.date)).toEqual([
+      '2026-01-01',
+      '2026-01-02',
+      '2026-01-03',
+    ])
+    expect(rows[0].portfolio).toBe(100)
+    expect(rows[0]['crypto:BTC']).toBeUndefined()
+    expect(rows[1].portfolio).toBe(110)
+    expect(rows[1]['crypto:BTC']).toBe(50)
   })
 })

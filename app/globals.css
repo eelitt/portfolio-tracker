@@ -10,8 +10,8 @@
 */
 
 :root {
-  /* Light (secondary) */
-  --background: #f7f6f3;
+  /* Light: warm page field; white elevated panels (clear separation) */
+  --background: #f4f3ef;
   --foreground: #141414;
   --card: #ffffff;
   --card-foreground: #141414;
@@ -19,17 +19,18 @@
   --popover-foreground: #141414;
   --primary: #9a7b2f;
   --primary-foreground: #faf8f2;
-  --secondary: #ebe8e1;
+  --secondary: #eceae4;
   --secondary-foreground: #1f1f1f;
-  --muted: #ebe8e1;
+  --muted: #eceae4;
   --muted-foreground: #5c5a55;
   --accent: #f0e9d6;
   --accent-foreground: #5c4a1a;
   --destructive: #c43c3c;
   --destructive-foreground: #fafafa;
   --border: #b89a4a;
-  --border-subtle: #d4d0c8;
-  --surface-elevated: #f3f1ec;
+  /* Stronger than page wash so white cards read as chrome */
+  --border-subtle: #ddd9d0;
+  --surface-elevated: #ffffff;
   --input: #e0ddd4;
   --ring: #9a7b2f;
   --gold: #a68b3c;
@@ -39,7 +40,12 @@
   --pnl-positive: #15803d;
   --pnl-negative: #b91c1c;
   --radius: 0.5rem;
-  --app-gradient: linear-gradient(165deg, #f7f6f3 0%, #f0eee8 50%, #ebe6db 100%);
+  --app-gradient: linear-gradient(
+    165deg,
+    #f5f4f0 0%,
+    #f0eee8 55%,
+    #e9e5db 100%
+  );
   /* Dot grid — explicit rgba (color-mix in vars is unreliable in gradients) */
   --dot-grid-size: 36px;
   --dot-grid-color: rgba(90, 85, 75, 0.08);

@@ -1,19 +1,25 @@
 'use client'
 
 /**
- * Open Charts section (like Summary/Holdings): title + tabs, then elevated chart body.
+ * Charts section: Allocation | Performance | Price.
+ * Performance: multi-series with legend toggles (no per-holding dropdown).
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import AllocationPie from './AllocationPie'
-import PerformanceChart from './PerformanceChart'
+import PerformanceChart, { buildSeriesMeta } from './PerformanceChart'
 import PriceChartTab from './PriceChartTab'
 import { SegmentedControl } from './SegmentedControl'
-import type { SnapshotPoint, SnapshotRangeMode } from '@/lib/aggregateSnapshots'
+import {
+  holdingSeriesId,
+  PORTFOLIO_SERIES_ID,
+  type PerformanceScaleMode,
+  type SnapshotPoint,
+  type SnapshotRangeMode,
+} from '@/lib/aggregateSnapshots'
 import type { PreferredCurrency } from '@/lib/userTypes'
 import type { EnrichedHolding } from '@/lib/types'
-import { getHoldingSnapshots } from '@/app/actions/snapshots'
-import { fieldClassName } from '../transactions/formStyles'
+import { getHoldingSnapshotsBatch } from '@/app/actions/snapshots'
 
 type ChartTab = 'allocation' | 'performance' | 'price'
 
@@ -29,24 +35,42 @@ const PERF_RANGES: { value: SnapshotRangeMode; label: string }[] = [
   { value: 'yearly', label: 'Yearly' },
 ]
 
-const PORTFOLIO_SERIES = 'portfolio'
+const PERF_SCALE: { value: PerformanceScaleMode; label: string }[] = [
+  { value: 'absolute', label: 'Absolute' },
+  { value: 'indexed', label: 'Indexed %' },
+]
 
-type SeriesKey = typeof PORTFOLIO_SERIES | string // holding: assetType:symbol
+const LS_VISIBLE = 'perfChartVisibleSeries'
+const LS_SCALE = 'perfChartScaleMode'
 
-function holdingSeriesKey(h: Pick<EnrichedHolding, 'symbol' | 'asset_type'>): string {
-  return `${h.asset_type}:${h.symbol}`
+function readVisibleSet(defaultOn: string[]): Set<string> {
+  try {
+    const raw = localStorage.getItem(LS_VISIBLE)
+    if (!raw) return new Set(defaultOn)
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return new Set(defaultOn)
+    return new Set(parsed.filter((x) => typeof x === 'string'))
+  } catch {
+    return new Set(defaultOn)
+  }
 }
 
-function parseHoldingSeriesKey(
-  key: string
-): { symbol: string; assetType: EnrichedHolding['asset_type'] } | null {
-  const idx = key.indexOf(':')
-  if (idx <= 0) return null
-  const assetType = key.slice(0, idx) as EnrichedHolding['asset_type']
-  const symbol = key.slice(idx + 1)
-  if (!symbol) return null
-  if (!['stock', 'etf', 'crypto', 'cash'].includes(assetType)) return null
-  return { symbol, assetType }
+function writeVisibleSet(ids: Set<string>) {
+  try {
+    localStorage.setItem(LS_VISIBLE, JSON.stringify([...ids]))
+  } catch {
+    // ignore
+  }
+}
+
+function readScaleMode(): PerformanceScaleMode {
+  try {
+    const v = localStorage.getItem(LS_SCALE)
+    if (v === 'indexed' || v === 'absolute') return v
+  } catch {
+    // ignore
+  }
+  return 'absolute'
 }
 
 interface HoldingsChartsPanelProps {
@@ -66,30 +90,53 @@ export default function HoldingsChartsPanel({
 }: HoldingsChartsPanelProps) {
   const [tab, setTab] = useState<ChartTab>('allocation')
   const [rangeMode, setRangeMode] = useState<SnapshotRangeMode>('daily')
-  const [seriesKey, setSeriesKey] = useState<SeriesKey>(PORTFOLIO_SERIES)
-  const [holdingPoints, setHoldingPoints] = useState<SnapshotPoint[] | null>(null)
+  const [scaleMode, setScaleMode] = useState<PerformanceScaleMode>('absolute')
+  const [visible, setVisible] = useState<Set<string>>(
+    () => new Set([PORTFOLIO_SERIES_ID])
+  )
+  const [holdingSeries, setHoldingSeries] = useState<
+    Record<string, SnapshotPoint[]>
+  >({})
   const [holdingError, setHoldingError] = useState<string | null>(null)
   const [holdingLoading, setHoldingLoading] = useState(false)
 
-  const seriesOptions = useMemo(() => {
-    const open = [...enrichedHoldings].sort((a, b) =>
-      a.symbol.localeCompare(b.symbol)
-    )
-    return open
+  const legendHoldings = useMemo(() => {
+    // Cash off by default and listed last; assets first alphabetically
+    const assets = enrichedHoldings
+      .filter((h) => h.asset_type !== 'cash')
+      .sort((a, b) => a.symbol.localeCompare(b.symbol))
+    const cash = enrichedHoldings
+      .filter((h) => h.asset_type === 'cash')
+      .sort((a, b) => a.symbol.localeCompare(b.symbol))
+    return [...assets, ...cash].map((h) => ({
+      id: holdingSeriesId(h.asset_type, h.symbol),
+      label: h.asset_type === 'cash' ? `${h.symbol}` : h.symbol,
+      assetType: h.asset_type,
+      symbol: h.symbol,
+    }))
   }, [enrichedHoldings])
 
+  const seriesMeta = useMemo(
+    () =>
+      buildSeriesMeta(
+        legendHoldings.map((h) => ({ id: h.id, label: h.label }))
+      ),
+    [legendHoldings]
+  )
+
+  // Load persisted prefs after mount (avoid SSR localStorage)
   useEffect(() => {
-    if (tab !== 'performance' || seriesKey === PORTFOLIO_SERIES) {
-      setHoldingPoints(null)
+    setVisible(readVisibleSet([PORTFOLIO_SERIES_ID]))
+    setScaleMode(readScaleMode())
+  }, [])
+
+  // Lazy-load all holding series when Performance tab opens
+  useEffect(() => {
+    if (tab !== 'performance') return
+    if (legendHoldings.length === 0) {
+      setHoldingSeries({})
       setHoldingError(null)
       setHoldingLoading(false)
-      return
-    }
-
-    const parsed = parseHoldingSeriesKey(seriesKey)
-    if (!parsed) {
-      setHoldingError('Invalid holding selection.')
-      setHoldingPoints(null)
       return
     }
 
@@ -97,35 +144,80 @@ export default function HoldingsChartsPanel({
     setHoldingLoading(true)
     setHoldingError(null)
 
-    void getHoldingSnapshots({
-      symbol: parsed.symbol,
-      assetType: parsed.assetType,
-    }).then((result) => {
+    void getHoldingSnapshotsBatch(
+      legendHoldings.map((h) => ({
+        symbol: h.symbol,
+        assetType: h.assetType as 'stock' | 'etf' | 'crypto' | 'cash',
+      }))
+    ).then((result) => {
       if (cancelled) return
       setHoldingLoading(false)
       if (result.error) {
         setHoldingError(result.error)
-        setHoldingPoints(null)
+        setHoldingSeries({})
         return
       }
-      setHoldingPoints(result.data ?? [])
+      setHoldingSeries(result.data ?? {})
     })
 
     return () => {
       cancelled = true
     }
-  }, [tab, seriesKey])
+  }, [tab, legendHoldings])
 
-  const performancePoints =
-    seriesKey === PORTFOLIO_SERIES ? snapshots : holdingPoints ?? []
-  const performanceError =
-    seriesKey === PORTFOLIO_SERIES
-      ? snapshotsError
-      : holdingError
-  const seriesLabel =
-    seriesKey === PORTFOLIO_SERIES
-      ? 'Portfolio'
-      : parseHoldingSeriesKey(seriesKey)?.symbol ?? 'Holding'
+  const seriesById = useMemo(() => {
+    const map: Record<string, SnapshotPoint[]> = {
+      [PORTFOLIO_SERIES_ID]: snapshots,
+      ...holdingSeries,
+    }
+    return map
+  }, [snapshots, holdingSeries])
+
+  const visibleIds = useMemo(() => [...visible], [visible])
+
+  const onToggleSeries = useCallback((id: string) => {
+    setVisible((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      writeVisibleSet(next)
+      return next
+    })
+  }, [])
+
+  const setAllAssets = useCallback(
+    (on: boolean) => {
+      setVisible((prev) => {
+        const next = new Set(prev)
+        // Keep portfolio as-is; toggle only asset holdings (not cash unless on)
+        for (const h of legendHoldings) {
+          if (h.assetType === 'cash') {
+            if (!on) next.delete(h.id)
+            continue
+          }
+          if (on) next.add(h.id)
+          else next.delete(h.id)
+        }
+        if (!next.has(PORTFOLIO_SERIES_ID) && next.size === 0) {
+          next.add(PORTFOLIO_SERIES_ID)
+        }
+        writeVisibleSet(next)
+        return next
+      })
+    },
+    [legendHoldings]
+  )
+
+  const onScaleChange = useCallback((mode: PerformanceScaleMode) => {
+    setScaleMode(mode)
+    try {
+      localStorage.setItem(LS_SCALE, mode)
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const performanceError = snapshotsError || holdingError
 
   return (
     <section className="mb-8">
@@ -133,7 +225,6 @@ export default function HoldingsChartsPanel({
         <span className="section-title-accent">Charts</span>
       </h2>
 
-      {/* Same row: range left, chart type right (aligned with chart panel below) */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-h-8 flex-wrap items-center gap-2">
           {tab === 'performance' ? (
@@ -145,24 +236,13 @@ export default function HoldingsChartsPanel({
                 value={rangeMode}
                 onChange={setRangeMode}
               />
-              <label className="sr-only" htmlFor="perf-series">
-                Performance series
-              </label>
-              <select
-                id="perf-series"
-                value={seriesKey}
-                onChange={(e) => setSeriesKey(e.target.value)}
-                className={`${fieldClassName} h-8 w-auto min-w-[9rem] max-w-[14rem] py-0 text-xs`}
-                aria-label="Performance series"
-              >
-                <option value={PORTFOLIO_SERIES}>Portfolio</option>
-                {seriesOptions.map((h) => (
-                  <option key={holdingSeriesKey(h)} value={holdingSeriesKey(h)}>
-                    {h.symbol}
-                    {h.asset_type === 'cash' ? ' (cash)' : ''}
-                  </option>
-                ))}
-              </select>
+              <SegmentedControl
+                aria-label="Performance scale"
+                size="sm"
+                options={PERF_SCALE}
+                value={scaleMode}
+                onChange={onScaleChange}
+              />
             </>
           ) : null}
         </div>
@@ -175,7 +255,6 @@ export default function HoldingsChartsPanel({
         />
       </div>
 
-      {/* Content panel — elevated so chart UI separates from page field */}
       <div className="rounded-xl border border-subtle bg-surface-elevated p-4 shadow-sm sm:p-5">
         {tab === 'allocation' ? (
           <AllocationPie
@@ -184,19 +263,48 @@ export default function HoldingsChartsPanel({
             usdToPreferredRate={usdToPreferredRate}
           />
         ) : tab === 'performance' ? (
-          holdingLoading && seriesKey !== PORTFOLIO_SERIES ? (
-            <div className="empty-state h-80">
-              <p className="text-muted-foreground">Loading {seriesLabel} history…</p>
-            </div>
-          ) : (
+          <>
             <PerformanceChart
-              points={performancePoints}
+              seriesById={seriesById}
+              seriesMeta={seriesMeta}
+              visibleIds={visibleIds}
+              onToggleSeries={onToggleSeries}
               rangeMode={rangeMode}
+              scaleMode={scaleMode}
               preferredCurrency={preferredCurrency}
               error={performanceError}
-              seriesLabel={seriesLabel}
+              loading={
+                holdingLoading &&
+                snapshots.length === 0 &&
+                legendHoldings.length > 0
+              }
             />
-          )
+            {holdingLoading && snapshots.length > 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Loading holding history…
+              </p>
+            )}
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+              <button
+                type="button"
+                className="underline-offset-2 hover:text-foreground hover:underline"
+                onClick={() => setAllAssets(true)}
+              >
+                All assets
+              </button>
+              <span aria-hidden>·</span>
+              <button
+                type="button"
+                className="underline-offset-2 hover:text-foreground hover:underline"
+                onClick={() => setAllAssets(false)}
+              >
+                None
+              </button>
+              <span className="text-muted-foreground/80">
+                (click chips to show/hide · cash off by default)
+              </span>
+            </div>
+          </>
         ) : (
           <PriceChartTab
             holdings={enrichedHoldings}

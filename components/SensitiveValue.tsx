@@ -1,6 +1,6 @@
 'use client'
 
-import { usePrivacyMode } from '@/app/(app)/privacy/PrivacyModeProvider'
+import { useHideMoney } from '@/app/(app)/privacy/PrivacyModeProvider'
 import { MONEY_MASK } from '@/lib/privacyMode'
 import { cn } from '@/lib/utils'
 
@@ -13,9 +13,12 @@ interface SensitiveValueProps {
 /**
  * Renders a money string, or password-style dots when privacy mode is on.
  * Safe to embed in Server Components as a client island.
+ *
+ * Masking only applies after mount so SSR and hydration always match
+ * (privacy preference lives in localStorage).
  */
 export default function SensitiveValue({ value, className }: SensitiveValueProps) {
-  const { hideMoney } = usePrivacyMode()
+  const hideMoney = useHideMoney()
 
   if (hideMoney) {
     return (
