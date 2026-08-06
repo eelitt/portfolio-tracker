@@ -5,6 +5,7 @@ import {
   CRYPTO_SYMBOLS,
   getSymbolsForType,
   getCryptoPricing,
+  getSecurityPricing,
   getSymbolOptions,
 } from '../symbols'
 import { getBinanceSpotSymbol } from '../priceHistory/binanceSymbol'
@@ -93,6 +94,33 @@ describe('symbols data (curated lists for transaction forms)', () => {
     expect(getCryptoPricing('FOOCOIN')).toEqual({
       kind: 'binance',
       pair: 'FOOCOINUSDT',
+    })
+  })
+
+  it('routes S-Pankki USA ESG fund to Yahoo chart pricing', () => {
+    const fund = ETF_SYMBOLS.find((e) =>
+      e.symbol.toUpperCase().includes('S-PANKKI USA ESG')
+    )
+    expect(fund).toBeDefined()
+    expect(fund!.isin).toBe('FI4000387733')
+    expect(getSecurityPricing(fund!.symbol)).toEqual({
+      kind: 'yahoo_chart',
+      yahooSymbol: '0P0001IFBB.F',
+      quoteCurrency: 'EUR',
+    })
+    expect(getSecurityPricing('SPY')).toEqual({ kind: 'finnhub' })
+  })
+
+  it('routes OP Amerikka Indeksi A to Yahoo chart pricing', () => {
+    const fund = ETF_SYMBOLS.find((e) =>
+      e.symbol.toUpperCase().includes('OP AMERIKKA INDEKSI')
+    )
+    expect(fund).toBeDefined()
+    expect(fund!.isin).toBe('FI4000029327')
+    expect(getSecurityPricing(fund!.symbol)).toEqual({
+      kind: 'yahoo_chart',
+      yahooSymbol: '0P0000UP8V.F',
+      quoteCurrency: 'EUR',
     })
   })
 

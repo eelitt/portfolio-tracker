@@ -1,19 +1,25 @@
 'use server'
 
-import { getCryptoPricing } from '@/lib/symbols'
+import { getCryptoPricing, getSecurityPricing } from '@/lib/symbols'
+import { getUsdToEurRate } from '@/lib/currency'
 import {
   buildBinance24hrUrl,
   parseBinance24hrTickers,
 } from './binanceTicker'
+import { fetchYahooFundNav } from './yahooFund'
 
 /**
- * Live portfolio price service (Finnhub stocks/ETFs + Binance crypto).
+ * Live portfolio price service (Finnhub stocks/ETFs + Binance crypto +
+ * catalog Yahoo-chart fund NAVs).
  *
  * Chart OHLC / history: lib/priceHistory — not this module.
  *
  * Portfolio KPIs (getPricesForHoldings) default to cache: 'no-store' so the
  * first dashboard paint uses live quotes. Optional forceFresh: false re-enables
  * short-lived tag `prices` caching.
+ *
+ * Pipeline contract: returned quotes are in **USD** so convertToPreferred can
+ * treat market marks as USD. EUR fund NAVs are converted here via USD/EUR.
  */
 
 export type PriceQuote = { price: number; change24h: number | null }
@@ -175,6 +181,45 @@ export async function getCryptoPricesBatch(
 
 // ==================== BATCH FETCH ====================
 
+async function getCatalogYahooPrice(
+  portfolioSymbol: string,
+  options: PriceFetchOptions,
+  usdToEurRate: number
+): Promise<PriceQuote | null> {
+  const pricing = getSecurityPricing(portfolioSymbol)
+  if (pricing.kind !== 'yahoo_chart') return null
+
+  const nav = await fetchYahooFundNav(pricing.yahooSymbol, {
+    forceFresh: options.forceFresh,
+  })
+  if (!nav || !isValidPrice(nav.price)) return null
+
+  // Normalize to USD for the portfolio pipeline (toPreferredHolding).
+  let priceUsd = nav.price
+  const quoteCur = pricing.quoteCurrency
+  if (quoteCur === 'EUR') {
+    if (!(usdToEurRate > 0)) return null
+    priceUsd = nav.price / usdToEurRate
+  }
+
+  if (!isValidPrice(priceUsd)) return null
+
+  if (process.env.NODE_ENV === 'development') {
+    console.log(
+      `Fetched Yahoo fund NAV for ${portfolioSymbol} (${pricing.yahooSymbol}):`,
+      nav.price,
+      nav.currency ?? quoteCur,
+      '→ USD',
+      priceUsd
+    )
+  }
+
+  return {
+    price: priceUsd,
+    change24h: nav.change24h,
+  }
+}
+
 async function fetchPricesOnce(
   holdings: HoldingInput[],
   options: PriceFetchOptions = {}
@@ -182,7 +227,7 @@ async function fetchPricesOnce(
   const priceData: Record<string, PriceQuote> = {}
 
   const cryptos = holdings.filter((h) => h.asset_type === 'crypto')
-  const stocks = holdings.filter(
+  const securities = holdings.filter(
     (h) => h.asset_type === 'stock' || h.asset_type === 'etf'
   )
   const cash = holdings.filter((h) => h.asset_type === 'cash')
@@ -197,12 +242,31 @@ async function fetchPricesOnce(
       ? getCryptoPricesBatch(cryptoSymbols, options)
       : Promise.resolve({} as Record<string, PriceQuote>)
 
-  const stockPromises = stocks.map(async (holding) => {
+  const needsEurFx = securities.some((h) => {
+    const p = getSecurityPricing(h.symbol)
+    return p.kind === 'yahoo_chart' && p.quoteCurrency === 'EUR'
+  })
+  const usdToEurRate = needsEurFx ? await getUsdToEurRate() : 1
+
+  const securityPromises = securities.map(async (holding) => {
+    const routing = getSecurityPricing(holding.symbol)
+    if (routing.kind === 'yahoo_chart') {
+      const result = await getCatalogYahooPrice(
+        holding.symbol,
+        options,
+        usdToEurRate
+      )
+      if (result) priceData[holding.symbol] = result
+      return
+    }
     const result = await getStockPrice(holding.symbol, options)
     if (result) priceData[holding.symbol] = result
   })
 
-  const [cryptoMap] = await Promise.all([cryptoPromise, Promise.all(stockPromises)])
+  const [cryptoMap] = await Promise.all([
+    cryptoPromise,
+    Promise.all(securityPromises),
+  ])
   Object.assign(priceData, cryptoMap)
 
   return priceData

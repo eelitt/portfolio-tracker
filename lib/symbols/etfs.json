@@ -9,5 +9,25 @@
   { "symbol": "VXUS", "name": "Vanguard Total International Stock ETF" },
   { "symbol": "BND", "name": "Vanguard Total Bond Market ETF" },
   { "symbol": "GLD", "name": "SPDR Gold Shares" },
-  { "symbol": "TLT", "name": "iShares 20+ Year Treasury Bond ETF" }
+  { "symbol": "TLT", "name": "iShares 20+ Year Treasury Bond ETF" },
+  {
+    "symbol": "S-PANKKI USA ESG OSAKE A",
+    "name": "S-Pankki Passiivinen USA ESG Osake A",
+    "isin": "FI4000387733",
+    "quoteCurrency": "EUR",
+    "pricing": {
+      "provider": "yahoo_chart",
+      "yahooSymbol": "0P0001IFBB.F"
+    }
+  },
+  {
+    "symbol": "OP AMERIKKA INDEKSI A",
+    "name": "OP-Amerikka Indeksi A",
+    "isin": "FI4000029327",
+    "quoteCurrency": "EUR",
+    "pricing": {
+      "provider": "yahoo_chart",
+      "yahooSymbol": "0P0000UP8V.F"
+    }
+  }
 ]

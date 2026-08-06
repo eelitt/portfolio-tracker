@@ -161,6 +161,51 @@ describe('priceService', () => {
       expect(mockFetch).not.toHaveBeenCalled()
     })
 
+    it('prices S-Pankki fund via Yahoo chart and converts EUR NAV to USD', async () => {
+      mockFetch.mockImplementation(async (url: string) => {
+        const u = String(url)
+        if (u.includes('frankfurter')) {
+          return {
+            ok: true,
+            json: async () => ({ rates: { EUR: 0.9 } }),
+          }
+        }
+        if (u.includes('finance.yahoo.com')) {
+          return {
+            ok: true,
+            json: async () => ({
+              chart: {
+                result: [
+                  {
+                    meta: {
+                      currency: 'EUR',
+                      regularMarketPrice: 22.5,
+                      chartPreviousClose: 22.5,
+                    },
+                    indicators: { quote: [{ close: [22.5, 22.5] }] },
+                  },
+                ],
+              },
+            }),
+          }
+        }
+        return { ok: false }
+      })
+
+      const prices = await getPricesForHoldings([
+        { symbol: 'S-PANKKI USA ESG OSAKE A', asset_type: 'etf' },
+      ])
+
+      // 22.5 EUR / 0.9 = 25 USD
+      expect(prices['S-PANKKI USA ESG OSAKE A']?.price).toBeCloseTo(25, 5)
+      expect(mockFetch.mock.calls.some((c) => String(c[0]).includes('0P0001IFBB.F'))).toBe(
+        true
+      )
+      expect(
+        mockFetch.mock.calls.some((c) => String(c[0]).includes('finnhub.io'))
+      ).toBe(false)
+    })
+
     it('can opt into Data Cache with forceFresh: false', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,

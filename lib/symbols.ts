@@ -1,10 +1,10 @@
 /**
- * Curated symbol lists for transaction form dropdowns (+ crypto pricing map).
+ * Curated symbol lists for transaction form dropdowns (+ crypto / fund pricing maps).
  *
  * - Users can only pick symbols that exist in these lists for the chosen asset type.
  * - To support a new instrument, add it to the appropriate .json file.
  * - Crypto rows: either `stable: true` (face $1) or `binance_symbol` (Binance USDT pair).
- *   Confirm the pair exists on Binance spot before adding.
+ * - ETF rows may include optional `pricing` for mutual-fund NAV (Yahoo chart), not Finnhub.
  *
  * Price APIs are never called for the full lists — only for open holdings.
  */
@@ -16,6 +16,19 @@ import cryptosJson from './symbols/cryptos.json' with { type: 'json' }
 export interface AssetSymbol {
   symbol: string
   name: string
+}
+
+/** Optional catalog pricing for instruments Finnhub cannot quote (e.g. Finnish funds). */
+export type SecurityCatalogPricing = {
+  provider: 'yahoo_chart'
+  yahooSymbol: string
+}
+
+export interface EtfSymbol extends AssetSymbol {
+  isin?: string
+  /** Currency of the external NAV/quote before pipeline normalizes to USD. */
+  quoteCurrency?: 'USD' | 'EUR'
+  pricing?: SecurityCatalogPricing
 }
 
 export interface CryptoSymbol {
@@ -33,12 +46,24 @@ export type CryptoPricing =
   | { kind: 'stable' }
   | { kind: 'none' }
 
+export type SecurityPricing =
+  | {
+      kind: 'yahoo_chart'
+      yahooSymbol: string
+      quoteCurrency: 'USD' | 'EUR'
+    }
+  | { kind: 'finnhub' }
+
 export const STOCK_SYMBOLS: AssetSymbol[] = stocksJson as AssetSymbol[]
-export const ETF_SYMBOLS: AssetSymbol[] = etfsJson as AssetSymbol[]
+export const ETF_SYMBOLS: EtfSymbol[] = etfsJson as EtfSymbol[]
 export const CRYPTO_SYMBOLS: CryptoSymbol[] = cryptosJson as CryptoSymbol[]
 
 const CRYPTO_BY_SYMBOL = new Map(
   CRYPTO_SYMBOLS.map((c) => [c.symbol.toUpperCase(), c] as const)
+)
+
+const ETF_BY_SYMBOL = new Map(
+  ETF_SYMBOLS.map((e) => [e.symbol.toUpperCase(), e] as const)
 )
 
 /**
@@ -58,6 +83,26 @@ export function getSymbolsForType(
     default:
       return []
   }
+}
+
+/**
+ * How to price a stock/ETF catalog symbol for live portfolio quotes.
+ * Catalog funds with `pricing.provider: yahoo_chart` skip Finnhub.
+ * Everything else uses Finnhub exchange quotes (default).
+ */
+export function getSecurityPricing(ticker: string): SecurityPricing {
+  const upper = (ticker || '').trim().toUpperCase()
+  if (!upper) return { kind: 'finnhub' }
+
+  const row = ETF_BY_SYMBOL.get(upper)
+  if (row?.pricing?.provider === 'yahoo_chart' && row.pricing.yahooSymbol?.trim()) {
+    return {
+      kind: 'yahoo_chart',
+      yahooSymbol: row.pricing.yahooSymbol.trim(),
+      quoteCurrency: row.quoteCurrency === 'EUR' ? 'EUR' : 'USD',
+    }
+  }
+  return { kind: 'finnhub' }
 }
 
 /**
