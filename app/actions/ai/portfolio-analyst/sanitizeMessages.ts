@@ -131,22 +131,26 @@ export function sanitizeAnalystMessages(raw: unknown[]): SanitizeAnalystMessages
     }
   }
 
-  const truncated = roleFiltered.map((item) => {
+  type SanitizedMessage = Record<string, unknown> & {
+    role: string
+    content: unknown
+  }
+
+  const truncated: SanitizedMessage[] = roleFiltered.map((item) => {
     const msg = item as Record<string, unknown>
     return {
       ...msg,
-      role: msg.role,
+      role: String(msg.role),
       content: sanitizeContent(msg.content),
     }
   })
 
   // Keep tail first for recency, then enforce total char budget from the end.
-  let kept = truncated.slice(-ANALYST_MAX_MESSAGES)
+  let kept: SanitizedMessage[] = truncated.slice(-ANALYST_MAX_MESSAGES)
   let total = 0
-  const budgeted: unknown[] = []
+  const budgeted: SanitizedMessage[] = []
   for (let i = kept.length - 1; i >= 0; i--) {
-    const m = kept[i] as { content?: unknown }
-    const len = textLenFromContent(m.content)
+    const len = textLenFromContent(kept[i].content)
     if (total + len > ANALYST_MAX_TOTAL_CHARS && budgeted.length > 0) {
       break
     }
