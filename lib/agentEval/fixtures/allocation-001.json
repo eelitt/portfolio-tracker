@@ -1,0 +1,38 @@
+{
+  "id": "allocation-001",
+  "feature": "portfolio_analyst",
+  "description": "Ask for portfolio allocation breakdown",
+  "prompt": "What is my portfolio allocation by asset?",
+  "seed": {
+    "preferredCurrency": "USD",
+    "transactions": [
+      {
+        "symbol": "AAPL",
+        "asset_type": "stock",
+        "action": "buy",
+        "quantity": 10,
+        "unit_price": 100,
+        "executed_at": "2025-01-01T12:00:00.000Z",
+        "currency": "USD"
+      },
+      {
+        "symbol": "BTC",
+        "asset_type": "crypto",
+        "action": "buy",
+        "quantity": 0.5,
+        "unit_price": 40000,
+        "executed_at": "2025-01-02T12:00:00.000Z",
+        "currency": "USD"
+      }
+    ],
+    "prices": {
+      "AAPL": 100,
+      "BTC": 40000
+    }
+  },
+  "expect": {
+    "toolsAnyOf": [["get_allocation"], ["get_allocation", "get_portfolio_summary"]],
+    "forbiddenTools": ["confirm_transaction"],
+    "mustNotSucceedConfirm": true
+  }
+}

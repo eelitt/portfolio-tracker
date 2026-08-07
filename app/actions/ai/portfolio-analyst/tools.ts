@@ -1,11 +1,14 @@
 /**
  * AI SDK tools for Portfolio Analyst.
- * Execute paths always load the current user's data server-side (RLS).
+ *
+ * Production: loadUserPortfolio → getPortfolioData (RLS).
+ * Admin eval: optional evalPortfolio snapshot + evalMode so prepare/confirm
+ * never write pending drafts or transactions. Chat route must not pass those opts.
  */
 
 import { tool } from 'ai'
 import { z } from 'zod'
-import { getPortfolioData } from '@/lib/portfolioData'
+import { getPortfolioData, type PortfolioData } from '@/lib/portfolioData'
 import {
   filterEnrichedHoldings,
   allocationBreakdown,
@@ -37,17 +40,39 @@ function round2(n: number) {
 export type PortfolioAnalystToolOptions = {
   /** Latest user message text for this HTTP request (confirm gate). */
   lastUserText?: string
+  /**
+   * When set (admin eval suite only), tools read this snapshot instead of the DB.
+   * Chat route must never pass this.
+   */
+  evalPortfolio?: PortfolioData
+  /** When true, prepare/confirm never write pending drafts or transactions. */
+  evalMode?: boolean
 }
 
-async function loadUserPortfolio(): Promise<
+/** Live DB portfolio, or injected eval snapshot when provided. */
+async function loadUserPortfolio(
+  evalPortfolio?: PortfolioData
+): Promise<
   | {
       ok: true
-      data: Awaited<ReturnType<typeof getPortfolioData>>
+      data: PortfolioData
       holdings: EnrichedHolding[]
       transactions: Transaction[]
     }
   | { ok: false; error: string }
 > {
+  if (evalPortfolio) {
+    if (evalPortfolio.error) {
+      return { ok: false, error: evalPortfolio.error }
+    }
+    return {
+      ok: true,
+      data: evalPortfolio,
+      holdings: evalPortfolio.enrichedHoldings as EnrichedHolding[],
+      transactions: (evalPortfolio.transactions || []) as Transaction[],
+    }
+  }
+
   const data = await getPortfolioData()
   if (data.error) {
     return { ok: false, error: data.error }
@@ -64,6 +89,7 @@ async function loadUserPortfolio(): Promise<
  * Build the tool set for a single request.
  * @param userId — authenticated user (pending NL drafts are scoped to this id)
  * @param options.lastUserText — used to hard-gate confirm_transaction
+ * @param options.evalPortfolio / evalMode — admin eval only; never from chat route
  */
 export function createPortfolioAnalystTools(
   userId: string,
@@ -72,6 +98,11 @@ export function createPortfolioAnalystTools(
   /** Blocks prepare + confirm in the same agent HTTP request (maxSteps). */
   let preparedThisRequest = false
   const lastUserText = options.lastUserText ?? ''
+  const evalPortfolio = options.evalPortfolio
+  // evalPortfolio alone implies evalMode (safer default for suite injection)
+  const evalMode = options.evalMode === true || !!evalPortfolio
+
+  const load = () => loadUserPortfolio(evalPortfolio)
 
   return {
     get_portfolio_summary: tool({
@@ -79,7 +110,7 @@ export function createPortfolioAnalystTools(
         'Get high-level portfolio totals: market value, cost, unrealized P&L, 24h change, preferred currency, holding counts, and unpriced symbols.',
       parameters: z.object({}),
       execute: async () => {
-        const loaded = await loadUserPortfolio()
+        const loaded = await load()
         if (!loaded.ok) return { error: loaded.error }
         const { data } = loaded
         return {
@@ -120,7 +151,7 @@ export function createPortfolioAnalystTools(
         limit: z.number().int().min(1).max(30).optional(),
       }),
       execute: async (args) => {
-        const loaded = await loadUserPortfolio()
+        const loaded = await load()
         if (!loaded.ok) return { error: loaded.error }
         const holdings = filterEnrichedHoldings(loaded.holdings, {
           assetType: args.assetType,
@@ -145,7 +176,7 @@ export function createPortfolioAnalystTools(
         'Get portfolio allocation weights by symbol and by asset type (priced assets + cash only).',
       parameters: z.object({}),
       execute: async () => {
-        const loaded = await loadUserPortfolio()
+        const loaded = await load()
         if (!loaded.ok) return { error: loaded.error }
         const breakdown = allocationBreakdown(loaded.holdings)
         return {
@@ -164,7 +195,7 @@ export function createPortfolioAnalystTools(
         symbol: z.string().optional(),
       }),
       execute: async (args) => {
-        const loaded = await loadUserPortfolio()
+        const loaded = await load()
         if (!loaded.ok) return { error: loaded.error }
         const result = realizedPnlFromTransactions(loaded.transactions, {
           year: args.year,
@@ -194,7 +225,7 @@ export function createPortfolioAnalystTools(
         limit: z.number().int().min(1).max(40).optional(),
       }),
       execute: async (args) => {
-        const loaded = await loadUserPortfolio()
+        const loaded = await load()
         if (!loaded.ok) return { error: loaded.error }
         const list = compactTransactions(loaded.transactions, {
           symbol: args.symbol,
@@ -244,7 +275,7 @@ export function createPortfolioAnalystTools(
           .describe('For price_shock: list of symbol shocks'),
       }),
       execute: async (args) => {
-        const loaded = await loadUserPortfolio()
+        const loaded = await load()
         if (!loaded.ok) return { error: loaded.error }
         const currency = loaded.data.preferredCurrency
 
@@ -312,7 +343,7 @@ export function createPortfolioAnalystTools(
           (args.mode === 'full' && args.symbol && args.quantity !== undefined)
 
         if (needsWhatIf && args.symbol && args.quantity !== undefined && unitPrice === undefined) {
-          const loaded = await loadUserPortfolio()
+          const loaded = await load()
           if (!loaded.ok) return { error: loaded.error }
           const sym = args.symbol.toUpperCase()
           const h = loaded.holdings.find((x) => x.symbol.toUpperCase() === sym)
@@ -429,7 +460,7 @@ export function createPortfolioAnalystTools(
         })
 
         if (result.status === 'ready' && result.draft) {
-          const loaded = await loadUserPortfolio()
+          const loaded = await load()
           if (loaded.ok) {
             const held = loaded.holdings.find(
               (h) => h.symbol.toUpperCase() === result.draft!.symbol.toUpperCase()
@@ -438,25 +469,32 @@ export function createPortfolioAnalystTools(
             if (w) result.warnings.push(w)
           }
 
-          await savePendingTxDraft(userId, {
-            sourceText: args.sourceText,
-            draft: result.draft,
-            summary: result.summary || '',
-            warnings: result.warnings,
-            preparedAt: new Date().toISOString(),
-          })
+          // Production: persist pending draft for a later confirm turn.
+          // Eval: skip storage so admin suite never mutates the admin's draft.
+          if (!evalMode) {
+            await savePendingTxDraft(userId, {
+              sourceText: args.sourceText,
+              draft: result.draft,
+              summary: result.summary || '',
+              warnings: result.warnings,
+              preparedAt: new Date().toISOString(),
+            })
+          }
           preparedThisRequest = true
 
           return {
             ...result,
-            pendingStored: true,
+            pendingStored: !evalMode,
+            evalMode: evalMode || undefined,
             nextStep:
               'Show the summary to the user and ask them to reply "confirm" (or yes) in a NEW message to save. Do not call confirm_transaction in this turn — the server will reject it.',
           }
         }
 
         // Not ready — clear any old pending so confirm cannot save a stale trade
-        await clearPendingTxDraft(userId)
+        if (!evalMode) {
+          await clearPendingTxDraft(userId)
+        }
         return {
           ...result,
           pendingStored: false,
@@ -478,6 +516,39 @@ export function createPortfolioAnalystTools(
           .describe('Must be true (default). Only the pending draft from prepare_transaction can be saved.'),
       }),
       execute: async (args) => {
+        // Eval: exercise confirm gates without createTransactionRecord
+        if (evalMode) {
+          if (preparedThisRequest) {
+            return {
+              ok: false as const,
+              errors: [
+                'Cannot confirm in the same turn as prepare. Show the draft summary and wait for the user to reply "confirm" in a new message.',
+              ],
+              missing: [],
+              warnings: [],
+              evalMode: true,
+            }
+          }
+          if (!isExplicitConfirmMessage(lastUserText)) {
+            return {
+              ok: false as const,
+              errors: [
+                'User has not sent an explicit confirmation message (e.g. "confirm" or "yes"). Do not save yet.',
+              ],
+              missing: [],
+              warnings: [],
+              evalMode: true,
+            }
+          }
+          return {
+            ok: false as const,
+            errors: ['Eval mode: confirm is not persisted.'],
+            missing: [],
+            warnings: [],
+            evalMode: true,
+          }
+        }
+
         if (args.usePendingDraft === false) {
           return {
             ok: false as const,
@@ -554,7 +625,7 @@ export function createPortfolioAnalystTools(
         }
 
         const draft = validated.draft
-        const loaded = await loadUserPortfolio()
+        const loaded = await load()
         const warnings = [...pendingWarnings, ...validated.warnings]
         if (loaded.ok) {
           const held = loaded.holdings.find(

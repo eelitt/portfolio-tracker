@@ -3,6 +3,7 @@
  *
  * POST { messages } → data stream for useChat.
  * Auth + analyst rate limit + sanitized history + tool-first streamText (xAI).
+ * Best-effort agent_runs logging (does not break the stream on log failure).
  */
 
 import { streamText, convertToCoreMessages } from 'ai'
@@ -12,8 +13,17 @@ import { PORTFOLIO_ANALYST_SYSTEM_PROMPT } from '@/app/actions/ai/portfolio-anal
 import { createPortfolioAnalystTools } from '@/app/actions/ai/portfolio-analyst/tools'
 import { checkAndConsumeAnalystRateLimit } from '@/app/actions/ai/portfolio-analyst/rateLimit'
 import { sanitizeAnalystMessages } from '@/app/actions/ai/portfolio-analyst/sanitizeMessages'
+import {
+  startAgentRun,
+  finishAgentRun,
+} from '@/lib/agentObservability/recordRun'
+import { toolRecordsFromStepResults } from '@/lib/agentObservability'
+import type { AgentToolRecord } from '@/lib/agentObservability'
 
 export const maxDuration = 60
+
+const MODEL_ID = 'grok-4.3'
+const FEATURE = 'portfolio_analyst'
 
 export async function POST(req: Request) {
   try {
@@ -61,22 +71,85 @@ export async function POST(req: Request) {
       return new Response(rate.error, { status: 429 })
     }
 
+    // --- Agent observability (best-effort; null runId = logging unavailable) ---
+    const startedAt = Date.now()
+    const runId = await startAgentRun({
+      userId: user.id,
+      feature: FEATURE,
+      model: MODEL_ID,
+    })
+
+    const collectedTools: AgentToolRecord[] = []
+    let stepCount = 0
+
     const result = streamText({
-      model: xai('grok-4.3'),
+      model: xai(MODEL_ID),
       system: PORTFOLIO_ANALYST_SYSTEM_PROMPT,
       messages: convertToCoreMessages(sanitized.messages as Parameters<
         typeof convertToCoreMessages
       >[0]),
       tools: createPortfolioAnalystTools(user.id, {
         lastUserText: sanitized.lastUserText,
+        // Intentionally omit evalPortfolio / evalMode — production chat only.
       }),
       maxSteps: 5,
       temperature: 0.2,
+      onStepFinish: async (step) => {
+        stepCount += 1
+        // Collect tool traces for agent_runs; never throw into the stream.
+        try {
+          const records = toolRecordsFromStepResults(
+            (step.toolResults || []).map((tr) => ({
+              toolName: tr.toolName,
+              args: tr.args,
+              result: tr.result,
+            }))
+          )
+          collectedTools.push(...records)
+        } catch (e) {
+          console.error(
+            'Portfolio analyst tool log step error:',
+            e instanceof Error ? e.message : 'unknown'
+          )
+        }
+      },
+      onFinish: async ({ usage, finishReason }) => {
+        if (!runId) return
+        const status =
+          finishReason === 'error' || finishReason === 'other'
+            ? 'partial'
+            : 'success'
+        await finishAgentRun({
+          runId,
+          status,
+          tools: collectedTools,
+          usage: usage
+            ? {
+                promptTokens: usage.promptTokens,
+                completionTokens: usage.completionTokens,
+                totalTokens: usage.totalTokens,
+              }
+            : null,
+          model: MODEL_ID,
+          durationMs: Date.now() - startedAt,
+          stepCount,
+        })
+      },
       onError: ({ error }) => {
-        // Avoid logging full message bodies / PII
         const name = error instanceof Error ? error.name : 'Error'
         const msg = error instanceof Error ? error.message : 'unknown'
         console.error('Portfolio analyst stream error:', name, msg)
+        if (runId) {
+          void finishAgentRun({
+            runId,
+            status: 'error',
+            tools: collectedTools,
+            model: MODEL_ID,
+            durationMs: Date.now() - startedAt,
+            stepCount,
+            errorSummary: `${name}: ${msg}`.slice(0, 500),
+          })
+        }
       },
     })
 

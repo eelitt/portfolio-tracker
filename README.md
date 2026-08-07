@@ -41,6 +41,18 @@ Live **web + X search** (xAI) for top holdings by market value, with per-symbol 
 
 Maps messy broker/exchange CSVs into app transactions with **structured model output**, a hard row cap before any AI call, an editable preview, then bulk save through the same validation as manual entry.
 
+### Agent observability & evaluation (admin)
+
+Admin-only tooling for production-style **AI ops** on the Portfolio Analyst (extensible to other AI features via a shared `feature` key).
+
+- **Run log** — every analyst request best-effort writes `agent_runs`: tools called (args/results redacted & truncated), step count, latency, tokens, estimated cost, success/error/partial, confirm-gate flags  
+- **Dashboard** — Admin menu → **Agent observability** with Overview (rates, cost, top tool errors), Runs (table + tool timeline), and Eval  
+- **Eval suite** — fixed JSON fixtures (seed portfolio + prompt + expectations); live one-click run from admin (`POST /api/admin/agent-eval`, long `maxDuration`); pure scorer checks tool selection, oracle numbers vs tool results, and confirm/refusal policy  
+- **Isolation** — eval injects fixture portfolio data into tools (`evalMode`); prepare/confirm never write real transactions; tables are **service-role only** (no user RLS reads)  
+- **Code** — `lib/agentObservability/` (types, redact, cost, score, recordRun), `lib/agentEval/` (fixtures, suite), Vitest on the pure scorer  
+
+Schema: `supabase/migrations/20260807_agent_observability.sql` (`agent_runs`, `agent_eval_runs`, `agent_eval_results`).
+
 ### How the AI layer is built
 
 | Concern | Approach |
@@ -49,6 +61,7 @@ Maps messy broker/exchange CSVs into app transactions with **structured model ou
 | Writes | Chat confirm and CSV import reuse `createTransactionRecord` / bulk paths; Zod validation on the way in |
 | Isolation | Authenticated server loaders + RLS; the model only ever sees the current user |
 | Cost control | Global cooldown for analysis/CSV, chat message caps, news once-per-day live search, latest-result storage where applicable |
+| Observability | Admin run logs + token/cost estimates; eval scorecard for tool/oracle/policy checks |
 | Secrets | `XAI_API_KEY` and price keys stay server-side—never shipped to the client |
 
 ## Core product
@@ -61,6 +74,7 @@ Maps messy broker/exchange CSVs into app transactions with **structured model ou
 - **Preferred currency** — USD or EUR with FX on the dashboard  
 - **Goals** — target amounts and progress in a sidebar  
 - **Export** — CSV for holdings and transactions  
+- **Admin** — user access flags; agent run logs & eval suite  
 
 ## Tech stack
 
@@ -74,7 +88,7 @@ Maps messy broker/exchange CSVs into app transactions with **structured model ou
 | UI | Tailwind CSS, shadcn/ui, Lucide, Sonner |
 | Charts | Recharts |
 | Validation | Zod (+ React Hook Form where forms need it) |
-| Tests | Vitest (portfolio math, FX, prices, analyst helpers, tax estimator, …) |
+| Tests | Vitest (portfolio math, FX, prices, analyst helpers, tax estimator, agent eval scorer, …) |
 | Hosting | **Vercel** (preview deploys per branch) |
 
 ## Architecture
@@ -83,15 +97,18 @@ Maps messy broker/exchange CSVs into app transactions with **structured model ou
 UI / Chat ──► Server Actions & API routes ──► pure domain (lib/) ──► Supabase (RLS)
                     │
                     ├── prices (Finnhub / Binance / fund NAV)
-                    └── AI (xAI via AI SDK): tools call the same loaders & writers
+                    ├── AI (xAI via AI SDK): tools call the same loaders & writers
+                    └── agent_runs (service role): tools, latency, tokens, eval links
 ```
 
 - **Single source of truth:** `transactions`  
 - **Domain logic:** pure, tested functions—not scattered in components  
 - **AI layout:** `actions/ai/storage.ts` + feature folders (`portfolio-analyst`, `portfolio-insights`, `holding-news`, `csv-import`)  
-- **Analyst stream:** `app/api/portfolio-analyst` → tools → user-scoped portfolio data and optional confirm write  
+- **Analyst stream:** `app/api/portfolio-analyst` → tools → user-scoped portfolio data and optional confirm write; `onStepFinish` / `onFinish` → `agent_runs`  
+- **Agent eval:** fixtures + pure scorer (`lib/agentEval`, `lib/agentObservability/score`) → admin suite via `app/api/admin/agent-eval`  
 - **Shared writes:** form, CSV import, and chat confirm share insert + cash-credit rules  
 - **History:** Edge Function → `portfolio_snapshots` → performance chart aggregation  
+- **Admin:** navbar shield menu (user management, agent observability)—modals, not separate app routes  
 
 ## Getting started
 
@@ -102,22 +119,25 @@ npm install
 ```
 
 1. Create a Supabase project and apply schema (see `AGENTS.md` for tables + RLS).  
-2. Add `.env.local`:
+2. Apply agent observability migration if you use admin AI logs/eval:  
+   `supabase/migrations/20260807_agent_observability.sql`  
+3. Add `.env.local`:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=... # admin tools (users, agent runs/eval writes)
 FINNHUB_API_KEY=...          # optional; stock/ETF prices
 XAI_API_KEY=...              # optional; AI Insights (analyst, analysis, news, CSV import)
 ```
 
-3. Run:
+4. Run:
 
 ```bash
 npm run dev
 ```
 
-Sign up → add or import transactions (form, CSV, or Portfolio Analyst chat) → open **AI Insights** from the navbar.
+Sign up → add or import transactions (form, CSV, or Portfolio Analyst chat) → open **AI Insights** from the navbar. Admins: shield icon → **Agent observability**.
 
 ## Deploy
 

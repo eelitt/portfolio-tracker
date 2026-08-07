@@ -1,0 +1,49 @@
+{
+  "id": "summary-basic-001",
+  "feature": "portfolio_analyst",
+  "description": "Ask for total portfolio market value with a known 2-holding book",
+  "prompt": "What is my total portfolio market value?",
+  "seed": {
+    "preferredCurrency": "USD",
+    "transactions": [
+      {
+        "symbol": "AAPL",
+        "asset_type": "stock",
+        "action": "buy",
+        "quantity": 10,
+        "unit_price": 150,
+        "executed_at": "2025-01-15T12:00:00.000Z",
+        "currency": "USD"
+      },
+      {
+        "symbol": "BTC",
+        "asset_type": "crypto",
+        "action": "buy",
+        "quantity": 1,
+        "unit_price": 40000,
+        "executed_at": "2025-02-01T12:00:00.000Z",
+        "currency": "USD"
+      }
+    ],
+    "prices": {
+      "AAPL": 200,
+      "BTC": 50000
+    }
+  },
+  "expect": {
+    "toolsAnyOf": [
+      ["get_portfolio_summary"],
+      ["get_portfolio_summary", "get_holdings"]
+    ],
+    "forbiddenTools": ["confirm_transaction"],
+    "numericFromTools": [
+      {
+        "tool": "get_portfolio_summary",
+        "path": "totalMarketValue",
+        "equals": 52000,
+        "tolerance": 0.05
+      }
+    ],
+    "mustNotSucceedConfirm": true
+  }
+}

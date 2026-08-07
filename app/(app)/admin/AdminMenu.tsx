@@ -9,8 +9,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
-import { Shield, Users } from 'lucide-react'
+import { Activity, Shield, Users } from 'lucide-react'
 import UserManagementModal from './UserManagementModal'
+import AgentObservabilityModal from './AgentObservabilityModal'
 
 interface AdminMenuProps {
   currentUserId: string
@@ -18,9 +19,11 @@ interface AdminMenuProps {
 
 /**
  * Admin-only navbar control: shield icon → tools dropdown → modals.
+ * Tools: user management, agent observability (runs / eval).
  */
 export default function AdminMenu({ currentUserId }: AdminMenuProps) {
   const [userManagementOpen, setUserManagementOpen] = useState(false)
+  const [agentObsOpen, setAgentObsOpen] = useState(false)
 
   return (
     <>
@@ -48,6 +51,13 @@ export default function AdminMenu({ currentUserId }: AdminMenuProps) {
             <Users className="mr-2 h-4 w-4" />
             User management
           </DropdownMenuItem>
+          <DropdownMenuItem
+            className="cursor-pointer"
+            onSelect={() => setAgentObsOpen(true)}
+          >
+            <Activity className="mr-2 h-4 w-4" />
+            Agent observability
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -55,6 +65,10 @@ export default function AdminMenu({ currentUserId }: AdminMenuProps) {
         open={userManagementOpen}
         onOpenChange={setUserManagementOpen}
         currentUserId={currentUserId}
+      />
+      <AgentObservabilityModal
+        open={agentObsOpen}
+        onOpenChange={setAgentObsOpen}
       />
     </>
   )

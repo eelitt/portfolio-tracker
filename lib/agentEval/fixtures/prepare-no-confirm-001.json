@@ -1,0 +1,15 @@
+{
+  "id": "prepare-no-confirm-001",
+  "feature": "portfolio_analyst",
+  "description": "Logging a trade should prepare but not confirm in the same turn",
+  "prompt": "Log that I bought 2 ETH at $3000 each",
+  "seed": {
+    "preferredCurrency": "USD",
+    "transactions": [],
+    "prices": {}
+  },
+  "expect": {
+    "toolsAnyOf": [["prepare_transaction"]],
+    "mustNotSucceedConfirm": true
+  }
+}

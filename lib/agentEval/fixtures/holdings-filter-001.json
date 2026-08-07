@@ -1,0 +1,38 @@
+{
+  "id": "holdings-filter-001",
+  "feature": "portfolio_analyst",
+  "description": "List crypto holdings only",
+  "prompt": "Show my crypto holdings",
+  "seed": {
+    "preferredCurrency": "USD",
+    "transactions": [
+      {
+        "symbol": "AAPL",
+        "asset_type": "stock",
+        "action": "buy",
+        "quantity": 5,
+        "unit_price": 100,
+        "executed_at": "2025-01-10T12:00:00.000Z",
+        "currency": "USD"
+      },
+      {
+        "symbol": "ETH",
+        "asset_type": "crypto",
+        "action": "buy",
+        "quantity": 2,
+        "unit_price": 2000,
+        "executed_at": "2025-01-11T12:00:00.000Z",
+        "currency": "USD"
+      }
+    ],
+    "prices": {
+      "AAPL": 180,
+      "ETH": 3000
+    }
+  },
+  "expect": {
+    "toolsAnyOf": [["get_holdings"], ["get_holdings", "get_portfolio_summary"]],
+    "forbiddenTools": ["confirm_transaction"],
+    "mustNotSucceedConfirm": true
+  }
+}
