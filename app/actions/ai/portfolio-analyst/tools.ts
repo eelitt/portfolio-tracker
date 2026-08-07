@@ -24,44 +24,14 @@ import {
 } from '@/app/actions/ai/portfolio-analyst/pendingDraft'
 import { estimateFinnishTax } from '@/app/actions/tax/estimateTax'
 import type { EnrichedHolding, Transaction } from '@/lib/types'
+import { isExplicitConfirmMessage } from './confirmGate'
+
+export { isExplicitConfirmMessage } from './confirmGate'
 
 const assetTypeSchema = z.enum(['stock', 'etf', 'crypto', 'cash'])
 
 function round2(n: number) {
   return Number(n.toFixed(2))
-}
-
-/**
- * True only when the latest user message is a short explicit confirm.
- * Blocks confirm_transaction during analysis / multi-intent messages.
- */
-export function isExplicitConfirmMessage(text: string): boolean {
-  const t = text
-    .trim()
-    .toLowerCase()
-    .replace(/[.!]+$/g, '')
-    .trim()
-  if (!t) return false
-
-  const exact = new Set([
-    'confirm',
-    'yes',
-    'y',
-    'ok',
-    'okay',
-    'log it',
-    'save it',
-    'save',
-    'do it',
-    'proceed',
-    'go ahead',
-    'yes log it',
-    'yes, log it',
-    'please confirm',
-  ])
-  if (exact.has(t)) return true
-
-  return /^(yes|confirm|ok|okay)(,?\s+(please|log it|save it|do it))?$/.test(t)
 }
 
 export type PortfolioAnalystToolOptions = {

@@ -1,105 +1,99 @@
-
 # Portfolio Tracker
 
-Investment portfolio app: track stock, ETF, crypto, and cash positions, see live P&L, and use AI for grounded analysis, CSV import, and holding news.
+A personal investment portfolio app built as a full-stack product: **transactions as the source of truth**, live holdings and P&L, and a **production-style AI layer** that reads and writes through the same domain logic as the UI.
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)
 ![Supabase](https://img.shields.io/badge/Supabase-Auth%20%2B%20RLS%20%2B%20Edge-green)
-![AI](https://img.shields.io/badge/AI-xAI%20Grok%20%2B%20Vercel%20AI%20SDK-purple)
+![AI](https://img.shields.io/badge/AI-xAI%20%2B%20Vercel%20AI%20SDK-purple)
 ![Vercel](https://img.shields.io/badge/Deploy-Vercel-black)
 
 <img width="1903" height="786" alt="portfoliotracker" src="https://github.com/user-attachments/assets/abc1da5b-5d1c-4d25-b9a6-163b84b71538" />
 
 <img width="1906" height="862" alt="portfoliotracker_2" src="https://github.com/user-attachments/assets/8ba7ebd0-1be6-44e7-ad0f-9ef26a28e6e6" />
 
+## AI in this project
 
-## ✨ What it does
+AI is a **first-class part of the product**, implemented with the same discipline as the rest of the stack: server-only keys, user-scoped data (Supabase RLS), and numbers that come from **tools and pure functions**—not from the model inventing balances.
 
-- 🔐 **Auth & privacy** — Supabase Auth; per-user data with Postgres RLS
-- 📒 **Transactions as source of truth** — buy/sell (assets) and inflow/outflow (cash); holdings are always computed, not stored
-- 📊 **Live dashboard** — total value, 24h change, allocation pie, holdings with cost basis & unrealized P&L
-- 📈 **Prices** — stocks/ETFs via Finnhub; crypto via Binance public spot (server-side only)
-- 📉 **Performance history** — daily portfolio snapshots (Supabase Edge Function) with Daily / Monthly / Yearly charts
-- 💱 **Preferred currency** — USD or EUR display with FX conversion on the dashboard
-- 🎯 **Goals** — target amounts with progress in a sidebar
-- 📥 **CSV** — export holdings/transactions; **AI-assisted import** from messy broker/exchange files
-- 🤖 **AI Insights** — tool-grounded portfolio chat (incl. NL trade logging), one-shot analysis, holding news + impact
+**Stack:** [Vercel AI SDK](https://sdk.vercel.ai) (`streamText`, tools, structured output) + **xAI** models. Feature code lives under `app/actions/ai/<feature>/`; the chat agent streams from `app/api/portfolio-analyst`.
 
-## 🛠️ Tech stack
+### Portfolio Analyst (tool-first chat)
 
-| | Area | Choice |
-|---|------|--------|
-| ⚡ | Framework | **Next.js 16** App Router, Server Actions, RSC |
-| 📘 | Language | **TypeScript** (strict) |
-| 🗄️ | Auth / DB | **Supabase** (Auth + Postgres + RLS) |
-| ⚙️ | Jobs | **Supabase Edge Functions** (daily portfolio snapshots) |
-| 🧠 | AI | **Vercel AI SDK** + **xAI** — tools, structured output, live search |
-| 🎨 | UI | Tailwind CSS, shadcn/ui, Lucide, Sonner |
-| 📉 | Charts | Recharts |
-| ✅ | Validation | Zod + React Hook Form |
-| 🧪 | Tests | Vitest (portfolio math, FX, price helpers, analyst scenarios + NL drafts) |
-| ☁️ | Hosting | **Vercel** (preview deploys per branch) |
+Private sidebar chat over **this user’s** portfolio only.
 
-## 🤖 AI features (xAI)
+- **Grounded tools** load the same pipeline as the dashboard (`getPortfolioData`, `calculateHoldings`, live prices)—summary, filtered holdings, allocation, realized P&L, transactions, what-if sell / price shocks
+- **Streaming** responses via the AI SDK and `@ai-sdk/react` `useChat`
+- **Natural-language trade logging**: model proposes a draft (`prepare`) → user confirms → server writes through the **same insert path** as the manual form (including sell → Available Cash). Pending draft is stored server-side so a short “confirm” works
+- **Finnish capital-gains estimates** as a dedicated tool (FIFO + weighted average vs hankintameno-olettama; estimate only, not tax advice)
+- **Refuse-by-default** scope: portfolio and logging stay in bounds; general market advice and off-topic chat are declined
+- Session-only transcript; separate soft rate limits from other AI features
 
-All model traffic stays **server-side**. Feature code lives under `app/actions/ai/<feature>/`; the chat agent streams from a dedicated route.
+### Portfolio analysis
 
-### 💬 Portfolio Analyst
-- Private chat over **this user’s** holdings, cost basis, P&L, allocation, and what-if scenarios
-- **Tool-first** — facts come from the same pure calculation path as the dashboard (`calculateHoldings` / enriched prices), not free-form invention
-- Read/sim tools: summary, filtered holdings, allocation, realized P&L, transactions, sell / price-shock simulations
-- **NL transaction entry** — `prepare` → user **confirm** → write; pending draft stored server-side so a short “confirm” works
-- 🛡️ Chat logging is stricter than the form: explicit **€/$** (or USD/EUR) in the user’s words + **catalog ticker**; no preferred-currency default
-- Same insert path as manual create (incl. sell → Available Cash); **Sonner toast** + **dashboard refresh** (summary, holdings, history) on success/error
-- Strict scope: refuses general advice and off-topic chat; short logging follow-ups (`confirm`, `yes`, corrections) stay in scope
-- Non-advisory disclaimer on analysis answers only — **not** on draft/confirm/save replies
-- Streaming via **Vercel AI SDK** (`streamText` + tools) and `@ai-sdk/react` `useChat`
-- Session-only transcript (clears when the panel closes); soft per-user rate limit separate from other AI features
+One-shot, structured bullets (concentration, risk, structure) over a compact portfolio summary. **Hash short-circuit** skips the model when the transaction set has not changed.
 
-### 📋 Portfolio analysis
-- Up to 6 concise bullets on concentration, risk, and structure
-- ♻️ **Hash short-circuit** — skips the model when the transaction set is unchanged
-- Compact summary only (no full transaction dump)
+### Holding news & impact
 
-### 📰 Holding news
-- 🌐 Live **web + X search** (xAI) for top positions by market value
-- Per-symbol bullets + **impact** (tone, outlook, short points)
-- AI sidebar + **holdings card tooltips** (collapsible news / impact)
-- ⏱️ **24h** refresh cooldown; keeps previous news if a re-fetch finds nothing new
-- Latest package per user in `user_ai_insights` (jsonb)
+Live **web + X search** (xAI) for top holdings by market value, with per-symbol bullets and a short impact read (tone / outlook). Surfaces in the AI sidebar and on holdings cards; daily refresh gate; previous package retained if a re-fetch finds nothing new.
 
-### 📎 Smart CSV import
-- Maps arbitrary broker/exchange CSVs into app transactions via structured output
-- 🛡️ **200-row client cap** before any AI call
-- Editable preview → bulk import with the same validation as manual entry
+### Smart CSV import
 
-### 🔒 Cost & safety controls
-- Global **60s** AI cooldown for analysis / CSV (not every chat turn)
-- Analyst chat: rolling message cap + short inter-message gap; pending NL draft TTL (~30 min)
-- Holding news **once-per-day** live search gate
-- Latest stored result only per `(user, feature_type)` where applicable
-- Structured outputs via **Zod** where applicable; NL drafts re-validated on confirm before insert
-- RLS + authenticated server loaders so the model only ever sees the current user’s data
+Maps messy broker/exchange CSVs into app transactions with **structured model output**, a hard row cap before any AI call, an editable preview, then bulk save through the same validation as manual entry.
 
-## ☁️ Cloud & ops
+### How the AI layer is built
 
-- **Vercel** — production + GitHub preview deployments
-- **Supabase** — Auth, Postgres, RLS; Edge Function `portfolio-snapshots` writes daily MV/cost series
-- **Server-only integrations** — Finnhub, Binance (public), xAI (keys in env, never bundled to the client)
-- **Live prices for KPIs** — holdings quotes default to no-store on dashboard load (correctness over 60s cache); manual refresh + currency change also revalidate tag `prices`
+| Concern | Approach |
+|--------|----------|
+| Correctness | Tools + unit-tested pure helpers (`lib/calculatePortfolio`, `lib/portfolioAnalyst`, `lib/tax`)—the model does not own the math |
+| Writes | Chat confirm and CSV import reuse `createTransactionRecord` / bulk paths; Zod validation on the way in |
+| Isolation | Authenticated server loaders + RLS; the model only ever sees the current user |
+| Cost control | Global cooldown for analysis/CSV, chat message caps, news once-per-day live search, latest-result storage where applicable |
+| Secrets | `XAI_API_KEY` and price keys stay server-side—never shipped to the client |
 
-## 🏗️ Architecture
+## Core product
 
-- 🧩 **Single source of truth:** `transactions` table  
-- 🧮 **Domain logic:** pure functions in `lib/calculatePortfolio.ts` + `lib/portfolioAnalyst/` (unit tested)  
-- 🔑 **Secrets:** price APIs + xAI only on the server  
-- 📁 **AI layout:** `actions/ai/storage.ts` + feature folders (`portfolio-analyst`, `portfolio-insights`, `holding-news`, `csv-import`)  
-- 🔌 **Analyst stream:** `app/api/portfolio-analyst` → tools → user-scoped `getPortfolioData` / `createTransactionRecord`  
-- ✍️ **Shared writes:** manual form, CSV import, and chat confirm use the same transaction insert + cash-credit rules  
-- 📸 **History:** Edge Function → `portfolio_snapshots` → Performance chart aggregation
+- **Auth & privacy** — Supabase Auth; per-user data with Postgres RLS  
+- **Transactions as source of truth** — buy/sell (assets), inflow/outflow (cash); holdings are always derived  
+- **Live dashboard** — total value, 24h change, allocation, holdings with cost basis & unrealized P&L  
+- **Prices** — stocks/ETFs (Finnhub), crypto (Binance public spot), selected mutual funds (catalog + Yahoo chart NAV); all server-side  
+- **Performance history** — daily snapshots (Supabase Edge Function); Daily / Monthly / Yearly charts  
+- **Preferred currency** — USD or EUR with FX on the dashboard  
+- **Goals** — target amounts and progress in a sidebar  
+- **Export** — CSV for holdings and transactions  
 
-## 🚀 Getting started
+## Tech stack
+
+| Area | Choice |
+|------|--------|
+| Framework | **Next.js** App Router, Server Actions, RSC |
+| Language | **TypeScript** (strict) |
+| Auth / DB | **Supabase** (Auth + Postgres + RLS) |
+| Jobs | **Supabase Edge Functions** (portfolio snapshots) |
+| AI | **Vercel AI SDK** + **xAI** (streaming tools, structured output, live search) |
+| UI | Tailwind CSS, shadcn/ui, Lucide, Sonner |
+| Charts | Recharts |
+| Validation | Zod (+ React Hook Form where forms need it) |
+| Tests | Vitest (portfolio math, FX, prices, analyst helpers, tax estimator, …) |
+| Hosting | **Vercel** (preview deploys per branch) |
+
+## Architecture
+
+```
+UI / Chat ──► Server Actions & API routes ──► pure domain (lib/) ──► Supabase (RLS)
+                    │
+                    ├── prices (Finnhub / Binance / fund NAV)
+                    └── AI (xAI via AI SDK): tools call the same loaders & writers
+```
+
+- **Single source of truth:** `transactions`  
+- **Domain logic:** pure, tested functions—not scattered in components  
+- **AI layout:** `actions/ai/storage.ts` + feature folders (`portfolio-analyst`, `portfolio-insights`, `holding-news`, `csv-import`)  
+- **Analyst stream:** `app/api/portfolio-analyst` → tools → user-scoped portfolio data and optional confirm write  
+- **Shared writes:** form, CSV import, and chat confirm share insert + cash-credit rules  
+- **History:** Edge Function → `portfolio_snapshots` → performance chart aggregation  
+
+## Getting started
 
 ```bash
 git clone <your-repo>
@@ -107,7 +101,7 @@ cd portfolio-tracker
 npm install
 ```
 
-1. Create a Supabase project and apply schema (see `AGENTS.md` for tables + RLS).
+1. Create a Supabase project and apply schema (see `AGENTS.md` for tables + RLS).  
 2. Add `.env.local`:
 
 ```env
@@ -117,7 +111,7 @@ FINNHUB_API_KEY=...          # optional; stock/ETF prices
 XAI_API_KEY=...              # optional; AI Insights (analyst, analysis, news, CSV import)
 ```
 
-3. ▶️ Run:
+3. Run:
 
 ```bash
 npm run dev
@@ -125,7 +119,7 @@ npm run dev
 
 Sign up → add or import transactions (form, CSV, or Portfolio Analyst chat) → open **AI Insights** from the navbar.
 
-## 📦 Deploy
+## Deploy
 
 [Vercel](https://vercel.com) + the same env vars. Preview deploys work with the usual GitHub integration. Snapshots require the Supabase Edge Function deployed and scheduled separately (see `supabase/functions/portfolio-snapshots/`).
 

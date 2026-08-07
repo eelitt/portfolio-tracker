@@ -2,7 +2,7 @@
  * Portfolio Analyst streaming chat endpoint.
  *
  * POST { messages } → data stream for useChat.
- * Auth + analyst rate limit + tool-first streamText (xAI).
+ * Auth + analyst rate limit + sanitized history + tool-first streamText (xAI).
  */
 
 import { streamText, convertToCoreMessages } from 'ai'
@@ -11,34 +11,9 @@ import { createClient } from '@/lib/supabase/server'
 import { PORTFOLIO_ANALYST_SYSTEM_PROMPT } from '@/app/actions/ai/portfolio-analyst/prompt'
 import { createPortfolioAnalystTools } from '@/app/actions/ai/portfolio-analyst/tools'
 import { checkAndConsumeAnalystRateLimit } from '@/app/actions/ai/portfolio-analyst/rateLimit'
-
-/** Cap conversation history sent to the model (token control). */
-const MAX_MESSAGES = 20
+import { sanitizeAnalystMessages } from '@/app/actions/ai/portfolio-analyst/sanitizeMessages'
 
 export const maxDuration = 60
-
-/** Latest user message text (string or multimodal parts). */
-function extractLastUserText(messages: unknown[]): string {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i] as { role?: string; content?: unknown } | null
-    if (!m || m.role !== 'user') continue
-    const c = m.content
-    if (typeof c === 'string') return c
-    if (Array.isArray(c)) {
-      return c
-        .map((part) => {
-          if (typeof part === 'string') return part
-          if (part && typeof part === 'object' && 'text' in part) {
-            return String((part as { text?: unknown }).text ?? '')
-          }
-          return ''
-        })
-        .join('')
-    }
-    return ''
-  }
-  return ''
-}
 
 export async function POST(req: Request) {
   try {
@@ -65,10 +40,20 @@ export async function POST(req: Request) {
       return new Response('AI service is not configured.', { status: 503 })
     }
 
-    const body = await req.json()
-    const rawMessages = Array.isArray(body?.messages) ? body.messages : []
-    if (rawMessages.length === 0) {
-      return new Response('No messages provided.', { status: 400 })
+    let body: unknown
+    try {
+      body = await req.json()
+    } catch {
+      return new Response('Invalid JSON body.', { status: 400 })
+    }
+
+    const rawMessages = Array.isArray((body as { messages?: unknown })?.messages)
+      ? ((body as { messages: unknown[] }).messages)
+      : []
+
+    const sanitized = sanitizeAnalystMessages(rawMessages)
+    if (!sanitized.ok) {
+      return new Response(sanitized.error, { status: sanitized.status })
     }
 
     const rate = await checkAndConsumeAnalystRateLimit(user.id)
@@ -76,24 +61,30 @@ export async function POST(req: Request) {
       return new Response(rate.error, { status: 429 })
     }
 
-    const messages = rawMessages.slice(-MAX_MESSAGES)
-    const lastUserText = extractLastUserText(messages)
-
     const result = streamText({
       model: xai('grok-4.3'),
       system: PORTFOLIO_ANALYST_SYSTEM_PROMPT,
-      messages: convertToCoreMessages(messages),
-      tools: createPortfolioAnalystTools(user.id, { lastUserText }),
+      messages: convertToCoreMessages(sanitized.messages as Parameters<
+        typeof convertToCoreMessages
+      >[0]),
+      tools: createPortfolioAnalystTools(user.id, {
+        lastUserText: sanitized.lastUserText,
+      }),
       maxSteps: 5,
       temperature: 0.2,
       onError: ({ error }) => {
-        console.error('Portfolio analyst stream error:', error)
+        // Avoid logging full message bodies / PII
+        const name = error instanceof Error ? error.name : 'Error'
+        const msg = error instanceof Error ? error.message : 'unknown'
+        console.error('Portfolio analyst stream error:', name, msg)
       },
     })
 
     return result.toDataStreamResponse()
   } catch (e) {
-    console.error('Portfolio analyst route error:', e)
+    const name = e instanceof Error ? e.name : 'Error'
+    const msg = e instanceof Error ? e.message : 'unknown'
+    console.error('Portfolio analyst route error:', name, msg)
     return new Response('Failed to run portfolio analyst. Please try again.', {
       status: 500,
     })
