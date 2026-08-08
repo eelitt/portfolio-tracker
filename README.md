@@ -1,6 +1,6 @@
 # Portfolio Tracker
 
-A personal investment portfolio app built as a full-stack product: **transactions as the source of truth**, live holdings and P&L, and a **production-style AI layer** that reads and writes through the same domain logic as the UI.
+A personal investment portfolio app built as a full-stack product: **transactions as the source of truth**, live holdings and P&L, and a **production-style multi-agent AI layer** that reads and writes through the same domain logic as the UI.
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)
@@ -16,22 +16,44 @@ A personal investment portfolio app built as a full-stack product: **transaction
 
 AI is a **first-class part of the product**, implemented with the same discipline as the rest of the stack: server-only keys, user-scoped data (Supabase RLS), and numbers that come from **tools and pure functions**—not from the model inventing balances.
 
-**Stack:** [Vercel AI SDK](https://sdk.vercel.ai) (`streamText`, tools, structured output) + **xAI** models. Feature code lives under `app/actions/ai/<feature>/`; the chat agent streams from `app/api/portfolio-analyst`.
+**Stack:** [Vercel AI SDK](https://sdk.vercel.ai) (`streamText`, tools, structured output) + **xAI** models. Feature code lives under `app/actions/ai/<feature>/`. Portfolio chat streams from `app/api/portfolio-analyst` (orchestrator).
 
 ### Portfolio chat (multi-agent orchestrator)
 
-Private sidebar chat over **this user’s** portfolio. An **orchestrator** routes to specialist agents (extensible registry):
+Private sidebar chat over **this user’s** portfolio. An **orchestrator** routes work to specialist agents, then synthesizes the answer:
+
+```
+User message
+    → Orchestrator (streamText)
+         ├── invoke_portfolio_analyst
+         ├── invoke_news_agent
+         └── invoke_tax_agent
+    → grounded reply (tool facts only)
+```
 
 | Agent | Role |
 |--------|------|
-| **Orchestrator** | Chooses agents, synthesizes the final answer; never invents numbers or news |
-| **Portfolio Analyst** | Tool-first math: holdings, P&L, allocation, scenarios, Finnish tax tool, NL trade logging (prepare → confirm) |
-| **News Agent** | Holding news research (Finnhub / xAI search + impact); updates the holding-news cache when a live fetch runs |
+| **Orchestrator** | Chooses agents, merges results; never invents numbers, news, or tax |
+| **Portfolio Analyst** | Holdings, P&L, allocation, what-if scenarios, NL trade logging (`prepare` → confirm) |
+| **News Agent** | Holding news (Finnhub equities / xAI search for crypto + impact); content-first brief; updates holding-news storage on live fetch |
+| **Tax Agent** | Finnish capital-gains estimates (FIFO + weighted average vs hankintameno-olettama) via the same `estimateFinnishTax` / `lib/tax` engine as the tax modal |
 
-- Example: *“Is there news that should make me reconsider my NVDA position?”* → news agent + analyst (position context) → grounded combined answer  
-- **Streaming** via AI SDK `useChat` → `app/api/portfolio-analyst` (orchestrator route)  
-- **Trust rules:** news agent never invents portfolio numbers; analyst never invents news (only structured `newsContext` from the news agent)  
-- Session-only transcript; soft rate limits; parent/child `agent_runs` for observability
+**Example routing**
+
+| User intent | Agents |
+|-------------|--------|
+| “Any important news on my biggest holdings?” | News only (presents bullets/impact, not cache meta) |
+| “Tax if I sell half my BTC at market?” | Tax (`sellFraction` + live mark) |
+| “YTD Finnish CGT?” | Tax (`mode: ytd`) |
+| “Reconsider NVDA after news?” | News + Analyst (position context) |
+| “Log: bought 0.5 BTC at $64000” | Analyst (prepare → user confirms) |
+
+- **Streaming:** `@ai-sdk/react` `useChat` → `POST /api/portfolio-analyst`  
+- **Trust rules:** news never invents P&L; analyst never invents news/tax; tax never invents rates  
+- **Transcript:** session-only; soft rate limits on chat  
+- **Observability:** parent `agent_runs` (`portfolio_orchestrator`) + child runs (`holding_news_agent`, `portfolio_analyst`, `tax_agent`)
+
+Code: `app/actions/ai/orchestrator/`, `app/actions/ai/portfolio-analyst/agent.ts`, `holding-news/agent.ts`, `tax/agent.ts`, contracts in `lib/agents/`.
 
 ### Portfolio analysis
 
@@ -39,7 +61,15 @@ One-shot, structured bullets (concentration, risk, structure) over a compact por
 
 ### Holding news & impact
 
-Live **web + X search** (xAI) for top holdings by market value, with per-symbol bullets and a short impact read (tone / outlook). Surfaces in the AI sidebar and on holdings cards; daily refresh gate; previous package retained if a re-fetch finds nothing new.
+- **Sidebar / holdings cards:** batch package via `generateHoldingNews` → shared `runHoldingNews` service.  
+- **Chat:** News Agent (same pipeline) with deterministic `brief` for the orchestrator.  
+- Live **web + X search** (xAI) for crypto; **Finnhub** company news for stocks/ETFs; impact synthesis; daily-style refresh gate for non-admins; previous package retained when nothing new.
+
+### Finnish tax estimator
+
+- **Navbar modal:** `TaxEstimatorModal` — what-if sell, YTD, or full pack; dual methods + HMO comparison.  
+- **Chat:** Tax Agent (`invoke_tax_agent`) — same server action and pure domain (`lib/tax`).  
+- Estimate only — not tax advice or a filing.
 
 ### Smart CSV import
 
@@ -47,36 +77,41 @@ Maps messy broker/exchange CSVs into app transactions with **structured model ou
 
 ### Agent observability & evaluation (admin)
 
-Admin-only tooling for production-style **AI ops** on the Portfolio Analyst (extensible to other AI features via a shared `feature` key).
+Admin-only tooling for production-style **AI ops** on multi-agent chat (and extensible feature keys).
 
-- **Run log** — every analyst request best-effort writes `agent_runs`: tools called (args/results redacted & truncated), step count, latency, tokens, estimated cost, success/error/partial, confirm-gate flags  
-- **Dashboard** — Admin menu → **Agent observability** with Overview (rates, cost, top tool errors), Runs (table + tool timeline), and Eval  
-- **Eval suite** — fixed JSON fixtures (seed portfolio + prompt + expectations); live one-click run from admin (`POST /api/admin/agent-eval`, long `maxDuration`); pure scorer checks tool selection, oracle numbers vs tool results, and confirm/refusal policy  
-- **Isolation** — eval injects fixture portfolio data into tools (`evalMode`); prepare/confirm never write real transactions; tables are **service-role only** (no user RLS reads)  
-- **Code** — `lib/agentObservability/` (types, redact, cost, score, recordRun), `lib/agentEval/` (fixtures, suite), Vitest on the pure scorer  
+- **Run log** — parent + child `agent_runs`: tools, latency, tokens, estimated cost, status, confirm flags  
+- **Dashboard** — Admin menu → **Agent observability**: Overview, Runs (expand children), Eval  
+- **Eval suite** — fixed fixtures + pure scorer; live one-click run via `POST /api/admin/agent-eval`  
+- **Isolation** — eval injects fixture portfolio data; prepare/confirm never write real txs in eval mode  
+- **Code** — `lib/agentObservability/`, `lib/agentEval/`, Vitest scorer tests  
 
-Schema: `supabase/migrations/20260807_agent_observability.sql` (`agent_runs`, `agent_eval_runs`, `agent_eval_results`).
+Migrations:
+
+- `supabase/migrations/20260807_agent_observability.sql` — tables  
+- `supabase/migrations/20260807_agent_runs_parent.sql` — `parent_run_id` / `agent_role`  
 
 ### How the AI layer is built
 
 | Concern | Approach |
 |--------|----------|
 | Correctness | Tools + unit-tested pure helpers (`lib/calculatePortfolio`, `lib/portfolioAnalyst`, `lib/tax`)—the model does not own the math |
-| Writes | Chat confirm and CSV import reuse `createTransactionRecord` / bulk paths; Zod validation on the way in |
-| Isolation | Authenticated server loaders + RLS; the model only ever sees the current user |
-| Cost control | Global cooldown for analysis/CSV, chat message caps, news once-per-day live search, latest-result storage where applicable |
-| Observability | Admin run logs + token/cost estimates; eval scorecard for tool/oracle/policy checks |
-| Secrets | `XAI_API_KEY` and price keys stay server-side—never shipped to the client |
+| Multi-agent | Orchestrator only invokes specialists; content-first briefs for news and tax |
+| Writes | Chat confirm and CSV import reuse `createTransactionRecord` / bulk paths; Zod on the way in |
+| Isolation | Authenticated loaders + RLS; model only sees the current user |
+| Cost control | Chat rate limits, news freshness/cooldown, analysis/CSV cooldowns, latest-result storage where applicable |
+| Observability | Parent/child run logs + token/cost estimates; admin eval scorecard |
+| Secrets | `XAI_API_KEY`, Finnhub, service role stay server-side |
 
 ## Core product
 
 - **Auth & privacy** — Supabase Auth; per-user data with Postgres RLS  
-- **Transactions as source of truth** — buy/sell (assets), inflow/outflow (cash); holdings are always derived  
+- **Transactions as source of truth** — buy/sell (assets), inflow/outflow (cash); holdings always derived  
 - **Live dashboard** — total value, 24h change, allocation, holdings with cost basis & unrealized P&L  
-- **Prices** — stocks/ETFs (Finnhub), crypto (Binance public spot), selected mutual funds (catalog + Yahoo chart NAV); all server-side  
+- **Prices** — stocks/ETFs (Finnhub), crypto (Binance public spot), selected mutual funds (catalog + Yahoo chart NAV); server-side  
 - **Performance history** — daily snapshots (Supabase Edge Function); Daily / Monthly / Yearly charts  
 - **Preferred currency** — USD or EUR with FX on the dashboard  
 - **Goals** — target amounts and progress in a sidebar  
+- **Finnish tax modal** — capital-gains estimator (same engine as Tax Agent)  
 - **Export** — CSV for holdings and transactions  
 - **Admin** — user access flags; agent run logs & eval suite  
 
@@ -92,24 +127,27 @@ Schema: `supabase/migrations/20260807_agent_observability.sql` (`agent_runs`, `a
 | UI | Tailwind CSS, shadcn/ui, Lucide, Sonner |
 | Charts | Recharts |
 | Validation | Zod (+ React Hook Form where forms need it) |
-| Tests | Vitest (portfolio math, FX, prices, analyst helpers, tax estimator, agent eval scorer, …) |
+| Tests | Vitest (portfolio math, FX, prices, tax, news brief, agent eval scorer, …) |
 | Hosting | **Vercel** (preview deploys per branch) |
 
 ## Architecture
 
 ```
-UI / Chat ──► Server Actions & API routes ──► pure domain (lib/) ──► Supabase (RLS)
-                    │
-                    ├── prices (Finnhub / Binance / fund NAV)
-                    ├── AI (xAI via AI SDK): tools call the same loaders & writers
-                    └── agent_runs (service role): tools, latency, tokens, eval links
+UI / Chat
+    │
+    ├─ Server Actions / API routes
+    │       ├─ prices (Finnhub / Binance / fund NAV)
+    │       ├─ orchestrator ──► specialist agents ──► pure domain (lib/)
+    │       └─ estimateFinnishTax / transactions / AI features
+    │
+    └─ Supabase (RLS) + agent_runs (service role, parent/child)
 ```
 
 - **Single source of truth:** `transactions`  
 - **Domain logic:** pure, tested functions—not scattered in components  
-- **AI layout:** `actions/ai/storage.ts` + feature folders (`portfolio-analyst`, `portfolio-insights`, `holding-news`, `csv-import`)  
-- **Analyst stream:** `app/api/portfolio-analyst` → tools → user-scoped portfolio data and optional confirm write; `onStepFinish` / `onFinish` → `agent_runs`  
-- **Agent eval:** fixtures + pure scorer (`lib/agentEval`, `lib/agentObservability/score`) → admin suite via `app/api/admin/agent-eval`  
+- **AI layout:** `actions/ai/storage.ts` + feature folders (`orchestrator`, `portfolio-analyst`, `holding-news`, `tax`, `portfolio-insights`, `csv-import`)  
+- **Chat stream:** `app/api/portfolio-analyst` → orchestrator tools → specialists → parent/child `agent_runs`  
+- **Agent eval:** `lib/agentEval` + pure scorer → admin suite `app/api/admin/agent-eval`  
 - **Shared writes:** form, CSV import, and chat confirm share insert + cash-credit rules  
 - **History:** Edge Function → `portfolio_snapshots` → performance chart aggregation  
 - **Admin:** navbar shield menu (user management, agent observability)—modals, not separate app routes  
@@ -123,16 +161,19 @@ npm install
 ```
 
 1. Create a Supabase project and apply schema (see `AGENTS.md` for tables + RLS).  
-2. Apply agent observability migration if you use admin AI logs/eval:  
-   `supabase/migrations/20260807_agent_observability.sql`  
+2. For admin AI logs / multi-agent runs, apply:
+
+   - `supabase/migrations/20260807_agent_observability.sql`  
+   - `supabase/migrations/20260807_agent_runs_parent.sql`  
+
 3. Add `.env.local`:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-SUPABASE_SERVICE_ROLE_KEY=... # admin tools (users, agent runs/eval writes)
-FINNHUB_API_KEY=...          # optional; stock/ETF prices
-XAI_API_KEY=...              # optional; AI Insights (analyst, analysis, news, CSV import)
+SUPABASE_SERVICE_ROLE_KEY=... # admin tools + agent_runs writes
+FINNHUB_API_KEY=...          # optional; stock/ETF prices + equity news
+XAI_API_KEY=...              # optional; chat, analysis, crypto news, CSV import
 ```
 
 4. Run:
@@ -141,7 +182,7 @@ XAI_API_KEY=...              # optional; AI Insights (analyst, analysis, news, C
 npm run dev
 ```
 
-Sign up → add or import transactions (form, CSV, or Portfolio Analyst chat) → open **AI Insights** from the navbar. Admins: shield icon → **Agent observability**.
+Sign up → add or import transactions (form, CSV, or chat) → open **AI Insights** for multi-agent chat, analysis, and holding news. Use the navbar for the **Finnish tax estimator** modal. Admins: shield icon → **Agent observability**.
 
 ## Deploy
 

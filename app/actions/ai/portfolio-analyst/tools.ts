@@ -25,7 +25,6 @@ import {
   getPendingTxDraft,
   clearPendingTxDraft,
 } from '@/app/actions/ai/portfolio-analyst/pendingDraft'
-import { estimateFinnishTax } from '@/app/actions/tax/estimateTax'
 import type { EnrichedHolding, Transaction } from '@/lib/types'
 import { isExplicitConfirmMessage } from './confirmGate'
 
@@ -296,130 +295,6 @@ export function createPortfolioAnalystTools(
         }
         const result = simulatePriceShock(loaded.holdings, args.shocks)
         return { preferredCurrency: currency, ...result }
-      },
-    }),
-
-    estimate_finnish_tax: tool({
-      description:
-        'Estimate Finnish capital-gains tax (luovutusvoitto) from the user portfolio. Dual methods: FIFO and weighted average, each vs hankintameno-olettama. Modes: hypothetical_sell (tax if sold qty now), ytd (calendar-year sells), full (YTD + optional what-if + notes). Returns EUR figures only. Never invent tax numbers — always call this tool.',
-      parameters: z.object({
-        mode: z
-          .enum(['hypothetical_sell', 'ytd', 'full'])
-          .describe('hypothetical_sell | ytd | full (YTD + optional sell + notes)'),
-        symbol: z
-          .string()
-          .optional()
-          .describe('Position symbol for what-if sell (required for hypothetical_sell)'),
-        quantity: z
-          .number()
-          .positive()
-          .optional()
-          .describe('Quantity to sell hypothetically'),
-        unitPrice: z
-          .number()
-          .min(0)
-          .optional()
-          .describe(
-            'Optional mark price per unit; if omitted for what-if, live holding price is used when available'
-          ),
-        unitPriceCurrency: z
-          .enum(['USD', 'EUR'])
-          .optional()
-          .describe('Currency of unitPrice; default EUR, or preferred currency when using live mark'),
-        otherCapitalIncomeEur: z
-          .number()
-          .min(0)
-          .optional()
-          .describe('Other taxable capital income this year in EUR (default 0)'),
-        sellingCostsEur: z.number().min(0).optional(),
-        taxYear: z.number().int().optional().describe('Calendar tax year (default current UTC year)'),
-      }),
-      execute: async (args) => {
-        let unitPrice = args.unitPrice
-        let unitPriceCurrency = args.unitPriceCurrency as 'USD' | 'EUR' | undefined
-
-        const needsWhatIf =
-          args.mode === 'hypothetical_sell' ||
-          (args.mode === 'full' && args.symbol && args.quantity !== undefined)
-
-        if (needsWhatIf && args.symbol && args.quantity !== undefined && unitPrice === undefined) {
-          const loaded = await load()
-          if (!loaded.ok) return { error: loaded.error }
-          const sym = args.symbol.toUpperCase()
-          const h = loaded.holdings.find((x) => x.symbol.toUpperCase() === sym)
-          if (!h || !h.priceAvailable || h.currentPrice <= 0) {
-            return {
-              error: `No live price for ${sym}; pass unitPrice explicitly for the tax estimate.`,
-            }
-          }
-          unitPrice = h.currentPrice
-          unitPriceCurrency = loaded.data.preferredCurrency === 'EUR' ? 'EUR' : 'USD'
-        }
-
-        const result = await estimateFinnishTax({
-          mode: args.mode,
-          symbol: args.symbol,
-          quantity: args.quantity,
-          unitPrice,
-          unitPriceCurrency,
-          otherCapitalIncomeEur: args.otherCapitalIncomeEur,
-          sellingCostsEur: args.sellingCostsEur,
-          taxYear: args.taxYear,
-        })
-
-        if ('error' in result) return { error: result.error }
-
-        const d = result.data
-        return {
-          currency: d.currency,
-          taxYear: d.taxYear,
-          mode: d.mode,
-          ratesYearLabel: d.ratesYearLabel,
-          otherCapitalIncomeEur: d.otherCapitalIncomeEur,
-          fifo: {
-            estimatedTaxEur: d.methods.fifo.estimatedTaxEur,
-            taxableBaseEur: d.methods.fifo.taxableBaseEur,
-            netGainOrLossEur: d.methods.fifo.netGainOrLossEur,
-            totalProceedsEur: d.methods.fifo.totalProceedsEur,
-            usedHmo: d.methods.fifo.usedHmoOnAnyDisposal,
-            disposals: d.methods.fifo.disposals.map((x) => ({
-              assetKey: x.assetKey,
-              quantity: x.quantity,
-              proceedsEur: x.proceedsEur,
-              actualCostEur: x.actualCostEur,
-              hmoRate: x.hmoRate,
-              basisUsed: x.basisUsed,
-              taxableGainOrLossEur: x.taxableGainOrLossEur,
-              isHypothetical: x.isHypothetical ?? false,
-              holdingPeriodNote: x.holdingPeriodNote,
-            })),
-            notes: d.methods.fifo.notes,
-          },
-          weightedAverage: {
-            estimatedTaxEur: d.methods.weightedAverage.estimatedTaxEur,
-            taxableBaseEur: d.methods.weightedAverage.taxableBaseEur,
-            netGainOrLossEur: d.methods.weightedAverage.netGainOrLossEur,
-            totalProceedsEur: d.methods.weightedAverage.totalProceedsEur,
-            usedHmo: d.methods.weightedAverage.usedHmoOnAnyDisposal,
-            disposals: d.methods.weightedAverage.disposals.map((x) => ({
-              assetKey: x.assetKey,
-              quantity: x.quantity,
-              proceedsEur: x.proceedsEur,
-              actualCostEur: x.actualCostEur,
-              hmoRate: x.hmoRate,
-              basisUsed: x.basisUsed,
-              taxableGainOrLossEur: x.taxableGainOrLossEur,
-              isHypothetical: x.isHypothetical ?? false,
-              holdingPeriodNote: x.holdingPeriodNote,
-            })),
-            notes: d.methods.weightedAverage.notes,
-          },
-          comparison: d.comparison,
-          smallDisposal: d.smallDisposal,
-          yearEndNotes: d.yearEndNotes,
-          assumptions: d.assumptions,
-          disclaimers: d.disclaimers,
-        }
       },
     }),
 

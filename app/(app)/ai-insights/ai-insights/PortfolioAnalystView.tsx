@@ -10,8 +10,8 @@ import { ArrowLeft, Loader2, Send, MessageSquare } from 'lucide-react'
 const SUGGESTED_PROMPTS = [
   'Which positions are down more than 25% from my average cost?',
   'Any important news on my biggest holdings?',
-  'Is there news that should make me reconsider my largest position?',
-  'What if I sell 40% of my largest holding at the current price?',
+  'Estimate my Finnish capital-gains tax year-to-date',
+  'Tax if I sell half of my largest crypto at the current price?',
   'Log a buy: Bought 0.5 BTC at $64000 yesterday',
 ]
 

@@ -13,4 +13,7 @@ export type {
   PortfolioAnalystAgentInput,
   PortfolioAnalystAgentOutput,
   PortfolioAnalystTask,
+  TaxAgentInput,
+  TaxAgentOutput,
+  TaxAgentSummary,
 } from './types'

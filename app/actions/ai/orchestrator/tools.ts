@@ -1,11 +1,12 @@
 /**
- * Orchestrator tools: invoke specialist agents only (no portfolio math / no news fetch here).
+ * Orchestrator tools: invoke specialist agents only (no portfolio math / news / tax math here).
  */
 
 import { tool } from 'ai'
 import { z } from 'zod'
 import { runNewsAgent } from '@/app/actions/ai/holding-news/agent'
 import { runPortfolioAnalystAgent } from '@/app/actions/ai/portfolio-analyst/agent'
+import { runTaxAgent } from '@/app/actions/ai/tax/agent'
 import type { NewsAgentOutput } from '@/lib/agents/types'
 import { redactForStorage } from '@/lib/agentObservability'
 
@@ -59,7 +60,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
 
     invoke_portfolio_analyst: tool({
       description:
-        'Run the Portfolio Analyst specialist for numbers, scenarios, tax estimates, or transaction logging. Pass newsContext only when you already have News Agent structured output (do not invent it). For confirm/logging, pass the user’s exact words as userMessage.',
+        'Run the Portfolio Analyst specialist for holdings, P&L, allocation, scenarios, or transaction logging. Not for tax math (use invoke_tax_agent). Pass newsContext only from News Agent output. For confirm/logging, pass the user’s exact words as userMessage.',
       parameters: z.object({
         userMessage: z
           .string()
@@ -90,7 +91,62 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           toolNames: out.toolTrace.map((t) => t.name),
           transactionSaved: out.transactionSaved,
           transactionError: out.transactionError,
-          // Do not dump full tool traces into orchestrator context (size)
+        })
+      },
+    }),
+
+    invoke_tax_agent: tool({
+      description:
+        'Finnish capital-gains tax estimate (luovutusvoitto): FIFO + weighted average vs hankintameno-olettama. Use for tax / CGT questions. Prefer the tool `brief`. Never invent tax figures. Modes: ytd (logged sells this year), hypothetical_sell (what-if), full (YTD + optional what-if). For “sell half of X” pass sellFraction 0.5 with symbol.',
+      parameters: z.object({
+        mode: z
+          .enum(['hypothetical_sell', 'ytd', 'full'])
+          .describe('ytd | hypothetical_sell | full'),
+        taxYear: z
+          .number()
+          .int()
+          .optional()
+          .describe('Calendar tax year (default current UTC year)'),
+        symbol: z.string().optional().describe('Ticker for what-if sell'),
+        quantity: z.number().positive().optional().describe('Absolute quantity to sell hypothetically'),
+        sellFraction: z
+          .number()
+          .min(0)
+          .max(1)
+          .optional()
+          .describe('Fraction of open holding (e.g. 0.5) when quantity unknown'),
+        unitPrice: z
+          .number()
+          .min(0)
+          .optional()
+          .describe('Mark price; if omitted for what-if, live holding price is used when available'),
+        unitPriceCurrency: z.enum(['USD', 'EUR']).optional(),
+        otherCapitalIncomeEur: z
+          .number()
+          .min(0)
+          .optional()
+          .describe('Other taxable capital income this year in EUR (default 0)'),
+        sellingCostsEur: z.number().min(0).optional(),
+        questionHint: z.string().optional(),
+      }),
+      execute: async (args) => {
+        const out = await runTaxAgent(childCtx, {
+          mode: args.mode,
+          taxYear: args.taxYear,
+          symbol: args.symbol,
+          quantity: args.quantity,
+          sellFraction: args.sellFraction,
+          unitPrice: args.unitPrice,
+          unitPriceCurrency: args.unitPriceCurrency,
+          otherCapitalIncomeEur: args.otherCapitalIncomeEur,
+          sellingCostsEur: args.sellingCostsEur,
+          questionHint: args.questionHint,
+        })
+        return redactForStorage({
+          ok: out.ok,
+          error: out.error,
+          brief: out.brief,
+          summary: out.summary,
         })
       },
     }),

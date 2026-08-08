@@ -5,12 +5,13 @@
 
 import type { AgentToolRecord } from '@/lib/agentObservability'
 
-export type AgentId = 'news' | 'portfolio_analyst' | (string & {})
+export type AgentId = 'news' | 'portfolio_analyst' | 'tax' | (string & {})
 
 export type AgentRole =
   | 'orchestrator'
   | 'news'
   | 'portfolio_analyst'
+  | 'tax'
   | (string & {})
 
 /** News Agent — research only; never portfolio math. */
@@ -75,6 +76,50 @@ export type PortfolioAnalystAgentOutput = {
   /** Set when confirm_transaction succeeded in this specialist run. */
   transactionSaved?: boolean
   transactionError?: string
+}
+
+/** Tax Agent — Finnish CGT estimates only; never invents tax figures. */
+export type TaxAgentInput = {
+  mode: 'hypothetical_sell' | 'ytd' | 'full'
+  taxYear?: number
+  symbol?: string
+  quantity?: number
+  /** 0–1 fraction of open holding when quantity omitted (e.g. 0.5 = half). */
+  sellFraction?: number
+  unitPrice?: number
+  unitPriceCurrency?: 'USD' | 'EUR'
+  otherCapitalIncomeEur?: number
+  sellingCostsEur?: number
+  questionHint?: string
+}
+
+export type TaxAgentSummary = {
+  taxYear: number
+  mode: string
+  ratesYearLabel: string
+  otherCapitalIncomeEur: number
+  fifo: {
+    estimatedTaxEur: number
+    taxableBaseEur: number
+    netGainOrLossEur: number
+    usedHmo: boolean
+  }
+  weightedAverage: {
+    estimatedTaxEur: number
+    taxableBaseEur: number
+    netGainOrLossEur: number
+    usedHmo: boolean
+  }
+  comparison: { lowerTaxMethod: string; taxDeltaEur: number }
+  disposalCount: number
+}
+
+export type TaxAgentOutput = {
+  ok: boolean
+  error?: string
+  brief?: string
+  summary?: TaxAgentSummary
+  toolTrace?: AgentToolRecord[]
 }
 
 export type ChildAgentContext = {
