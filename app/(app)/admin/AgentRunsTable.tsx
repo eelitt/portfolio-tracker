@@ -91,8 +91,14 @@ export default function AgentRunsTable({
   )
 }
 
-/** Right-hand panel: tokens, cost, redacted tool args/results. */
-export function AgentRunDetail({ run }: { run: AgentRunRow | null }) {
+/** Right-hand panel: tokens, cost, child agents, redacted tool args/results. */
+export function AgentRunDetail({
+  run,
+  childrenRuns = [],
+}: {
+  run: AgentRunRow | null
+  childrenRuns?: AgentRunRow[]
+}) {
   if (!run) {
     return (
       <p className="text-xs text-muted-foreground p-2">
@@ -106,6 +112,10 @@ export function AgentRunDetail({ run }: { run: AgentRunRow | null }) {
       <div className="grid grid-cols-2 gap-x-3 gap-y-1">
         <span className="text-muted-foreground">Model</span>
         <span className="font-mono">{run.model ?? '—'}</span>
+        <span className="text-muted-foreground">Role</span>
+        <span className="font-mono">
+          {run.agent_role ?? (run.meta?.agent_role as string) ?? '—'}
+        </span>
         <span className="text-muted-foreground">Cost (est.)</span>
         <span className="tabular-nums">
           {run.estimated_cost_usd != null
@@ -129,6 +139,31 @@ export function AgentRunDetail({ run }: { run: AgentRunRow | null }) {
           </>
         ) : null}
       </div>
+
+      {childrenRuns.length > 0 ? (
+        <div>
+          <h4 className="font-medium text-muted-foreground pt-1">Child agents</h4>
+          <ul className="space-y-1 mt-1">
+            {childrenRuns.map((c) => (
+              <li
+                key={c.id}
+                className="flex justify-between gap-2 border-b border-border/40 py-1"
+              >
+                <span className="font-mono truncate">
+                  {c.agent_role ?? c.feature}
+                </span>
+                <span className="tabular-nums text-muted-foreground shrink-0">
+                  {c.status}
+                  {c.duration_ms != null ? ` · ${c.duration_ms}ms` : ''}
+                  {c.estimated_cost_usd != null
+                    ? ` · ≈$${Number(c.estimated_cost_usd).toFixed(4)}`
+                    : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <h4 className="font-medium text-muted-foreground pt-1">Tools</h4>
       {(!run.tools || run.tools.length === 0) && (

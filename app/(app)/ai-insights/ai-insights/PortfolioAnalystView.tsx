@@ -9,9 +9,9 @@ import { ArrowLeft, Loader2, Send, MessageSquare } from 'lucide-react'
 
 const SUGGESTED_PROMPTS = [
   'Which positions are down more than 25% from my average cost?',
-  'What is my total realized P&L this year on crypto only?',
+  'Any important news on my biggest holdings?',
+  'Is there news that should make me reconsider my largest position?',
   'What if I sell 40% of my largest holding at the current price?',
-  'Simulate a 50% drawdown in my top 3 holdings.',
   'Log a buy: Bought 0.5 BTC at $64000 yesterday',
 ]
 
@@ -19,7 +19,10 @@ interface PortfolioAnalystViewProps {
   onBack: () => void
 }
 
-/** Pull completed confirm_transaction tool results from an assistant message. */
+/**
+ * Detect transaction saves from assistant tool results.
+ * Orchestrator nests confirms under invoke_portfolio_analyst.transactionSaved.
+ */
 function getConfirmTransactionResults(message: {
   role: string
   toolInvocations?: Array<{
@@ -42,30 +45,44 @@ function getConfirmTransactionResults(message: {
 
   if (message.role !== 'assistant') return out
 
-  const fromInvocations = message.toolInvocations ?? []
-  for (const inv of fromInvocations) {
-    if (
-      inv.toolName === 'confirm_transaction' &&
-      inv.state === 'result' &&
-      inv.toolCallId
-    ) {
-      out.push({ toolCallId: inv.toolCallId, result: inv.result })
+  const consider = (
+    toolName: string | undefined,
+    toolCallId: string | undefined,
+    state: string | undefined,
+    result: unknown
+  ) => {
+    if (state !== 'result' || !toolCallId) return
+    if (out.some((x) => x.toolCallId === toolCallId)) return
+
+    if (toolName === 'confirm_transaction') {
+      out.push({ toolCallId, result })
+      return
     }
+
+    if (toolName === 'invoke_portfolio_analyst' && result && typeof result === 'object') {
+      const r = result as {
+        transactionSaved?: boolean
+        transactionError?: string
+      }
+      if (r.transactionSaved === true) {
+        out.push({ toolCallId, result: { ok: true } })
+      } else if (typeof r.transactionError === 'string' && r.transactionError) {
+        out.push({
+          toolCallId,
+          result: { ok: false, errors: [r.transactionError] },
+        })
+      }
+    }
+  }
+
+  for (const inv of message.toolInvocations ?? []) {
+    consider(inv.toolName, inv.toolCallId, inv.state, inv.result)
   }
 
   for (const part of message.parts ?? []) {
     if (part.type !== 'tool-invocation' || !part.toolInvocation) continue
     const inv = part.toolInvocation
-    if (
-      inv.toolName === 'confirm_transaction' &&
-      inv.state === 'result' &&
-      inv.toolCallId
-    ) {
-      // Avoid duplicates if both parts and toolInvocations are present
-      if (!out.some((x) => x.toolCallId === inv.toolCallId)) {
-        out.push({ toolCallId: inv.toolCallId, result: inv.result })
-      }
-    }
+    consider(inv.toolName, inv.toolCallId, inv.state, inv.result)
   }
 
   return out

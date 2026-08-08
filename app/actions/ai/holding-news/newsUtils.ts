@@ -420,7 +420,7 @@ function toISODate(d: Date): string {
  * Maps ticker + asset_type → display name from curated symbol catalogs.
  * Helps the model search "Chainlink" not only "LINK". Falls back to the ticker.
  */
-function resolveAssetName(symbol: string, assetType: string): string {
+export function resolveAssetName(symbol: string, assetType: string): string {
   const upper = symbol.toUpperCase()
   if (assetType === 'crypto') {
     const found = CRYPTO_SYMBOLS.find(c => c.symbol.toUpperCase() === upper)
@@ -449,6 +449,83 @@ export function selectHoldingsForNews(
     assetType: h.asset_type,
     name: resolveAssetName(h.symbol, h.asset_type),
   }))
+}
+
+/**
+ * Holdings for a news run: top-N by default, or requested symbols the user holds.
+ * Used by the News Agent when the orchestrator passes a symbol filter.
+ */
+export function resolveNewsHoldings(
+  data: PortfolioData,
+  symbols?: string[]
+): Array<{ symbol: string; assetType: string; name: string }> {
+  if (!symbols?.length) {
+    return selectHoldingsForNews(data)
+  }
+
+  const want = new Set(symbols.map((s) => s.toUpperCase().trim()).filter(Boolean))
+  const nonCash = data.enrichedHoldings.filter((h) => h.asset_type !== 'cash')
+  return nonCash
+    .filter((h) => want.has(h.symbol.toUpperCase()))
+    .sort((a, b) => b.marketValue - a.marketValue)
+    .slice(0, HOLDING_NEWS_MAX_HOLDINGS)
+    .map((h) => ({
+      symbol: h.symbol.toUpperCase(),
+      assetType: h.asset_type,
+      name: resolveAssetName(h.symbol, h.asset_type),
+    }))
+}
+
+export type NewsBriefHolding = {
+  symbol: string
+  bullets: string[]
+  impact?: { tone: string; outlook: string; points?: string[] }
+}
+
+/**
+ * Deterministic user-facing brief for the orchestrator (no cache/meta jargon).
+ * Ranks negative/mixed impact first when present.
+ */
+export function buildNewsBrief(holdings: NewsBriefHolding[]): string {
+  if (holdings.length === 0) {
+    return 'No holdings available to report news for.'
+  }
+
+  const toneRank = (tone?: string) => {
+    const t = (tone || '').toLowerCase()
+    if (t === 'negative') return 0
+    if (t === 'mixed') return 1
+    if (t === 'positive') return 2
+    return 3
+  }
+
+  const sorted = [...holdings].sort((a, b) => {
+    const aHas = a.bullets.length > 0 ? 0 : 1
+    const bHas = b.bullets.length > 0 ? 0 : 1
+    if (aHas !== bHas) return aHas - bHas
+    return toneRank(a.impact?.tone) - toneRank(b.impact?.tone)
+  })
+
+  const withNews = sorted.filter((h) => h.bullets.length > 0)
+  if (withNews.length === 0) {
+    const syms = sorted.map((h) => h.symbol).join(', ')
+    return `No material headlines found for your holdings (${syms}) in the recent coverage window.`
+  }
+
+  const parts: string[] = ['Notable items for your holdings:']
+  for (const h of sorted) {
+    if (h.bullets.length === 0) {
+      parts.push(`\n**${h.symbol}** — No recent items.`)
+      continue
+    }
+    const lines = h.bullets.map((b) => `  • ${b}`).join('\n')
+    let block = `\n**${h.symbol}**\n${lines}`
+    if (h.impact?.outlook) {
+      block += `\n  Outlook (${h.impact.tone}): ${h.impact.outlook}`
+    }
+    parts.push(block)
+  }
+  return parts.join('\n').trim()
 }
 
 /**

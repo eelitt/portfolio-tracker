@@ -1,18 +1,18 @@
 /**
- * Portfolio Analyst streaming chat endpoint.
+ * Portfolio multi-agent chat endpoint (public path kept for useChat clients).
  *
- * POST { messages } → data stream for useChat.
- * Auth + analyst rate limit + sanitized history + tool-first streamText (xAI).
- * Best-effort agent_runs logging (does not break the stream on log failure).
+ * POST { messages } → data stream.
+ * Orchestrator streamText + invoke_news_agent / invoke_portfolio_analyst.
+ * Parent agent_runs + child runs from specialists.
  */
 
 import { streamText, convertToCoreMessages } from 'ai'
 import { xai } from '@ai-sdk/xai'
 import { createClient } from '@/lib/supabase/server'
-import { PORTFOLIO_ANALYST_SYSTEM_PROMPT } from '@/app/actions/ai/portfolio-analyst/prompt'
-import { createPortfolioAnalystTools } from '@/app/actions/ai/portfolio-analyst/tools'
 import { checkAndConsumeAnalystRateLimit } from '@/app/actions/ai/portfolio-analyst/rateLimit'
 import { sanitizeAnalystMessages } from '@/app/actions/ai/portfolio-analyst/sanitizeMessages'
+import { ORCHESTRATOR_SYSTEM_PROMPT } from '@/app/actions/ai/orchestrator/prompt'
+import { createOrchestratorTools } from '@/app/actions/ai/orchestrator/tools'
 import {
   startAgentRun,
   finishAgentRun,
@@ -20,10 +20,11 @@ import {
 import { toolRecordsFromStepResults } from '@/lib/agentObservability'
 import type { AgentToolRecord } from '@/lib/agentObservability'
 
-export const maxDuration = 60
+/** News + analyst can exceed 60s on cold paths. */
+export const maxDuration = 180
 
 const MODEL_ID = 'grok-4.3'
-const FEATURE = 'portfolio_analyst'
+const FEATURE = 'portfolio_orchestrator'
 
 export async function POST(req: Request) {
   try {
@@ -71,12 +72,12 @@ export async function POST(req: Request) {
       return new Response(rate.error, { status: 429 })
     }
 
-    // --- Agent observability (best-effort; null runId = logging unavailable) ---
     const startedAt = Date.now()
-    const runId = await startAgentRun({
+    const parentRunId = await startAgentRun({
       userId: user.id,
       feature: FEATURE,
       model: MODEL_ID,
+      agentRole: 'orchestrator',
     })
 
     const collectedTools: AgentToolRecord[] = []
@@ -84,19 +85,19 @@ export async function POST(req: Request) {
 
     const result = streamText({
       model: xai(MODEL_ID),
-      system: PORTFOLIO_ANALYST_SYSTEM_PROMPT,
+      system: ORCHESTRATOR_SYSTEM_PROMPT,
       messages: convertToCoreMessages(sanitized.messages as Parameters<
         typeof convertToCoreMessages
       >[0]),
-      tools: createPortfolioAnalystTools(user.id, {
+      tools: createOrchestratorTools({
+        userId: user.id,
+        parentRunId,
         lastUserText: sanitized.lastUserText,
-        // Intentionally omit evalPortfolio / evalMode — production chat only.
       }),
-      maxSteps: 5,
+      maxSteps: 6,
       temperature: 0.2,
       onStepFinish: async (step) => {
         stepCount += 1
-        // Collect tool traces for agent_runs; never throw into the stream.
         try {
           const records = toolRecordsFromStepResults(
             (step.toolResults || []).map((tr) => ({
@@ -108,19 +109,19 @@ export async function POST(req: Request) {
           collectedTools.push(...records)
         } catch (e) {
           console.error(
-            'Portfolio analyst tool log step error:',
+            'Orchestrator tool log step error:',
             e instanceof Error ? e.message : 'unknown'
           )
         }
       },
       onFinish: async ({ usage, finishReason }) => {
-        if (!runId) return
+        if (!parentRunId) return
         const status =
           finishReason === 'error' || finishReason === 'other'
             ? 'partial'
             : 'success'
         await finishAgentRun({
-          runId,
+          runId: parentRunId,
           status,
           tools: collectedTools,
           usage: usage
@@ -133,21 +134,27 @@ export async function POST(req: Request) {
           model: MODEL_ID,
           durationMs: Date.now() - startedAt,
           stepCount,
+          agentRole: 'orchestrator',
+          meta: {
+            agent_role: 'orchestrator',
+            invoked_agents: collectedTools.map((t) => t.name),
+          },
         })
       },
       onError: ({ error }) => {
         const name = error instanceof Error ? error.name : 'Error'
         const msg = error instanceof Error ? error.message : 'unknown'
-        console.error('Portfolio analyst stream error:', name, msg)
-        if (runId) {
+        console.error('Orchestrator stream error:', name, msg)
+        if (parentRunId) {
           void finishAgentRun({
-            runId,
+            runId: parentRunId,
             status: 'error',
             tools: collectedTools,
             model: MODEL_ID,
             durationMs: Date.now() - startedAt,
             stepCount,
             errorSummary: `${name}: ${msg}`.slice(0, 500),
+            agentRole: 'orchestrator',
           })
         }
       },
@@ -157,8 +164,8 @@ export async function POST(req: Request) {
   } catch (e) {
     const name = e instanceof Error ? e.name : 'Error'
     const msg = e instanceof Error ? e.message : 'unknown'
-    console.error('Portfolio analyst route error:', name, msg)
-    return new Response('Failed to run portfolio analyst. Please try again.', {
+    console.error('Orchestrator route error:', name, msg)
+    return new Response('Failed to run portfolio assistant. Please try again.', {
       status: 500,
     })
   }

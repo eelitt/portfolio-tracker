@@ -18,16 +18,20 @@ AI is a **first-class part of the product**, implemented with the same disciplin
 
 **Stack:** [Vercel AI SDK](https://sdk.vercel.ai) (`streamText`, tools, structured output) + **xAI** models. Feature code lives under `app/actions/ai/<feature>/`; the chat agent streams from `app/api/portfolio-analyst`.
 
-### Portfolio Analyst (tool-first chat)
+### Portfolio chat (multi-agent orchestrator)
 
-Private sidebar chat over **this user’s** portfolio only.
+Private sidebar chat over **this user’s** portfolio. An **orchestrator** routes to specialist agents (extensible registry):
 
-- **Grounded tools** load the same pipeline as the dashboard (`getPortfolioData`, `calculateHoldings`, live prices)—summary, filtered holdings, allocation, realized P&L, transactions, what-if sell / price shocks
-- **Streaming** responses via the AI SDK and `@ai-sdk/react` `useChat`
-- **Natural-language trade logging**: model proposes a draft (`prepare`) → user confirms → server writes through the **same insert path** as the manual form (including sell → Available Cash). Pending draft is stored server-side so a short “confirm” works
-- **Finnish capital-gains estimates** as a dedicated tool (FIFO + weighted average vs hankintameno-olettama; estimate only, not tax advice)
-- **Refuse-by-default** scope: portfolio and logging stay in bounds; general market advice and off-topic chat are declined
-- Session-only transcript; separate soft rate limits from other AI features
+| Agent | Role |
+|--------|------|
+| **Orchestrator** | Chooses agents, synthesizes the final answer; never invents numbers or news |
+| **Portfolio Analyst** | Tool-first math: holdings, P&L, allocation, scenarios, Finnish tax tool, NL trade logging (prepare → confirm) |
+| **News Agent** | Holding news research (Finnhub / xAI search + impact); updates the holding-news cache when a live fetch runs |
+
+- Example: *“Is there news that should make me reconsider my NVDA position?”* → news agent + analyst (position context) → grounded combined answer  
+- **Streaming** via AI SDK `useChat` → `app/api/portfolio-analyst` (orchestrator route)  
+- **Trust rules:** news agent never invents portfolio numbers; analyst never invents news (only structured `newsContext` from the news agent)  
+- Session-only transcript; soft rate limits; parent/child `agent_runs` for observability
 
 ### Portfolio analysis
 

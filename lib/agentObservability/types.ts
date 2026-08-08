@@ -9,7 +9,11 @@
 export const AGENT_RUN_SCHEMA_VERSION = 1
 
 /** Known feature ids; other strings allowed for future agents. */
-export type AgentFeature = 'portfolio_analyst' | (string & {})
+export type AgentFeature =
+  | 'portfolio_orchestrator'
+  | 'portfolio_analyst'
+  | 'holding_news_agent'
+  | (string & {})
 
 export type AgentRunStatus = 'running' | 'success' | 'error' | 'partial'
 
@@ -54,6 +58,9 @@ export type AgentRunRow = {
   tools: AgentToolRecord[]
   meta: AgentRunMeta
   error_summary: string | null
+  /** Multi-agent: orchestrator parent (null for top-level runs). */
+  parent_run_id?: string | null
+  agent_role?: string | null
 }
 
 /** AI SDK usage fields we persist. */

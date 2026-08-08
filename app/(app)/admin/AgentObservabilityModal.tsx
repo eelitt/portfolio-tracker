@@ -21,6 +21,7 @@ import {
   getAgentRun,
   getLatestEvalRun,
   listAgentRuns,
+  listChildAgentRuns,
   listEvalCases,
   type AgentOverviewStats,
 } from '@/app/actions/agentObservability'
@@ -46,6 +47,7 @@ export default function AgentObservabilityModal({
   const [runs, setRuns] = useState<AgentRunRow[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedRun, setSelectedRun] = useState<AgentRunRow | null>(null)
+  const [childRuns, setChildRuns] = useState<AgentRunRow[]>([])
   const [fixtures, setFixtures] = useState<
     Array<{ id: string; description: string; feature: string }>
   >([])
@@ -86,12 +88,16 @@ export default function AgentObservabilityModal({
   useEffect(() => {
     if (!selectedId) {
       setSelectedRun(null)
+      setChildRuns([])
       return
     }
     const cached = runs.find((r) => r.id === selectedId)
     if (cached) setSelectedRun(cached)
     void getAgentRun(selectedId).then((res) => {
       if (res.data) setSelectedRun(res.data)
+    })
+    void listChildAgentRuns(selectedId).then((res) => {
+      setChildRuns(res.data ?? [])
     })
   }, [selectedId, runs])
 
@@ -193,7 +199,7 @@ export default function AgentObservabilityModal({
                 <div className="px-2 py-1.5 text-xs font-medium border-b border-border bg-muted/30">
                   Detail
                 </div>
-                <AgentRunDetail run={selectedRun} />
+                <AgentRunDetail run={selectedRun} childrenRuns={childRuns} />
               </div>
             </div>
           )}

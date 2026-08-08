@@ -55,6 +55,8 @@ function mapRunRow(row: Record<string, unknown>): AgentRunRow {
     tools: (row.tools as AgentToolRecord[]) || [],
     meta: (row.meta as AgentRunMeta) || {},
     error_summary: (row.error_summary as string | null) ?? null,
+    parent_run_id: (row.parent_run_id as string | null) ?? null,
+    agent_role: (row.agent_role as string | null) ?? null,
   }
 }
 
@@ -62,6 +64,8 @@ function mapRunRow(row: Record<string, unknown>): AgentRunRow {
 export async function listAgentRuns(opts?: {
   limit?: number
   feature?: string
+  /** When true (default), only top-level / orchestrator runs (no parent). */
+  parentsOnly?: boolean
 }): Promise<{ data?: AgentRunRow[]; error?: string }> {
   const gate = await requireAdmin()
   if (gate.error) return { error: gate.error }
@@ -78,12 +82,40 @@ export async function listAgentRuns(opts?: {
     if (opts?.feature) {
       q = q.eq('feature', opts.feature)
     }
+    if (opts?.parentsOnly !== false) {
+      q = q.is('parent_run_id', null)
+    }
 
     const { data, error } = await q
     if (error) return { error: error.message }
     return { data: (data || []).map((r) => mapRunRow(r as Record<string, unknown>)) }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Failed to list agent runs' }
+  }
+}
+
+/** Child agent_runs for a parent orchestrator run. */
+export async function listChildAgentRuns(
+  parentRunId: string
+): Promise<{ data?: AgentRunRow[]; error?: string }> {
+  const gate = await requireAdmin()
+  if (gate.error) return { error: gate.error }
+  if (!parentRunId) return { error: 'Missing parent run id' }
+
+  try {
+    const service = createServiceClient()
+    const { data, error } = await service
+      .from('agent_runs')
+      .select('*')
+      .eq('parent_run_id', parentRunId)
+      .order('created_at', { ascending: true })
+
+    if (error) return { error: error.message }
+    return { data: (data || []).map((r) => mapRunRow(r as Record<string, unknown>)) }
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : 'Failed to list child agent runs',
+    }
   }
 }
 
