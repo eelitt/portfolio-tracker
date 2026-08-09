@@ -19,6 +19,10 @@ import {
 } from '@/lib/agentObservability/recordRun'
 import { toolRecordsFromStepResults } from '@/lib/agentObservability'
 import type { AgentToolRecord } from '@/lib/agentObservability'
+import {
+  buildUserContext,
+  formatUserContextForPrompt,
+} from '@/lib/aiTools/buildUserContext'
 
 /** News + analyst can exceed 60s on cold paths. */
 export const maxDuration = 180
@@ -83,9 +87,20 @@ export async function POST(req: Request) {
     const collectedTools: AgentToolRecord[] = []
     let stepCount = 0
 
+    let contextBlock = ''
+    try {
+      const pack = await buildUserContext(user.id)
+      contextBlock = '\n\n' + formatUserContextForPrompt(pack)
+    } catch (e) {
+      console.error(
+        'User context pack failed:',
+        e instanceof Error ? e.message : 'unknown'
+      )
+    }
+
     const result = streamText({
       model: xai(MODEL_ID),
-      system: ORCHESTRATOR_SYSTEM_PROMPT,
+      system: ORCHESTRATOR_SYSTEM_PROMPT + contextBlock,
       messages: convertToCoreMessages(sanitized.messages as Parameters<
         typeof convertToCoreMessages
       >[0]),

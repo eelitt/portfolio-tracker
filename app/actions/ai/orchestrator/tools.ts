@@ -10,6 +10,7 @@ import { runTaxAgent } from '@/app/actions/ai/tax/agent'
 import { runPortfolioAnalysisAgent } from '@/app/actions/ai/portfolio-insights/agent'
 import type { NewsAgentOutput } from '@/lib/agents/types'
 import { redactForStorage } from '@/lib/agentObservability'
+import { toolDescription } from '@/lib/aiTools'
 
 export type OrchestratorToolContext = {
   userId: string
@@ -26,8 +27,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
 
   return {
     invoke_news_agent: tool({
-      description:
-        'Run the News Agent for holding-related news and impact (same pipeline/limits as the Holdings dashboard icon). Returns `brief` plus per-symbol bullets/impact. Optional symbols; omit for biggest holdings. Set forceRefresh true only when the user explicitly asks to fetch/refresh/update/get latest news. Prefer `brief`; if `statusNote` is present, include it briefly for the user.',
+      description: toolDescription('invoke_news_agent'),
       parameters: z.object({
         symbols: z
           .array(z.string())
@@ -64,8 +64,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
     }),
 
     invoke_portfolio_analyst: tool({
-      description:
-        'Run the Portfolio Analyst specialist for holdings, P&L, allocation, scenarios, or transaction logging. Not for tax math (use invoke_tax_agent). Pass newsContext only from News Agent output. For confirm/logging, pass the user’s exact words as userMessage.',
+      description: toolDescription('invoke_portfolio_analyst'),
       parameters: z.object({
         userMessage: z
           .string()
@@ -101,8 +100,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
     }),
 
     invoke_tax_agent: tool({
-      description:
-        'Finnish capital-gains tax estimate (luovutusvoitto): FIFO + weighted average vs hankintameno-olettama. Use for tax / CGT questions. Prefer the tool `brief`. Never invent tax figures. Modes: ytd (logged sells this year), hypothetical_sell (what-if), full (YTD + optional what-if). For “sell half of X” pass sellFraction 0.5 with symbol.',
+      description: toolDescription('invoke_tax_agent'),
       parameters: z.object({
         mode: z
           .enum(['hypothetical_sell', 'ytd', 'full'])
@@ -157,8 +155,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
     }),
 
     invoke_portfolio_analysis_agent: tool({
-      description:
-        'High-level portfolio analysis bullets (risks, concentration, structure). Same pipeline/limits as the Summary dashboard icon. Prefer `brief`; if `statusNote` is present, include it briefly. Not for exact P&L math (use portfolio analyst) or tax (use tax agent) or news (use news agent).',
+      description: toolDescription('invoke_portfolio_analysis_agent'),
       parameters: z.object({
         questionHint: z
           .string()

@@ -26,7 +26,7 @@ import {
   clearPendingTxDraft,
 } from '@/app/actions/ai/portfolio-analyst/pendingDraft'
 import type { EnrichedHolding, Transaction } from '@/lib/types'
-import { isExplicitConfirmMessage } from './confirmGate'
+import { toolDescription, assertWriteAllowed } from '@/lib/aiTools'
 
 export { isExplicitConfirmMessage } from './confirmGate'
 
@@ -105,8 +105,7 @@ export function createPortfolioAnalystTools(
 
   return {
     get_portfolio_summary: tool({
-      description:
-        'Get high-level portfolio totals: market value, cost, unrealized P&L, 24h change, preferred currency, holding counts, and unpriced symbols.',
+      description: toolDescription('get_portfolio_summary'),
       parameters: z.object({}),
       execute: async () => {
         const loaded = await load()
@@ -129,8 +128,7 @@ export function createPortfolioAnalystTools(
     }),
 
     get_holdings: tool({
-      description:
-        'List open holdings with optional filters (asset type, symbol, unrealized P&L % thresholds). Use for questions like positions down more than X%.',
+      description: toolDescription('get_holdings'),
       parameters: z.object({
         assetType: assetTypeSchema.optional(),
         symbol: z.string().optional().describe('Ticker symbol, e.g. BTC or AAPL'),
@@ -171,8 +169,7 @@ export function createPortfolioAnalystTools(
     }),
 
     get_allocation: tool({
-      description:
-        'Get portfolio allocation weights by symbol and by asset type (priced assets + cash only).',
+      description: toolDescription('get_allocation'),
       parameters: z.object({}),
       execute: async () => {
         const loaded = await load()
@@ -186,8 +183,7 @@ export function createPortfolioAnalystTools(
     }),
 
     get_realized_pnl: tool({
-      description:
-        'Compute realized P&L from sell/outflow transactions using weighted average cost. Optional filters: calendar year, asset type, symbol.',
+      description: toolDescription('get_realized_pnl'),
       parameters: z.object({
         year: z.number().int().optional().describe('Calendar year of sells, e.g. 2026'),
         assetType: assetTypeSchema.optional(),
@@ -214,8 +210,7 @@ export function createPortfolioAnalystTools(
     }),
 
     get_transactions: tool({
-      description:
-        'List recent transactions with optional filters. Hard limit 40. Use for grounding specific trade history questions.',
+      description: toolDescription('get_transactions'),
       parameters: z.object({
         symbol: z.string().optional(),
         assetType: assetTypeSchema.optional(),
@@ -242,8 +237,7 @@ export function createPortfolioAnalystTools(
     }),
 
     simulate_scenario: tool({
-      description:
-        'Run a hypothetical what-if without writing any data. Types: sell_fraction (sell % or qty of a position at current price) or price_shock (mark selected symbols up/down by %).',
+      description: toolDescription('simulate_scenario'),
       parameters: z.object({
         type: z.enum(['sell_fraction', 'price_shock']),
         symbol: z
@@ -299,8 +293,7 @@ export function createPortfolioAnalystTools(
     }),
 
     prepare_transaction: tool({
-      description:
-        'Parse/validate a natural-language trade into a draft. Does NOT write to the database. ALWAYS call this when the user describes a buy/sell/deposit. On status=ready, stores a pending draft for confirm_transaction. Pass sourceText with the user’s words (must include € or $). European decimals: pass unit_price as 7.76 when they write 7,76.',
+      description: toolDescription('prepare_transaction'),
       parameters: z.object({
         sourceText: z
           .string()
@@ -382,8 +375,7 @@ export function createPortfolioAnalystTools(
     }),
 
     confirm_transaction: tool({
-      description:
-        'Commit the pending draft ONLY after the user sends a dedicated confirm message (e.g. "confirm", "yes", "log it") in a NEW turn after prepare. Requires a server-stored pending draft. Do not call in the same turn as prepare_transaction.',
+      description: toolDescription('confirm_transaction'),
       parameters: z.object({
         usePendingDraft: z
           .boolean()
@@ -393,26 +385,21 @@ export function createPortfolioAnalystTools(
       execute: async (args) => {
         // Eval: exercise confirm gates without createTransactionRecord
         if (evalMode) {
-          if (preparedThisRequest) {
+          const gate = assertWriteAllowed({
+            toolId: 'confirm_transaction',
+            lastUserText,
+            preparedThisRequest,
+            hasPendingDraft: true,
+            evalMode: true,
+          })
+          if (!gate.ok) {
             return {
               ok: false as const,
-              errors: [
-                'Cannot confirm in the same turn as prepare. Show the draft summary and wait for the user to reply "confirm" in a new message.',
-              ],
+              errors: gate.errors,
               missing: [],
               warnings: [],
               evalMode: true,
-            }
-          }
-          if (!isExplicitConfirmMessage(lastUserText)) {
-            return {
-              ok: false as const,
-              errors: [
-                'User has not sent an explicit confirmation message (e.g. "confirm" or "yes"). Do not save yet.',
-              ],
-              missing: [],
-              warnings: [],
-              evalMode: true,
+              failureMode: gate.failureMode,
             }
           }
           return {
@@ -435,29 +422,24 @@ export function createPortfolioAnalystTools(
           }
         }
 
-        if (preparedThisRequest) {
-          return {
-            ok: false as const,
-            errors: [
-              'Cannot confirm in the same turn as prepare. Show the draft summary and wait for the user to reply "confirm" in a new message.',
-            ],
-            missing: [],
-            warnings: [],
-          }
-        }
-
-        if (!isExplicitConfirmMessage(lastUserText)) {
-          return {
-            ok: false as const,
-            errors: [
-              'User has not sent an explicit confirmation message (e.g. "confirm" or "yes"). Do not save yet.',
-            ],
-            missing: [],
-            warnings: [],
-          }
-        }
-
         const pending = await getPendingTxDraft(userId)
+        const gate = assertWriteAllowed({
+          toolId: 'confirm_transaction',
+          lastUserText,
+          preparedThisRequest,
+          hasPendingDraft: Boolean(pending),
+          evalMode: false,
+        })
+        if (!gate.ok) {
+          return {
+            ok: false as const,
+            errors: gate.errors,
+            missing: [],
+            warnings: [],
+            failureMode: gate.failureMode,
+          }
+        }
+
         if (!pending) {
           return {
             ok: false as const,
