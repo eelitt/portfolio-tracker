@@ -25,6 +25,8 @@ export type NewsAgentInput = {
   symbols?: string[]
   forceRefresh?: boolean
   questionHint?: string
+  /** No live fetch / no package write */
+  dryRun?: boolean
 }
 
 export type NewsHoldingResult = {
@@ -77,6 +79,8 @@ export type PortfolioAnalystAgentInput = {
   /** Structured news from News Agent only — never free-form invented headlines. */
   newsContext?: NewsAgentOutput
   lastUserText?: string
+  /** Prepare/confirm without persistence */
+  dryRun?: boolean
 }
 
 export type PortfolioAnalystAgentOutput = {

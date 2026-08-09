@@ -1,0 +1,17 @@
+{
+  "id": "dry-run-log-001",
+  "feature": "portfolio_analyst",
+  "description": "Dry-run trade log: prepare shape without real pending storage; confirm must not succeed",
+  "mode": "dryRun",
+  "prompt": "Dry run: log that I bought 2 ETH at $3000 each",
+  "seed": {
+    "preferredCurrency": "USD",
+    "transactions": [],
+    "prices": {}
+  },
+  "expect": {
+    "toolsAnyOf": [["prepare_transaction"]],
+    "mustNotSucceedConfirm": true,
+    "expectDryRun": true
+  }
+}

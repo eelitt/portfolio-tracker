@@ -89,6 +89,12 @@ export type EvalExpect = {
   mustNotSucceedConfirm?: boolean
   /** Fail if confirm_transaction was called at all. */
   mustNotCallConfirm?: boolean
+  /** Require failureMode on a tool result */
+  failureModeOnTool?: Array<{ tool: string; failureMode: string }>
+  /** Prepare (or any tool) result has non-empty warnings[] */
+  mustIncludeWarning?: boolean
+  /** At least one tool result has dryRun: true */
+  expectDryRun?: boolean
 }
 
 /** JSON fixture shape under lib/agentEval/fixtures/. */
@@ -97,6 +103,8 @@ export type EvalCaseFixture = {
   feature: string
   description: string
   prompt: string
+  /** Suite passes dryRun into tools */
+  mode?: 'dryRun'
   seed: {
     transactions: Array<{
       symbol: string

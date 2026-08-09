@@ -26,7 +26,14 @@ import {
   clearPendingTxDraft,
 } from '@/app/actions/ai/portfolio-analyst/pendingDraft'
 import type { EnrichedHolding, Transaction } from '@/lib/types'
-import { toolDescription, assertWriteAllowed } from '@/lib/aiTools'
+import {
+  toolDescription,
+  assertWriteAllowed,
+  withRecovery,
+  confirmLevelForPrepare,
+  CONFIRM_LEVEL_WRITE,
+  dryRunNote,
+} from '@/lib/aiTools'
 
 export { isExplicitConfirmMessage } from './confirmGate'
 
@@ -46,6 +53,11 @@ export type PortfolioAnalystToolOptions = {
   evalPortfolio?: PortfolioData
   /** When true, prepare/confirm never write pending drafts or transactions. */
   evalMode?: boolean
+  /**
+   * Dry-run: validate/prepare shape without storing drafts or writing txs.
+   * Implies no side-effect writes (same as evalMode for persistence).
+   */
+  dryRun?: boolean
 }
 
 /** Live DB portfolio, or injected eval snapshot when provided. */
@@ -98,8 +110,11 @@ export function createPortfolioAnalystTools(
   let preparedThisRequest = false
   const lastUserText = options.lastUserText ?? ''
   const evalPortfolio = options.evalPortfolio
+  const dryRun = options.dryRun === true
   // evalPortfolio alone implies evalMode (safer default for suite injection)
-  const evalMode = options.evalMode === true || !!evalPortfolio
+  // dryRun also blocks persistence (preview only)
+  const evalMode =
+    options.evalMode === true || !!evalPortfolio || dryRun
 
   const load = () => loadUserPortfolio(evalPortfolio)
 
@@ -337,8 +352,13 @@ export function createPortfolioAnalystTools(
             if (w) result.warnings.push(w)
           }
 
+          const confirmLevel = confirmLevelForPrepare({
+            status: result.status,
+            warnings: result.warnings,
+          })
+
           // Production: persist pending draft for a later confirm turn.
-          // Eval: skip storage so admin suite never mutates the admin's draft.
+          // Eval / dry-run: skip storage so we never mutate real pending drafts.
           if (!evalMode) {
             await savePendingTxDraft(userId, {
               sourceText: args.sourceText,
@@ -350,12 +370,21 @@ export function createPortfolioAnalystTools(
           }
           preparedThisRequest = true
 
+          const nextStep = dryRun
+            ? 'Dry-run: show the draft summary and what would be saved. Do not claim it was logged. Do not call confirm_transaction as a real save.'
+            : confirmLevel === 'soft'
+              ? 'Show the summary AND all warnings clearly, then ask them to reply "confirm" in a NEW message to save. Do not call confirm_transaction this turn.'
+              : 'Show the summary to the user and ask them to reply "confirm" (or yes) in a NEW message to save. Do not call confirm_transaction in this turn — the server will reject it.'
+
           return {
             ...result,
             pendingStored: !evalMode,
-            evalMode: evalMode || undefined,
-            nextStep:
-              'Show the summary to the user and ask them to reply "confirm" (or yes) in a NEW message to save. Do not call confirm_transaction in this turn — the server will reject it.',
+            evalMode: evalMode && !dryRun ? true : undefined,
+            confirmLevel,
+            ...(dryRun
+              ? dryRunNote('prepare_transaction → user confirm → confirm_transaction')
+              : {}),
+            nextStep,
           }
         }
 
@@ -363,14 +392,26 @@ export function createPortfolioAnalystTools(
         if (!evalMode) {
           await clearPendingTxDraft(userId)
         }
-        return {
+        const failureMode =
+          result.status === 'incomplete'
+            ? 'validation_incomplete'
+            : 'validation_invalid'
+        return withRecovery({
           ...result,
           pendingStored: false,
+          confirmLevel: 'none' as const,
+          failureMode,
+          error:
+            result.errors?.[0] ||
+            (result.status === 'incomplete'
+              ? 'Draft incomplete — need more details from the user.'
+              : 'Draft invalid.'),
+          ...(dryRun ? dryRunNote('prepare_transaction (incomplete)') : {}),
           nextStep:
             result.status === 'incomplete'
               ? 'Ask the user only for the missing fields listed, then call prepare_transaction again with sourceText = original + their reply.'
               : 'Explain the errors; do not call confirm_transaction.',
-        }
+        })
       },
     }),
 
@@ -383,6 +424,21 @@ export function createPortfolioAnalystTools(
           .describe('Must be true (default). Only the pending draft from prepare_transaction can be saved.'),
       }),
       execute: async (args) => {
+        // Dry-run: never write; describe what confirm would do after a real prepare
+        if (dryRun) {
+          return withRecovery({
+            ok: false as const,
+            errors: [
+              'Dry-run: confirm_transaction does not save. A real confirm would require a pending draft and an explicit "confirm" message.',
+            ],
+            missing: [],
+            warnings: [],
+            failureMode: 'dry_run_blocked_write',
+            confirmLevel: CONFIRM_LEVEL_WRITE,
+            ...dryRunNote('confirm_transaction (blocked — no write)'),
+          })
+        }
+
         // Eval: exercise confirm gates without createTransactionRecord
         if (evalMode) {
           const gate = assertWriteAllowed({
@@ -393,33 +449,38 @@ export function createPortfolioAnalystTools(
             evalMode: true,
           })
           if (!gate.ok) {
-            return {
+            return withRecovery({
               ok: false as const,
               errors: gate.errors,
               missing: [],
               warnings: [],
               evalMode: true,
               failureMode: gate.failureMode,
-            }
+              confirmLevel: CONFIRM_LEVEL_WRITE,
+            })
           }
-          return {
+          return withRecovery({
             ok: false as const,
             errors: ['Eval mode: confirm is not persisted.'],
             missing: [],
             warnings: [],
             evalMode: true,
-          }
+            failureMode: 'eval_mode_no_persist',
+            confirmLevel: CONFIRM_LEVEL_WRITE,
+          })
         }
 
         if (args.usePendingDraft === false) {
-          return {
+          return withRecovery({
             ok: false as const,
             errors: [
               'Only pending drafts can be confirmed. Call prepare_transaction first, then confirm after the user replies.',
             ],
             missing: [],
             warnings: [],
-          }
+            failureMode: 'validation_invalid',
+            confirmLevel: CONFIRM_LEVEL_WRITE,
+          })
         }
 
         const pending = await getPendingTxDraft(userId)
@@ -431,24 +492,27 @@ export function createPortfolioAnalystTools(
           evalMode: false,
         })
         if (!gate.ok) {
-          return {
+          return withRecovery({
             ok: false as const,
             errors: gate.errors,
             missing: [],
             warnings: [],
             failureMode: gate.failureMode,
-          }
+            confirmLevel: CONFIRM_LEVEL_WRITE,
+          })
         }
 
         if (!pending) {
-          return {
+          return withRecovery({
             ok: false as const,
             errors: [
               'No pending draft to confirm. Ask the user to describe the trade again, then call prepare_transaction.',
             ],
             missing: [],
             warnings: [],
-          }
+            failureMode: 'no_pending_draft',
+            confirmLevel: CONFIRM_LEVEL_WRITE,
+          })
         }
 
         const sourceText = pending.sourceText
@@ -469,7 +533,7 @@ export function createPortfolioAnalystTools(
         })
 
         if (validated.status !== 'ready' || !validated.draft) {
-          return {
+          return withRecovery({
             ok: false as const,
             status: validated.status,
             missing: validated.missing,
@@ -478,7 +542,12 @@ export function createPortfolioAnalystTools(
               : ['Draft is not ready to save. Fix missing fields and prepare again.'],
             warnings: validated.warnings,
             fromPending,
-          }
+            failureMode:
+              validated.status === 'incomplete'
+                ? 'validation_incomplete'
+                : 'validation_failed',
+            confirmLevel: CONFIRM_LEVEL_WRITE,
+          })
         }
 
         const draft = validated.draft
@@ -507,13 +576,15 @@ export function createPortfolioAnalystTools(
         )
 
         if (!created.ok) {
-          return {
+          return withRecovery({
             ok: false as const,
             errors: [created.error],
             missing: [],
             warnings,
             fromPending,
-          }
+            failureMode: 'insert_failed',
+            confirmLevel: CONFIRM_LEVEL_WRITE,
+          })
         }
 
         await clearPendingTxDraft(userId)
@@ -521,6 +592,7 @@ export function createPortfolioAnalystTools(
         return {
           ok: true as const,
           summary: validated.summary,
+          confirmLevel: CONFIRM_LEVEL_WRITE,
           fromPending,
           transaction: {
             symbol: created.data.symbol,

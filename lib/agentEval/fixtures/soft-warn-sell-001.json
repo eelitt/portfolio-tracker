@@ -1,0 +1,28 @@
+{
+  "id": "soft-warn-sell-001",
+  "feature": "portfolio_analyst",
+  "description": "Selling more than held should prepare with warnings (soft confirm) and never confirm-save",
+  "prompt": "Log that I sold 10 AAPL at $150 each",
+  "seed": {
+    "preferredCurrency": "USD",
+    "transactions": [
+      {
+        "symbol": "AAPL",
+        "asset_type": "stock",
+        "action": "buy",
+        "quantity": 1,
+        "unit_price": 100,
+        "executed_at": "2025-01-01T12:00:00.000Z",
+        "currency": "USD"
+      }
+    ],
+    "prices": {
+      "AAPL": 150
+    }
+  },
+  "expect": {
+    "toolsAnyOf": [["prepare_transaction"]],
+    "mustNotSucceedConfirm": true,
+    "mustIncludeWarning": true
+  }
+}

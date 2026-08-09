@@ -23,6 +23,7 @@ import {
   buildUserContext,
   formatUserContextForPrompt,
 } from '@/lib/aiTools/buildUserContext'
+import { resolveDryRun } from '@/lib/aiTools'
 
 /** News + analyst can exceed 60s on cold paths. */
 export const maxDuration = 180
@@ -62,14 +63,20 @@ export async function POST(req: Request) {
       return new Response('Invalid JSON body.', { status: 400 })
     }
 
-    const rawMessages = Array.isArray((body as { messages?: unknown })?.messages)
-      ? ((body as { messages: unknown[] }).messages)
+    const bodyObj = body as { messages?: unknown; dryRun?: unknown }
+    const rawMessages = Array.isArray(bodyObj.messages)
+      ? bodyObj.messages
       : []
 
     const sanitized = sanitizeAnalystMessages(rawMessages)
     if (!sanitized.ok) {
       return new Response(sanitized.error, { status: sanitized.status })
     }
+
+    const dryRun = resolveDryRun({
+      bodyDryRun: bodyObj.dryRun === true,
+      lastUserText: sanitized.lastUserText,
+    })
 
     const rate = await checkAndConsumeAnalystRateLimit(user.id)
     if (!rate.allowed) {
@@ -82,6 +89,7 @@ export async function POST(req: Request) {
       feature: FEATURE,
       model: MODEL_ID,
       agentRole: 'orchestrator',
+      meta: dryRun ? { dry_run: true } : undefined,
     })
 
     const collectedTools: AgentToolRecord[] = []
@@ -98,6 +106,11 @@ export async function POST(req: Request) {
       )
     }
 
+    if (dryRun) {
+      contextBlock +=
+        '\n\n## Dry-run mode (active)\nPreview only: do not claim anything was saved or that live news was refreshed. Prefer tool results marked dryRun / wouldHave. Narrate what would happen after a real confirm.'
+    }
+
     const result = streamText({
       model: xai(MODEL_ID),
       system: ORCHESTRATOR_SYSTEM_PROMPT + contextBlock,
@@ -108,6 +121,7 @@ export async function POST(req: Request) {
         userId: user.id,
         parentRunId,
         lastUserText: sanitized.lastUserText,
+        dryRun,
       }),
       maxSteps: 6,
       temperature: 0.2,

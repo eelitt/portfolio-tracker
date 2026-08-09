@@ -100,6 +100,55 @@ describe('scoreCase', () => {
     const r = scoreCase({ mustNotCallConfirm: true }, withConfirm)
     expect(r.passed).toBe(false)
   })
+
+  it('failureModeOnTool passes when mode matches', () => {
+    const r = scoreCase(
+      {
+        failureModeOnTool: [
+          { tool: 'confirm_transaction', failureMode: 'no_explicit_confirm' },
+        ],
+      },
+      [
+        {
+          name: 'confirm_transaction',
+          args: {},
+          result: { ok: false, failureMode: 'no_explicit_confirm' },
+          ok: false,
+        },
+      ]
+    )
+    expect(r.passed).toBe(true)
+  })
+
+  it('mustIncludeWarning requires warnings array', () => {
+    const r = scoreCase(
+      { mustIncludeWarning: true },
+      [
+        {
+          name: 'prepare_transaction',
+          args: {},
+          result: { status: 'ready', warnings: ['oversell'] },
+          ok: true,
+        },
+      ]
+    )
+    expect(r.passed).toBe(true)
+  })
+
+  it('expectDryRun requires dryRun flag', () => {
+    const r = scoreCase(
+      { expectDryRun: true },
+      [
+        {
+          name: 'prepare_transaction',
+          args: {},
+          result: { dryRun: true, wouldHave: 'prepare' },
+          ok: true,
+        },
+      ]
+    )
+    expect(r.passed).toBe(true)
+  })
 })
 
 describe('deriveConfirmMeta', () => {

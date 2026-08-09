@@ -25,3 +25,15 @@ export {
 
 export { assertWriteAllowed } from './enforce'
 export type { WriteGateInput, WriteGateResult } from './enforce'
+
+export {
+  recoveryForFailureMode,
+  toolFailure,
+  withRecovery,
+} from './recovery'
+export type { RecoveryStrategy, ToolFailureEnvelope } from './recovery'
+
+export { confirmLevelForPrepare, CONFIRM_LEVEL_WRITE } from './confirmLevels'
+export type { ConfirmLevel } from './confirmLevels'
+
+export { resolveDryRun, dryRunNote } from './dryRun'

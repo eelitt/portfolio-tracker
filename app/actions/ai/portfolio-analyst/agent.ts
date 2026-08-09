@@ -89,6 +89,7 @@ export async function runPortfolioAnalystAgent(
       messages: [{ role: 'user', content: userContent }],
       tools: createPortfolioAnalystTools(ctx.userId, {
         lastUserText,
+        dryRun: input.dryRun === true,
       }),
       maxSteps: 5,
       temperature: 0.2,

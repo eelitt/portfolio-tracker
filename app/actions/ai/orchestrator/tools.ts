@@ -17,6 +17,8 @@ export type OrchestratorToolContext = {
   parentRunId: string | null
   /** Latest user message text (confirm gate + analyst routing). */
   lastUserText: string
+  /** No writes / no live news refresh */
+  dryRun?: boolean
 }
 
 /**
@@ -47,8 +49,9 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
       execute: async (args) => {
         const out = await runNewsAgent(childCtx, {
           symbols: args.symbols,
-          forceRefresh: args.forceRefresh,
+          forceRefresh: ctx.dryRun ? false : args.forceRefresh,
           questionHint: args.questionHint,
+          dryRun: ctx.dryRun,
         })
         // Content + optional statusNote. packageUpdated is for client dashboard sync only.
         return redactForStorage({
@@ -58,7 +61,8 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           asOf: out.asOf,
           holdings: out.holdings,
           statusNote: out.statusNote,
-          packageUpdated: out.updatedCache === true,
+          packageUpdated: ctx.dryRun ? false : out.updatedCache === true,
+          dryRun: ctx.dryRun || undefined,
         })
       },
     }),
@@ -87,14 +91,16 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           symbols: args.symbols,
           newsContext: args.newsContext as NewsAgentOutput | undefined,
           lastUserText: ctx.lastUserText,
+          dryRun: ctx.dryRun,
         })
         return redactForStorage({
           ok: out.ok,
           text: out.text,
           error: out.error,
           toolNames: out.toolTrace.map((t) => t.name),
-          transactionSaved: out.transactionSaved,
+          transactionSaved: ctx.dryRun ? false : out.transactionSaved,
           transactionError: out.transactionError,
+          dryRun: ctx.dryRun || undefined,
         })
       },
     }),

@@ -46,7 +46,7 @@ export type ToolMeta = {
   requiresConfirmation: boolean
   permissions: ToolPermission[]
   costTier: ToolCostTier
-  /** Stable failure mode labels (Phase 19 hooks); not user-facing copy */
+  /** Stable failure mode labels; not user-facing copy */
   failureModes: string[]
   rateLimitKey?: ToolRateLimitKey | null
 }

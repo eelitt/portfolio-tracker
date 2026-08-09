@@ -74,6 +74,7 @@ async function runOneCase(
         lastUserText: fixture.prompt,
         evalPortfolio,
         evalMode: true, // no pending drafts / no DB writes from confirm
+        dryRun: fixture.mode === 'dryRun',
       }),
       maxSteps: 5,
       temperature: 0.1,

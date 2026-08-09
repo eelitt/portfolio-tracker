@@ -111,6 +111,51 @@ export function scoreCase(expect: EvalExpect, tools: AgentToolRecord[]): ScoreRe
     })
   }
 
+  if (expect.failureModeOnTool && expect.failureModeOnTool.length > 0) {
+    for (const rule of expect.failureModeOnTool) {
+      const hit = tools.some((t) => {
+        if (t.name !== rule.tool) return false
+        const r = t.result
+        if (!r || typeof r !== 'object') return false
+        return (r as { failureMode?: string }).failureMode === rule.failureMode
+      })
+      checks.push({
+        name: `failureMode:${rule.tool}:${rule.failureMode}`,
+        passed: hit,
+        detail: hit
+          ? `found failureMode=${rule.failureMode}`
+          : `missing failureMode=${rule.failureMode} on ${rule.tool}`,
+      })
+    }
+  }
+
+  if (expect.mustIncludeWarning) {
+    const hit = tools.some((t) => {
+      const r = t.result
+      if (!r || typeof r !== 'object') return false
+      const w = (r as { warnings?: unknown }).warnings
+      return Array.isArray(w) && w.length > 0
+    })
+    checks.push({
+      name: 'mustIncludeWarning',
+      passed: hit,
+      detail: hit ? 'warnings present on a tool result' : 'no warnings[] found',
+    })
+  }
+
+  if (expect.expectDryRun) {
+    const hit = tools.some((t) => {
+      const r = t.result
+      if (!r || typeof r !== 'object') return false
+      return (r as { dryRun?: boolean }).dryRun === true
+    })
+    checks.push({
+      name: 'expectDryRun',
+      passed: hit,
+      detail: hit ? 'dryRun flag present' : 'no tool result with dryRun: true',
+    })
+  }
+
   if (checks.length === 0) {
     checks.push({
       name: 'empty_expect',

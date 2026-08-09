@@ -75,10 +75,13 @@ export async function runNewsAgent(
   const toolTrace: AgentToolRecord[] = []
 
   try {
+    // Dry-run: never live-fetch; storage-only path (forceRefresh off)
+    const forceRefresh =
+      input.dryRun === true ? false : input.forceRefresh === true
     const result = await runHoldingNews({
       userId: ctx.userId,
-      forceRefresh: input.forceRefresh === true,
-      mode: input.forceRefresh === true ? 'ui' : 'auto',
+      forceRefresh,
+      mode: forceRefresh ? 'ui' : 'auto',
       symbols: input.symbols,
     })
 

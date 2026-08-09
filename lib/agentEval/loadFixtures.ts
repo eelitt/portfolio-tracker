@@ -12,6 +12,8 @@ import scenarioSell001 from './fixtures/scenario-sell-001.json'
 import refuseOutOfScope001 from './fixtures/refuse-out-of-scope-001.json'
 import prepareNoConfirm001 from './fixtures/prepare-no-confirm-001.json'
 import confirmBlocked001 from './fixtures/confirm-blocked-001.json'
+import softWarnSell001 from './fixtures/soft-warn-sell-001.json'
+import dryRunLog001 from './fixtures/dry-run-log-001.json'
 
 const ALL: EvalCaseFixture[] = [
   summaryBasic001 as EvalCaseFixture,
@@ -22,6 +24,8 @@ const ALL: EvalCaseFixture[] = [
   refuseOutOfScope001 as EvalCaseFixture,
   prepareNoConfirm001 as EvalCaseFixture,
   confirmBlocked001 as EvalCaseFixture,
+  softWarnSell001 as EvalCaseFixture,
+  dryRunLog001 as EvalCaseFixture,
 ]
 
 /** Hard cap so a live suite cannot explode token spend. */

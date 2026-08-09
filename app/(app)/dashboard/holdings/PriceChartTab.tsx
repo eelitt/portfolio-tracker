@@ -30,7 +30,7 @@ import type { PreferredCurrency } from '@/lib/userTypes'
 import HoldingPriceChart from './HoldingPriceChart'
 import { SegmentedControl } from './SegmentedControl'
 
-/** Client-side load UX phases (server returns sync.mode for ready-state copy). */
+/** Client-side load UX states (server returns sync.mode for ready-state copy). */
 type LoadPhase = 'idle' | 'loading' | 'backfilling' | 'ready' | 'error'
 
 type Props = {
