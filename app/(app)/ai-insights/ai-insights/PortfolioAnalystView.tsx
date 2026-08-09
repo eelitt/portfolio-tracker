@@ -8,15 +8,16 @@ import { Button } from '@/components/ui/button'
 import { ArrowLeft, Loader2, Send, MessageSquare } from 'lucide-react'
 
 const SUGGESTED_PROMPTS = [
-  'Which positions are down more than 25% from my average cost?',
+  'Analyze my portfolio — main risks and concentration',
   'Any important news on my biggest holdings?',
   'Estimate my Finnish capital-gains tax year-to-date',
-  'Tax if I sell half of my largest crypto at the current price?',
+  'Which positions are down more than 25% from my average cost?',
   'Log a buy: Bought 0.5 BTC at $64000 yesterday',
 ]
 
 interface PortfolioAnalystViewProps {
-  onBack: () => void
+  /** When omitted, header is chat-only (no back control). */
+  onBack?: () => void
 }
 
 /**
@@ -101,6 +102,7 @@ function confirmErrorMessage(result: unknown): string {
 }
 
 export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
+  const showBack = typeof onBack === 'function'
   const router = useRouter()
   const processedConfirmIds = useRef(new Set<string>())
 
@@ -162,20 +164,22 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 h-full min-h-0">
       <div className="flex items-center gap-2 shrink-0">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onBack}
-          className="h-8 px-3 flex items-center gap-1 transition-all hover:shadow-sm active:translate-y-px"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back
-        </Button>
-        <span className="text-sm font-medium flex items-center gap-1.5">
+        {showBack && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onBack}
+            className="h-8 px-3 flex items-center gap-1 transition-all hover:shadow-sm active:translate-y-px"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+        )}
+        <span className="text-sm font-medium flex items-center gap-1.5 text-muted-foreground">
           <MessageSquare className="h-4 w-4" />
-          Portfolio Analyst
+          Chat
         </span>
       </div>
 
@@ -187,9 +191,8 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
         {messages.length === 0 && (
           <div className="space-y-3 rounded-lg border border-subtle bg-card p-4 transition-colors duration-200 hover:border-gold">
             <p className="text-sm text-muted-foreground">
-              I only answer from your portfolio data — holdings, cost basis, P&L,
-              allocation, what-if scenarios, and logging a trade you dictate
-              (draft → confirm; include €/$ and a ticker).
+              Ask about holdings, P&amp;L, news, tax estimates, a quick portfolio
+              analysis, or log a trade (draft → confirm; include €/$ and a ticker).
             </p>
             <div className="space-y-2">
               {SUGGESTED_PROMPTS.map((prompt) => (

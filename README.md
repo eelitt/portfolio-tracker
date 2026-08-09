@@ -18,14 +18,26 @@ AI is a **first-class part of the product**, implemented with the same disciplin
 
 **Stack:** [Vercel AI SDK](https://sdk.vercel.ai) (`streamText`, tools, structured output) + **xAI** models. Feature code lives under `app/actions/ai/<feature>/`. Portfolio chat streams from `app/api/portfolio-analyst` (orchestrator).
 
+### Progressive AI surfaces
+
+| Feature | Primary | Secondary |
+|---------|---------|-----------|
+| **Analysis** | Summary title icon → popover (analyze / re-analyze) | Chat analysis agent |
+| **Holding news** | Holdings title icon → popover (fetch / refetch, cooldown-aware) | Per-card tooltips; chat news agent |
+| **Tax** | Navbar tax modal | Chat tax agent |
+| **Chat** | Navbar **Assistant** (chat-only panel) | Multi-agent orchestrator |
+
+No kitchen-sink AI menu. Analysis and news are never mixed in one panel.
+
 ### Portfolio chat (multi-agent orchestrator)
 
-Private sidebar chat over **this user’s** portfolio. An **orchestrator** routes work to specialist agents, then synthesizes the answer:
+Navbar **Assistant** opens a chat panel. An **orchestrator** routes work to specialists:
 
 ```
 User message
     → Orchestrator (streamText)
          ├── invoke_portfolio_analyst
+         ├── invoke_portfolio_analysis_agent
          ├── invoke_news_agent
          └── invoke_tax_agent
     → grounded reply (tool facts only)
@@ -35,35 +47,24 @@ User message
 |--------|------|
 | **Orchestrator** | Chooses agents, merges results; never invents numbers, news, or tax |
 | **Portfolio Analyst** | Holdings, P&L, allocation, what-if scenarios, NL trade logging (`prepare` → confirm) |
-| **News Agent** | Holding news (Finnhub equities / xAI search for crypto + impact); content-first brief; updates holding-news storage on live fetch |
-| **Tax Agent** | Finnish capital-gains estimates (FIFO + weighted average vs hankintameno-olettama) via the same `estimateFinnishTax` / `lib/tax` engine as the tax modal |
+| **Analysis Agent** | Short risk/concentration/structure bullets (`generatePortfolioInsights`; hash short-circuit) |
+| **News Agent** | Holding news (Finnhub / xAI + impact); content-first brief; updates storage on live fetch |
+| **Tax Agent** | Finnish capital-gains estimates — same engine as the tax modal |
 
-**Example routing**
-
-| User intent | Agents |
-|-------------|--------|
-| “Any important news on my biggest holdings?” | News only (presents bullets/impact, not cache meta) |
-| “Tax if I sell half my BTC at market?” | Tax (`sellFraction` + live mark) |
-| “YTD Finnish CGT?” | Tax (`mode: ytd`) |
-| “Reconsider NVDA after news?” | News + Analyst (position context) |
-| “Log: bought 0.5 BTC at $64000” | Analyst (prepare → user confirms) |
-
-- **Streaming:** `@ai-sdk/react` `useChat` → `POST /api/portfolio-analyst`  
-- **Trust rules:** news never invents P&L; analyst never invents news/tax; tax never invents rates  
-- **Transcript:** session-only; soft rate limits on chat  
-- **Observability:** parent `agent_runs` (`portfolio_orchestrator`) + child runs (`holding_news_agent`, `portfolio_analyst`, `tax_agent`)
-
-Code: `app/actions/ai/orchestrator/`, `app/actions/ai/portfolio-analyst/agent.ts`, `holding-news/agent.ts`, `tax/agent.ts`, contracts in `lib/agents/`.
+- **Streaming:** `useChat` → `POST /api/portfolio-analyst`  
+- **Observability:** parent + child `agent_runs`  
+- Code: `app/actions/ai/orchestrator/`, `portfolio-analyst/agent.ts`, `portfolio-insights/agent.ts`, `holding-news/agent.ts`, `tax/agent.ts`, `lib/agents/`
 
 ### Portfolio analysis
 
-One-shot, structured bullets (concentration, risk, structure) over a compact portfolio summary. **Hash short-circuit** skips the model when the transaction set has not changed.
+Structured bullets over a compact portfolio summary. **Primary UI:** Summary ✨ popover. Hash short-circuit when transactions unchanged; shared with chat analysis agent.
 
 ### Holding news & impact
 
-- **Sidebar / holdings cards:** batch package via `generateHoldingNews` → shared `runHoldingNews` service.  
-- **Chat:** News Agent (same pipeline) with deterministic `brief` for the orchestrator.  
-- Live **web + X search** (xAI) for crypto; **Finnhub** company news for stocks/ETFs; impact synthesis; daily-style refresh gate for non-admins; previous package retained when nothing new.
+- **Primary UI:** Holdings 📰 popover — batch package + fetch/refetch (existing cooldown for non-admins).  
+- **Cards:** per-symbol tooltips while scanning the grid.  
+- **Chat:** News Agent with deterministic `brief`.  
+- Pipeline: Finnhub (equities), xAI search (crypto), impact synthesis.
 
 ### Finnish tax estimator
 

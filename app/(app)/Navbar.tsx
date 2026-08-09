@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { LogOut, KeyRound, Sun, Moon, Target, Sparkles, DollarSign, Euro, Download, Upload, Eye, EyeOff, Calculator } from 'lucide-react'
+import { LogOut, KeyRound, Sun, Moon, Target, Sparkles, DollarSign, Euro, Download, Upload, Eye, EyeOff, Calculator, Orbit} from 'lucide-react'
 import { usePrivacyMode } from './privacy/PrivacyModeProvider'
 import ImportTransactionsModal from './dashboard/transactions/ImportTransactionsModal'
 import ChangePasswordModal from './ChangePasswordModal'
@@ -176,17 +176,18 @@ export default function Navbar({
           {/* Admin tools — dropdown + modals (admins only) */}
           {isAdmin && user?.id && <AdminMenu currentUserId={user.id} />}
 
-          {/* AI Insights */}
+          {/* Multi-agent chat assistant */}
           {hasAiKey && (
             <Button
               variant="ghost"
               size="sm"
               onClick={toggleAIInsights}
               className="flex items-center gap-2"
-              aria-label="Toggle AI Insights sidebar"
+              aria-label="Toggle assistant chat"
+              title="Assistant"
             >
-              <Sparkles className="h-4 w-4" />
-              AI Insights
+              <Orbit className="h-4 w-4" />
+              Assistant
             </Button>
           )}
 

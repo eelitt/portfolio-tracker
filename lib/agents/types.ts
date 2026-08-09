@@ -5,13 +5,19 @@
 
 import type { AgentToolRecord } from '@/lib/agentObservability'
 
-export type AgentId = 'news' | 'portfolio_analyst' | 'tax' | (string & {})
+export type AgentId =
+  | 'news'
+  | 'portfolio_analyst'
+  | 'tax'
+  | 'portfolio_analysis'
+  | (string & {})
 
 export type AgentRole =
   | 'orchestrator'
   | 'news'
   | 'portfolio_analyst'
   | 'tax'
+  | 'portfolio_analysis'
   | (string & {})
 
 /** News Agent — research only; never portfolio math. */
@@ -119,6 +125,16 @@ export type TaxAgentOutput = {
   error?: string
   brief?: string
   summary?: TaxAgentSummary
+  toolTrace?: AgentToolRecord[]
+}
+
+/** Portfolio Analysis Agent — narrative bullets over portfolio snapshot (not holdings math). */
+export type PortfolioAnalysisAgentOutput = {
+  ok: boolean
+  error?: string
+  insights?: string[]
+  brief?: string
+  asOf?: string
   toolTrace?: AgentToolRecord[]
 }
 

@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { runNewsAgent } from '@/app/actions/ai/holding-news/agent'
 import { runPortfolioAnalystAgent } from '@/app/actions/ai/portfolio-analyst/agent'
 import { runTaxAgent } from '@/app/actions/ai/tax/agent'
+import { runPortfolioAnalysisAgent } from '@/app/actions/ai/portfolio-insights/agent'
 import type { NewsAgentOutput } from '@/lib/agents/types'
 import { redactForStorage } from '@/lib/agentObservability'
 
@@ -147,6 +148,27 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           error: out.error,
           brief: out.brief,
           summary: out.summary,
+        })
+      },
+    }),
+
+    invoke_portfolio_analysis_agent: tool({
+      description:
+        'High-level portfolio analysis bullets (risks, concentration, structure). Prefer the tool `brief`. Not for exact P&L math (use portfolio analyst) or tax (use tax agent) or news (use news agent).',
+      parameters: z.object({
+        questionHint: z
+          .string()
+          .optional()
+          .describe('Optional focus from the user question'),
+      }),
+      execute: async () => {
+        const out = await runPortfolioAnalysisAgent(childCtx, {})
+        return redactForStorage({
+          ok: out.ok,
+          error: out.error,
+          brief: out.brief,
+          insights: out.insights,
+          asOf: out.asOf,
         })
       },
     }),

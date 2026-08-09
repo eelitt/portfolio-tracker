@@ -2,9 +2,11 @@ import { getPortfolioData } from '@/lib/portfolioData'
 import { formatCurrency } from '@/lib/currency'
 import SensitiveValue from '@/components/SensitiveValue'
 import PortfolioValueSync from './PortfolioValueSync'
+import SummaryAnalysisPopover from './SummaryAnalysisPopover'
 
 /**
  * Open section (no outer gold card): title + KPI strip on the page field.
+ * Portfolio analysis: progressive disclosure via title icon popover.
  */
 export default async function SummarySection() {
   const data = await getPortfolioData()
@@ -22,8 +24,9 @@ export default async function SummarySection() {
         value={data.totalMarketValue}
         currency={data.preferredCurrency}
       />
-      <h2 className="section-title mb-4">
+      <h2 className="section-title mb-4 flex items-center gap-1.5">
         <span className="section-title-accent">Summary</span>
+        <SummaryAnalysisPopover />
       </h2>
 
       {showPartialPriceWarning && (

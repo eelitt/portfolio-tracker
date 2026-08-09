@@ -78,7 +78,7 @@ export async function generatePortfolioInsights(): Promise<PortfolioInsightsResu
       return {
         insights: normalizeInsights(cached.result.insights),
         cachedAt: cached.createdAt,
-        message: 'Showing previous analysis (portfolio unchanged)',
+        message: 'Portfolio unchanged — showing latest analysis.',
       }
     }
 
@@ -92,7 +92,7 @@ export async function generatePortfolioInsights(): Promise<PortfolioInsightsResu
             return {
               insights: normalizeInsights(cached.result.insights),
               cachedAt: cached.createdAt,
-              message: 'Showing cached result (rate limited)',
+              message: 'Please wait a moment before requesting a new analysis.',
             }
           }
           const wait = Math.ceil(60 - secondsSince)

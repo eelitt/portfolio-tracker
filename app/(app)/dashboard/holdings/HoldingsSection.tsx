@@ -5,15 +5,19 @@ import {
   parseHoldingNewsStored,
 } from '@/app/actions/ai/holding-news/newsUtils'
 import { getPortfolioSnapshots } from '@/app/actions/snapshots'
+import { getCurrentUserProfile } from '@/lib/user'
 import HoldingsGrid from './HoldingsGrid'
 import HoldingsChartsPanel from './HoldingsChartsPanel'
+import HoldingsNewsPopover from './HoldingsNewsPopover'
 
 /**
  * Open Holdings title + grid; Charts is a sibling elevated panel.
+ * Holding news batch: title icon popover (cards keep per-symbol tooltips).
  */
 export default async function HoldingsSection() {
   const data = await getPortfolioData()
   const snapshotsResult = await getPortfolioSnapshots()
+  const profile = await getCurrentUserProfile()
 
   const holdingNewsResult = await getLatestAIInsightForCurrentUser(
     HOLDING_NEWS_FEATURE_TYPE
@@ -42,8 +46,12 @@ export default async function HoldingsSection() {
   return (
     <>
       <section className="mb-8">
-        <h2 className="section-title mb-4">
+        <h2 className="section-title mb-4 flex items-center gap-1.5">
           <span className="section-title-accent">Holdings</span>
+          <HoldingsNewsPopover
+            initialNews={holdingNews}
+            isAdmin={profile?.admin === true}
+          />
         </h2>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <HoldingsGrid
