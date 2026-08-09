@@ -27,7 +27,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
   return {
     invoke_news_agent: tool({
       description:
-        'Run the News Agent for holding-related news and impact. Returns a ready `brief` plus per-symbol bullets/impact. Uses stored news when still fresh; otherwise fetches live and updates storage. Present the news content to the user — never discuss caching or refresh internals. Optional symbols; omit for biggest holdings.',
+        'Run the News Agent for holding-related news and impact (same pipeline/limits as the Holdings dashboard icon). Returns `brief` plus per-symbol bullets/impact. Optional symbols; omit for biggest holdings. Set forceRefresh true only when the user explicitly asks to fetch/refresh/update/get latest news. Prefer `brief`; if `statusNote` is present, include it briefly for the user.',
       parameters: z.object({
         symbols: z
           .array(z.string())
@@ -36,7 +36,9 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
         forceRefresh: z
           .boolean()
           .optional()
-          .describe('Only if the user explicitly asks to refresh/update news now.'),
+          .describe(
+            'True when user explicitly asks to fetch/refresh/update/get latest news (popover Fetch parity). False/omit for casual "any news?" questions.'
+          ),
         questionHint: z
           .string()
           .optional()
@@ -48,13 +50,15 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           forceRefresh: args.forceRefresh,
           questionHint: args.questionHint,
         })
-        // Content-only payload for the model (no cache jargon fields)
+        // Content + optional statusNote. packageUpdated is for client dashboard sync only.
         return redactForStorage({
           ok: out.ok,
           error: out.error,
           brief: out.brief,
           asOf: out.asOf,
           holdings: out.holdings,
+          statusNote: out.statusNote,
+          packageUpdated: out.updatedCache === true,
         })
       },
     }),
@@ -154,7 +158,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
 
     invoke_portfolio_analysis_agent: tool({
       description:
-        'High-level portfolio analysis bullets (risks, concentration, structure). Prefer the tool `brief`. Not for exact P&L math (use portfolio analyst) or tax (use tax agent) or news (use news agent).',
+        'High-level portfolio analysis bullets (risks, concentration, structure). Same pipeline/limits as the Summary dashboard icon. Prefer `brief`; if `statusNote` is present, include it briefly. Not for exact P&L math (use portfolio analyst) or tax (use tax agent) or news (use news agent).',
       parameters: z.object({
         questionHint: z
           .string()
@@ -169,6 +173,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           brief: out.brief,
           insights: out.insights,
           asOf: out.asOf,
+          statusNote: out.statusNote,
         })
       },
     }),

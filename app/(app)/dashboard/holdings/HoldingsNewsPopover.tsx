@@ -125,6 +125,30 @@ export default function HoldingsNewsPopover({
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps -- mount hydrate
 
+  // Chat (or other surfaces) may write a new package — reload client state
+  useEffect(() => {
+    const onUpdated = () => {
+      void load()
+    }
+    window.addEventListener('holding-news-updated', onUpdated)
+    return () => window.removeEventListener('holding-news-updated', onUpdated)
+  }, [load])
+
+  // After router.refresh(), server initialNews can change — sync without remount
+  useEffect(() => {
+    if (!initialNews?.news) return
+    setNews(initialNews.news)
+    setImpact(
+      initialNews.impact && Object.keys(initialNews.impact).length > 0
+        ? initialNews.impact
+        : null
+    )
+    if (initialNews.cachedAt) {
+      setAsOf(initialNews.cachedAt)
+      setLastFetchedAt(initialNews.cachedAt)
+    }
+  }, [initialNews])
+
   const hasData = Boolean(news && newsHasAnyBullets(news))
 
   const refreshBlocked =
@@ -159,6 +183,7 @@ export default function HoldingsNewsPopover({
           'nextRefreshAt' in result ? result.nextRefreshAt ?? null : null
         )
         setMessage(calmNewsMessage(result.message))
+        window.dispatchEvent(new CustomEvent('holding-news-updated'))
         router.refresh()
       } else if (result.error) {
         setError(result.error)

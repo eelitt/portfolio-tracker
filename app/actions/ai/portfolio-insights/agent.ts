@@ -75,15 +75,17 @@ export async function runPortfolioAnalysisAgent(
       'cachedAt' in result && typeof result.cachedAt === 'string'
         ? result.cachedAt
         : undefined
-    const hadMessage =
+    const statusNote =
       'message' in result && typeof result.message === 'string'
+        ? result.message
+        : undefined
 
     toolTrace.push({
       name: 'generate_portfolio_insights',
       args: {},
       result: {
         count: insights.length,
-        reusedExisting: hadMessage,
+        reusedExisting: Boolean(statusNote),
       },
       ok: true,
     })
@@ -104,6 +106,7 @@ export async function runPortfolioAnalysisAgent(
       insights,
       brief,
       asOf,
+      statusNote,
       toolTrace,
     }
   } catch (e) {

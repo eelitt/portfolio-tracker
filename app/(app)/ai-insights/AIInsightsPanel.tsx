@@ -38,7 +38,7 @@ export default function AIInsightsPanel({ isAdmin: _isAdmin = false }: AIInsight
         </Button>
       </div>
 
-      <div className="panel-scroll relative z-10 min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-4">
         <PortfolioAnalystView />
       </div>
     </div>

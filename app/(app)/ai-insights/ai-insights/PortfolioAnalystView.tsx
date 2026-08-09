@@ -7,9 +7,17 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Loader2, Send, MessageSquare } from 'lucide-react'
 
+const CAPABILITIES = [
+  'Portfolio analysis (risks & concentration)',
+  'Holding news for your positions',
+  'Holdings, P&L, allocation, what-if',
+  'Finnish capital-gains tax estimate',
+  'Log a trade (draft → confirm; include €/$ + ticker)',
+] as const
+
 const SUGGESTED_PROMPTS = [
   'Analyze my portfolio — main risks and concentration',
-  'Any important news on my biggest holdings?',
+  'Fetch news for my biggest holdings',
   'Estimate my Finnish capital-gains tax year-to-date',
   'Which positions are down more than 25% from my average cost?',
   'Log a buy: Bought 0.5 BTC at $64000 yesterday',
@@ -20,41 +28,65 @@ interface PortfolioAnalystViewProps {
   onBack?: () => void
 }
 
+type AssistantToolHit = {
+  toolName?: string
+  toolCallId?: string
+  state?: string
+  result?: unknown
+}
+
+/** Walk useChat toolInvocations + parts for completed tool results. */
+function forEachToolResult(
+  message: {
+    role: string
+    toolInvocations?: AssistantToolHit[]
+    parts?: Array<{
+      type?: string
+      toolInvocation?: AssistantToolHit
+    }>
+  },
+  visit: (hit: {
+    toolName: string | undefined
+    toolCallId: string
+    result: unknown
+  }) => void
+) {
+  if (message.role !== 'assistant') return
+  const seen = new Set<string>()
+
+  const consider = (hit: AssistantToolHit | undefined) => {
+    if (!hit || hit.state !== 'result' || !hit.toolCallId) return
+    if (seen.has(hit.toolCallId)) return
+    seen.add(hit.toolCallId)
+    visit({
+      toolName: hit.toolName,
+      toolCallId: hit.toolCallId,
+      result: hit.result,
+    })
+  }
+
+  for (const inv of message.toolInvocations ?? []) consider(inv)
+  for (const part of message.parts ?? []) {
+    if (part.type !== 'tool-invocation') continue
+    consider(part.toolInvocation)
+  }
+}
+
 /**
  * Detect transaction saves from assistant tool results.
  * Orchestrator nests confirms under invoke_portfolio_analyst.transactionSaved.
  */
 function getConfirmTransactionResults(message: {
   role: string
-  toolInvocations?: Array<{
-    toolName?: string
-    toolCallId?: string
-    state?: string
-    result?: unknown
-  }>
+  toolInvocations?: AssistantToolHit[]
   parts?: Array<{
     type?: string
-    toolInvocation?: {
-      toolName?: string
-      toolCallId?: string
-      state?: string
-      result?: unknown
-    }
+    toolInvocation?: AssistantToolHit
   }>
 }): Array<{ toolCallId: string; result: unknown }> {
   const out: Array<{ toolCallId: string; result: unknown }> = []
 
-  if (message.role !== 'assistant') return out
-
-  const consider = (
-    toolName: string | undefined,
-    toolCallId: string | undefined,
-    state: string | undefined,
-    result: unknown
-  ) => {
-    if (state !== 'result' || !toolCallId) return
-    if (out.some((x) => x.toolCallId === toolCallId)) return
-
+  forEachToolResult(message, ({ toolName, toolCallId, result }) => {
     if (toolName === 'confirm_transaction') {
       out.push({ toolCallId, result })
       return
@@ -74,17 +106,30 @@ function getConfirmTransactionResults(message: {
         })
       }
     }
-  }
+  })
 
-  for (const inv of message.toolInvocations ?? []) {
-    consider(inv.toolName, inv.toolCallId, inv.state, inv.result)
-  }
+  return out
+}
 
-  for (const part of message.parts ?? []) {
-    if (part.type !== 'tool-invocation' || !part.toolInvocation) continue
-    const inv = part.toolInvocation
-    consider(inv.toolName, inv.toolCallId, inv.state, inv.result)
-  }
+/** News agent wrote a new package to storage — dashboard cards/popover should reload. */
+function getHoldingNewsPackageUpdates(message: {
+  role: string
+  toolInvocations?: AssistantToolHit[]
+  parts?: Array<{
+    type?: string
+    toolInvocation?: AssistantToolHit
+  }>
+}): Array<{ toolCallId: string }> {
+  const out: Array<{ toolCallId: string }> = []
+
+  forEachToolResult(message, ({ toolName, toolCallId, result }) => {
+    if (toolName !== 'invoke_news_agent') return
+    if (!result || typeof result !== 'object') return
+    const r = result as { ok?: boolean; packageUpdated?: boolean }
+    if (r.ok === true && r.packageUpdated === true) {
+      out.push({ toolCallId })
+    }
+  })
 
   return out
 }
@@ -105,6 +150,7 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
   const showBack = typeof onBack === 'function'
   const router = useRouter()
   const processedConfirmIds = useRef(new Set<string>())
+  const processedNewsPackageIds = useRef(new Set<string>())
 
   const {
     messages,
@@ -147,6 +193,18 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
     }
   }, [messages, router])
 
+  // Live news from chat → same storage as Holdings icon; refresh cards + popover
+  useEffect(() => {
+    for (const message of messages) {
+      for (const { toolCallId } of getHoldingNewsPackageUpdates(message)) {
+        if (processedNewsPackageIds.current.has(toolCallId)) continue
+        processedNewsPackageIds.current.add(toolCallId)
+        window.dispatchEvent(new CustomEvent('holding-news-updated'))
+        router.refresh()
+      }
+    }
+  }, [messages, router])
+
   // Clear chat when this view unmounts (back to menu or sidebar close)
   useEffect(() => {
     return () => {
@@ -183,18 +241,49 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
         </span>
       </div>
 
-      {/* Capped height so the prompt form sits higher (not pinned to viewport bottom) */}
+      {/* Fills panel under header; form stays at bottom */}
       <div
         ref={listRef}
-        className="panel-scroll max-h-[min(42vh,420px)] space-y-3 overflow-y-auto pr-0.5"
+        className="panel-scroll min-h-0 flex-1 space-y-3 overflow-y-auto pr-0.5"
       >
         {messages.length === 0 && (
           <div className="space-y-3 rounded-lg border border-subtle bg-card p-4 transition-colors duration-200 hover:border-gold">
-            <p className="text-sm text-muted-foreground">
-              Ask about holdings, P&amp;L, news, tax estimates, a quick portfolio
-              analysis, or log a trade (draft → confirm; include €/$ and a ticker).
-            </p>
             <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Ask in plain language. I can run the same portfolio analysis and
+                holding-news tools as the dashboard icons, plus tax, numbers, and
+                trade logging.
+              </p>
+              <ul className="list-disc space-y-1 pl-4 text-xs leading-relaxed text-muted-foreground marker:text-gold/70">
+                {CAPABILITIES.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+              <div className="space-y-1 rounded-md border border-subtle/80 bg-background/60 px-2.5 py-2">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Rate limits
+                </p>
+                <ul className="list-disc space-y-0.5 pl-4 text-[11px] leading-snug text-muted-foreground marker:text-gold/60">
+                  <li>
+                    <span className="text-foreground/90">Portfolio analysis:</span>{' '}
+                    about 1 minute between new runs. If your portfolio hasn&apos;t
+                    changed, the latest analysis is reused.
+                  </li>
+                  <li>
+                    <span className="text-foreground/90">Holding news:</span> one
+                    full fetch per day (same as the Holdings icon).
+                  </li>
+                  <li>
+                    <span className="text-foreground/90">Chat:</span> short gap
+                    between messages; up to 30 messages per 15 minutes.
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Try
+              </p>
               {SUGGESTED_PROMPTS.map((prompt) => (
                 <button
                   key={prompt}

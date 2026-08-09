@@ -53,6 +53,11 @@ export type NewsAgentOutput = {
   brief?: string
   /** Optional ISO timestamp for "as of" (not a cache lecture). */
   asOf?: string
+  /**
+   * Calm user-facing status when useful (e.g. explicit refresh not available yet).
+   * Orchestrator may show this; omit cache jargon.
+   */
+  statusNote?: string
   message?: string
   error?: string
   /** Synthetic tool steps for observability */
@@ -135,6 +140,8 @@ export type PortfolioAnalysisAgentOutput = {
   insights?: string[]
   brief?: string
   asOf?: string
+  /** Calm status from generatePortfolioInsights (unchanged portfolio, rate limit, …). */
+  statusNote?: string
   toolTrace?: AgentToolRecord[]
 }
 

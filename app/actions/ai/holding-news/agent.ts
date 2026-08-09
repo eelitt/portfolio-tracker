@@ -27,6 +27,35 @@ const FEATURE = 'holding_news_agent'
 const MODEL = 'pipeline'
 
 /**
+ * User-safe note when an explicit refresh could not run a new live fetch.
+ * Omit for casual auto mode (content only).
+ */
+function buildForcedRefreshStatusNote(args: {
+  forceRefresh: boolean
+  fromCache: boolean
+  nextRefreshAt?: string
+  serviceMessage?: string
+}): string | undefined {
+  if (!args.forceRefresh || !args.fromCache) return undefined
+  if (args.serviceMessage?.trim()) {
+    // UI pipeline already returns calm timing copy
+    return (
+      args.serviceMessage
+        .replace(/^Showing latest saved news\.\s*/i, '')
+        .trim() || args.serviceMessage
+    )
+  }
+  if (args.nextRefreshAt) {
+    const ms = Date.parse(args.nextRefreshAt) - Date.now()
+    if (ms > 0) {
+      const hours = Math.max(1, Math.ceil(ms / (60 * 60 * 1000)))
+      return `A new news fetch isn’t available yet (try again in ~${hours}h). Showing your latest package.`
+    }
+  }
+  return 'A new news fetch isn’t available yet. Showing your latest package.'
+}
+
+/**
  * Run the News Agent for the given user and input.
  * Default mode: auto freshness (silent store hit or live + persist).
  */
@@ -101,6 +130,7 @@ export async function runNewsAgent(
       windowTo?: string
       contentFetchedAt?: string
       lastCheckedAt?: string
+      message?: string
     }
 
     const holdings: NewsHoldingResult[] = []
@@ -140,6 +170,13 @@ export async function runNewsAgent(
       success.lastCheckedAt ||
       undefined
 
+    const statusNote = buildForcedRefreshStatusNote({
+      forceRefresh: input.forceRefresh === true,
+      fromCache: success.fromCache === true,
+      nextRefreshAt: success.nextRefreshAt,
+      serviceMessage: success.message,
+    })
+
     const output: NewsAgentOutput = {
       ok: true,
       fromCache: success.fromCache === true,
@@ -150,6 +187,7 @@ export async function runNewsAgent(
       holdings,
       brief,
       asOf,
+      statusNote,
       toolTrace,
     }
 
