@@ -79,6 +79,8 @@ export async function runPortfolioAnalysisAgent(
       'message' in result && typeof result.message === 'string'
         ? result.message
         : undefined
+    const packageUpdated =
+      'packageUpdated' in result && result.packageUpdated === true
 
     toolTrace.push({
       name: 'generate_portfolio_insights',
@@ -86,6 +88,7 @@ export async function runPortfolioAnalysisAgent(
       result: {
         count: insights.length,
         reusedExisting: Boolean(statusNote),
+        packageUpdated,
       },
       ok: true,
     })
@@ -107,6 +110,7 @@ export async function runPortfolioAnalysisAgent(
       brief,
       asOf,
       statusNote,
+      packageUpdated,
       toolTrace,
     }
   } catch (e) {

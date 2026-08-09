@@ -62,6 +62,16 @@ export default function SummaryAnalysisPopover() {
     void load()
   }, [load])
 
+  // Chat (or other surfaces) may write a new analysis package — reload client state
+  useEffect(() => {
+    const onUpdated = () => {
+      void load()
+    }
+    window.addEventListener('portfolio-analysis-updated', onUpdated)
+    return () =>
+      window.removeEventListener('portfolio-analysis-updated', onUpdated)
+  }, [load])
+
   const analyze = async () => {
     setLoading(true)
     setError(null)
@@ -78,6 +88,9 @@ export default function SummaryAnalysisPopover() {
         )
         setCachedAt(result.cachedAt ?? new Date().toISOString())
         setMessage(calmAnalysisMessage(result.message) ?? null)
+        if (result.packageUpdated) {
+          window.dispatchEvent(new CustomEvent('portfolio-analysis-updated'))
+        }
       }
     } catch {
       setError('Something went wrong. Please try again.')

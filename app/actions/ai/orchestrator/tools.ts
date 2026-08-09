@@ -174,6 +174,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           insights: out.insights,
           asOf: out.asOf,
           statusNote: out.statusNote,
+          packageUpdated: out.packageUpdated === true,
         })
       },
     }),

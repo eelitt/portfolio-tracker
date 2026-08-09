@@ -134,6 +134,29 @@ function getHoldingNewsPackageUpdates(message: {
   return out
 }
 
+/** Analysis agent wrote new insights — Summary popover should reload. */
+function getPortfolioAnalysisPackageUpdates(message: {
+  role: string
+  toolInvocations?: AssistantToolHit[]
+  parts?: Array<{
+    type?: string
+    toolInvocation?: AssistantToolHit
+  }>
+}): Array<{ toolCallId: string }> {
+  const out: Array<{ toolCallId: string }> = []
+
+  forEachToolResult(message, ({ toolName, toolCallId, result }) => {
+    if (toolName !== 'invoke_portfolio_analysis_agent') return
+    if (!result || typeof result !== 'object') return
+    const r = result as { ok?: boolean; packageUpdated?: boolean }
+    if (r.ok === true && r.packageUpdated === true) {
+      out.push({ toolCallId })
+    }
+  })
+
+  return out
+}
+
 function confirmErrorMessage(result: unknown): string {
   if (!result || typeof result !== 'object') {
     return 'Failed to add transaction'
@@ -151,6 +174,7 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
   const router = useRouter()
   const processedConfirmIds = useRef(new Set<string>())
   const processedNewsPackageIds = useRef(new Set<string>())
+  const processedAnalysisPackageIds = useRef(new Set<string>())
 
   const {
     messages,
@@ -204,6 +228,17 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
       }
     }
   }, [messages, router])
+
+  // New portfolio analysis from chat → Summary icon popover
+  useEffect(() => {
+    for (const message of messages) {
+      for (const { toolCallId } of getPortfolioAnalysisPackageUpdates(message)) {
+        if (processedAnalysisPackageIds.current.has(toolCallId)) continue
+        processedAnalysisPackageIds.current.add(toolCallId)
+        window.dispatchEvent(new CustomEvent('portfolio-analysis-updated'))
+      }
+    }
+  }, [messages])
 
   // Clear chat when this view unmounts (back to menu or sidebar close)
   useEffect(() => {

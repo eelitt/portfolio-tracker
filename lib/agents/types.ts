@@ -142,6 +142,8 @@ export type PortfolioAnalysisAgentOutput = {
   asOf?: string
   /** Calm status from generatePortfolioInsights (unchanged portfolio, rate limit, …). */
   statusNote?: string
+  /** True when storage was written (for Summary popover sync). */
+  packageUpdated?: boolean
   toolTrace?: AgentToolRecord[]
 }
 

@@ -30,10 +30,17 @@ import { formatCurrency } from '@/lib/currency'
 /** user_ai_insights.feature_type for this feature (one row per user). */
 const FEATURE_TYPE = 'portfolio_insights'
 
-/** Success vs error shape consumed by usePortfolioAnalysis. */
+/** Success vs error shape consumed by usePortfolioAnalysis / analysis agent. */
 export type PortfolioInsightsResult =
-  | { insights: string[]; cachedAt?: string; message?: string; error?: undefined }
-  | { error: string; insights?: undefined }
+  | {
+      insights: string[]
+      cachedAt?: string
+      message?: string
+      /** True only when a new row was written (not hash/rate-limit reuse). */
+      packageUpdated?: boolean
+      error?: undefined
+    }
+  | { error: string; insights?: undefined; packageUpdated?: undefined }
 
 /**
  * Normalize insights from DB or older stored formats.
@@ -79,6 +86,7 @@ export async function generatePortfolioInsights(): Promise<PortfolioInsightsResu
         insights: normalizeInsights(cached.result.insights),
         cachedAt: cached.createdAt,
         message: 'Portfolio unchanged — showing latest analysis.',
+        packageUpdated: false,
       }
     }
 
@@ -93,6 +101,7 @@ export async function generatePortfolioInsights(): Promise<PortfolioInsightsResu
               insights: normalizeInsights(cached.result.insights),
               cachedAt: cached.createdAt,
               message: 'Please wait a moment before requesting a new analysis.',
+              packageUpdated: false,
             }
           }
           const wait = Math.ceil(60 - secondsSince)
@@ -139,7 +148,11 @@ Focus on risks, concentration, and potential improvements.`,
     })
     await updateLastAICallTime(user.id)
 
-    return { insights: object.insights }
+    return {
+      insights: object.insights,
+      packageUpdated: true,
+      cachedAt: new Date().toISOString(),
+    }
   } catch (e) {
     console.error('Portfolio insights error', e)
     return { error: 'Failed to generate insights. Please try again later.' }
