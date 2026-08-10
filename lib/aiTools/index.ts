@@ -33,7 +33,17 @@ export {
 } from './recovery'
 export type { RecoveryStrategy, ToolFailureEnvelope } from './recovery'
 
-export { confirmLevelForPrepare, CONFIRM_LEVEL_WRITE } from './confirmLevels'
+export {
+  confirmLevelForPrepare,
+  CONFIRM_LEVEL_WRITE,
+  needsElevatedConfirm,
+} from './confirmLevels'
 export type { ConfirmLevel } from './confirmLevels'
+
+export {
+  isExplicitConfirmMessage,
+  isElevatedConfirmMessage,
+  messageSatisfiesConfirmLevel,
+} from './confirmGate'
 
 export { resolveDryRun, dryRunNote } from './dryRun'

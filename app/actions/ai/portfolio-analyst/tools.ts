@@ -30,12 +30,17 @@ import {
   toolDescription,
   assertWriteAllowed,
   withRecovery,
+  toolFailure,
   confirmLevelForPrepare,
   CONFIRM_LEVEL_WRITE,
+  needsElevatedConfirm,
   dryRunNote,
 } from '@/lib/aiTools'
 
-export { isExplicitConfirmMessage } from './confirmGate'
+export {
+  isExplicitConfirmMessage,
+  isElevatedConfirmMessage,
+} from '@/lib/aiTools/confirmGate'
 
 const assetTypeSchema = z.enum(['stock', 'etf', 'crypto', 'cash'])
 
@@ -55,7 +60,7 @@ export type PortfolioAnalystToolOptions = {
   evalMode?: boolean
   /**
    * Dry-run: validate/prepare shape without storing drafts or writing txs.
-   * Implies no side-effect writes (same as evalMode for persistence).
+   * Separate from evalMode (fixture path); both imply noPersist.
    */
   dryRun?: boolean
 }
@@ -111,12 +116,14 @@ export function createPortfolioAnalystTools(
   const lastUserText = options.lastUserText ?? ''
   const evalPortfolio = options.evalPortfolio
   const dryRun = options.dryRun === true
-  // evalPortfolio alone implies evalMode (safer default for suite injection)
-  // dryRun also blocks persistence (preview only)
-  const evalMode =
-    options.evalMode === true || !!evalPortfolio || dryRun
+  // Fixture path only — do not fold dryRun into evalMode
+  const evalMode = options.evalMode === true || !!evalPortfolio
+  // Neither eval nor dry-run may write drafts/transactions
+  const noPersist = evalMode || dryRun
 
   const load = () => loadUserPortfolio(evalPortfolio)
+  const loadFailed = (error: string) =>
+    toolFailure('portfolio_load_failed', error)
 
   return {
     get_portfolio_summary: tool({
@@ -124,7 +131,7 @@ export function createPortfolioAnalystTools(
       parameters: z.object({}),
       execute: async () => {
         const loaded = await load()
-        if (!loaded.ok) return { error: loaded.error }
+        if (!loaded.ok) return loadFailed(loaded.error)
         const { data } = loaded
         return {
           preferredCurrency: data.preferredCurrency,
@@ -164,7 +171,7 @@ export function createPortfolioAnalystTools(
       }),
       execute: async (args) => {
         const loaded = await load()
-        if (!loaded.ok) return { error: loaded.error }
+        if (!loaded.ok) return loadFailed(loaded.error)
         const holdings = filterEnrichedHoldings(loaded.holdings, {
           assetType: args.assetType,
           symbol: args.symbol,
@@ -188,7 +195,7 @@ export function createPortfolioAnalystTools(
       parameters: z.object({}),
       execute: async () => {
         const loaded = await load()
-        if (!loaded.ok) return { error: loaded.error }
+        if (!loaded.ok) return loadFailed(loaded.error)
         const breakdown = allocationBreakdown(loaded.holdings)
         return {
           preferredCurrency: loaded.data.preferredCurrency,
@@ -206,7 +213,7 @@ export function createPortfolioAnalystTools(
       }),
       execute: async (args) => {
         const loaded = await load()
-        if (!loaded.ok) return { error: loaded.error }
+        if (!loaded.ok) return loadFailed(loaded.error)
         const result = realizedPnlFromTransactions(loaded.transactions, {
           year: args.year,
           assetType: args.assetType,
@@ -235,7 +242,7 @@ export function createPortfolioAnalystTools(
       }),
       execute: async (args) => {
         const loaded = await load()
-        if (!loaded.ok) return { error: loaded.error }
+        if (!loaded.ok) return loadFailed(loaded.error)
         const list = compactTransactions(loaded.transactions, {
           symbol: args.symbol,
           assetType: args.assetType,
@@ -284,12 +291,15 @@ export function createPortfolioAnalystTools(
       }),
       execute: async (args) => {
         const loaded = await load()
-        if (!loaded.ok) return { error: loaded.error }
+        if (!loaded.ok) return loadFailed(loaded.error)
         const currency = loaded.data.preferredCurrency
 
         if (args.type === 'sell_fraction') {
           if (!args.symbol) {
-            return { error: 'sell_fraction requires symbol.' }
+            return toolFailure(
+              'invalid_scenario_args',
+              'sell_fraction requires symbol.'
+            )
           }
           const result = simulateSellFraction(loaded.holdings, {
             symbol: args.symbol,
@@ -300,7 +310,10 @@ export function createPortfolioAnalystTools(
         }
 
         if (!args.shocks?.length) {
-          return { error: 'price_shock requires a non-empty shocks array.' }
+          return toolFailure(
+            'invalid_scenario_args',
+            'price_shock requires a non-empty shocks array.'
+          )
         }
         const result = simulatePriceShock(loaded.holdings, args.shocks)
         return { preferredCurrency: currency, ...result }
@@ -356,40 +369,46 @@ export function createPortfolioAnalystTools(
             status: result.status,
             warnings: result.warnings,
           })
+          const elevated = needsElevatedConfirm(confirmLevel)
 
-          // Production: persist pending draft for a later confirm turn.
-          // Eval / dry-run: skip storage so we never mutate real pending drafts.
-          if (!evalMode) {
+          // Production: persist pending draft. Eval / dry-run: noPersist.
+          if (!noPersist) {
             await savePendingTxDraft(userId, {
               sourceText: args.sourceText,
               draft: result.draft,
               summary: result.summary || '',
               warnings: result.warnings,
               preparedAt: new Date().toISOString(),
+              requiresElevatedConfirm: elevated,
             })
           }
           preparedThisRequest = true
 
           const nextStep = dryRun
             ? 'Dry-run: show the draft summary and what would be saved. Do not claim it was logged. Do not call confirm_transaction as a real save.'
-            : confirmLevel === 'soft'
-              ? 'Show the summary AND all warnings clearly, then ask them to reply "confirm" in a NEW message to save. Do not call confirm_transaction this turn.'
+            : elevated
+              ? 'Show the summary AND all warnings clearly. Ask them to reply "confirm sell" or "confirm trade" in a NEW message (not only "yes"). Do not call confirm_transaction this turn.'
               : 'Show the summary to the user and ask them to reply "confirm" (or yes) in a NEW message to save. Do not call confirm_transaction in this turn — the server will reject it.'
 
           return {
             ...result,
-            pendingStored: !evalMode,
-            evalMode: evalMode && !dryRun ? true : undefined,
+            pendingStored: !noPersist,
+            evalMode: evalMode || undefined,
             confirmLevel,
+            requiresElevatedConfirm: elevated || undefined,
             ...(dryRun
-              ? dryRunNote('prepare_transaction → user confirm → confirm_transaction')
+              ? dryRunNote(
+                  elevated
+                    ? 'prepare_transaction → elevated confirm → confirm_transaction'
+                    : 'prepare_transaction → user confirm → confirm_transaction'
+                )
               : {}),
             nextStep,
           }
         }
 
         // Not ready — clear any old pending so confirm cannot save a stale trade
-        if (!evalMode) {
+        if (!noPersist) {
           await clearPendingTxDraft(userId)
         }
         const failureMode =
@@ -447,6 +466,7 @@ export function createPortfolioAnalystTools(
             preparedThisRequest,
             hasPendingDraft: true,
             evalMode: true,
+            requiresElevatedConfirm: false,
           })
           if (!gate.ok) {
             return withRecovery({
@@ -490,6 +510,7 @@ export function createPortfolioAnalystTools(
           preparedThisRequest,
           hasPendingDraft: Boolean(pending),
           evalMode: false,
+          requiresElevatedConfirm: pending?.requiresElevatedConfirm === true,
         })
         if (!gate.ok) {
           return withRecovery({

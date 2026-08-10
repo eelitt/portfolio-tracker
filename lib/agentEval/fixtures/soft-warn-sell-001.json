@@ -1,7 +1,7 @@
 {
   "id": "soft-warn-sell-001",
   "feature": "portfolio_analyst",
-  "description": "Selling more than held should prepare with warnings (soft confirm) and never confirm-save",
+  "description": "Selling more than held should prepare with warnings (elevated confirm) and never confirm-save",
   "prompt": "Log that I sold 10 AAPL at $150 each",
   "seed": {
     "preferredCurrency": "USD",

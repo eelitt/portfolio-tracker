@@ -1,10 +1,13 @@
 /**
- * Runtime gates for write-class tools (MCP-flavored permissions).
- * Reuses confirmGate language; single place for “writes need confirmation”.
+ * Runtime gates for write-class tools.
+ * Reuses confirmGate pure helpers; single place for “writes need confirmation”.
  */
 
 import { getTool } from './registry'
-import { isExplicitConfirmMessage } from '@/app/actions/ai/portfolio-analyst/confirmGate'
+import {
+  isExplicitConfirmMessage,
+  messageSatisfiesConfirmLevel,
+} from './confirmGate'
 
 export type WriteGateInput = {
   toolId: string
@@ -12,7 +15,16 @@ export type WriteGateInput = {
   /** True if prepare_transaction already ran in this agent HTTP request */
   preparedThisRequest: boolean
   hasPendingDraft: boolean
+  /**
+   * Admin eval fixture path: skip pending-draft existence check
+   * (does not mean dry-run).
+   */
   evalMode?: boolean
+  /**
+   * Warned prepare: user must use elevated confirm phrasing
+   * (e.g. "confirm sell"), not bare "yes".
+   */
+  requiresElevatedConfirm?: boolean
 }
 
 export type WriteGateResult =
@@ -58,7 +70,17 @@ export function assertWriteAllowed(input: WriteGateInput): WriteGateResult {
     }
   }
 
-  if (!isExplicitConfirmMessage(input.lastUserText)) {
+  if (input.requiresElevatedConfirm) {
+    if (!messageSatisfiesConfirmLevel(input.lastUserText, 'elevated_hard')) {
+      return {
+        ok: false,
+        errors: [
+          'This draft has warnings. Reply with an elevated confirm such as "confirm sell" or "confirm trade" (not only "yes") in a new message.',
+        ],
+        failureMode: 'elevated_confirm_required',
+      }
+    }
+  } else if (!isExplicitConfirmMessage(input.lastUserText)) {
     return {
       ok: false,
       errors: [

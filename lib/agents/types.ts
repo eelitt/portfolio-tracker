@@ -138,6 +138,13 @@ export type TaxAgentOutput = {
 }
 
 /** Portfolio Analysis Agent — narrative bullets over portfolio snapshot (not holdings math). */
+export type PortfolioAnalysisAgentInput = {
+  /** Force a new LLM pass even if hash matches — not exposed by default. */
+  force?: boolean
+  /** Preview only: return stored insights; never call LLM / write. */
+  dryRun?: boolean
+}
+
 export type PortfolioAnalysisAgentOutput = {
   ok: boolean
   error?: string
@@ -148,6 +155,9 @@ export type PortfolioAnalysisAgentOutput = {
   statusNote?: string
   /** True when storage was written (for Summary popover sync). */
   packageUpdated?: boolean
+  failureMode?: string
+  recovery?: string
+  dryRun?: boolean
   toolTrace?: AgentToolRecord[]
 }
 

@@ -114,8 +114,8 @@ User (dashboard icons / Assistant chat)
 | Class | Examples | Rules |
 |-------|----------|--------|
 | **Read** | holdings, allocation, scenarios, tax estimate | Safe to call freely |
-| **Staging** | `prepare_transaction` | Draft only; soft warnings when risky (e.g. oversell) |
-| **Write** | `confirm_transaction` only | Explicit short confirm message; never same turn as prepare |
+| **Staging** | `prepare_transaction` | Draft only; warnings → elevated confirm (e.g. “confirm sell”) |
+| **Write** | `confirm_transaction` only | Explicit confirm; elevated phrase when draft has warnings; never same turn as prepare |
 | **External / storage** | news live fetch, analysis generation | Rate-limited; not portfolio writes |
 
 **Dry-run:** body flag `dryRun: true` or phrasing like “dry run: …” / “what would you do if…”. Preview only—no pending draft, no tx write, no forced news refresh.

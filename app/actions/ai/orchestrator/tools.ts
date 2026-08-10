@@ -9,6 +9,7 @@ import { runPortfolioAnalystAgent } from '@/app/actions/ai/portfolio-analyst/age
 import { runTaxAgent } from '@/app/actions/ai/tax/agent'
 import { runPortfolioAnalysisAgent } from '@/app/actions/ai/portfolio-insights/agent'
 import type { NewsAgentOutput } from '@/lib/agents/types'
+import { parseNewsContextHandoff } from '@/lib/agents/newsContext'
 import { redactForStorage } from '@/lib/agentObservability'
 import { toolDescription } from '@/lib/aiTools'
 
@@ -26,6 +27,9 @@ export type OrchestratorToolContext = {
  */
 export function createOrchestratorTools(ctx: OrchestratorToolContext) {
   const childCtx = { userId: ctx.userId, parentRunId: ctx.parentRunId }
+  /** Only news from a successful invoke_news_agent in THIS request may be handed off. */
+  let newsOkThisRequest = false
+  let lastNewsHandoff: NewsAgentOutput | null = null
 
   return {
     invoke_news_agent: tool({
@@ -53,6 +57,19 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           questionHint: args.questionHint,
           dryRun: ctx.dryRun,
         })
+        if (out.ok && out.holdings?.length) {
+          const handoff = parseNewsContextHandoff({
+            ok: true,
+            holdings: out.holdings,
+            brief: out.brief,
+            asOf: out.asOf,
+            statusNote: out.statusNote,
+          })
+          if (handoff.ok) {
+            newsOkThisRequest = true
+            lastNewsHandoff = handoff.news
+          }
+        }
         // Content + optional statusNote. packageUpdated is for client dashboard sync only.
         return redactForStorage({
           ok: out.ok,
@@ -73,7 +90,10 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
         userMessage: z
           .string()
           .min(1)
-          .describe('Question or instruction for the analyst (often the user message).'),
+          .optional()
+          .describe(
+            'Optional focus hint only. Logging/confirm always use the real last user message server-side.'
+          ),
         task: z
           .enum(['answer', 'position_snapshot', 'prepare_trade'])
           .optional()
@@ -82,14 +102,32 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
         newsContext: z
           .any()
           .optional()
-          .describe('Optional structured output from invoke_news_agent (pass through, do not invent).'),
+          .describe(
+            'Pass through structured output from invoke_news_agent in this turn only. Do not invent.'
+          ),
       }),
       execute: async (args) => {
+        let newsContext: NewsAgentOutput | undefined
+        if (args.newsContext !== undefined && args.newsContext !== null) {
+          if (!newsOkThisRequest || !lastNewsHandoff) {
+            return redactForStorage({
+              ok: false,
+              error:
+                'newsContext is only allowed after a successful invoke_news_agent in this request. Call the news agent first, or omit newsContext.',
+            })
+          }
+          // Ignore model-shaped payload; only server-captured news from this request is trusted
+          newsContext = lastNewsHandoff
+        }
+
+        // Ground specialist on the real user message (prepare/confirm consistency)
+        const groundedUserMessage = ctx.lastUserText
+
         const out = await runPortfolioAnalystAgent(childCtx, {
-          userMessage: args.userMessage,
+          userMessage: groundedUserMessage,
           task: args.task,
           symbols: args.symbols,
-          newsContext: args.newsContext as NewsAgentOutput | undefined,
+          newsContext,
           lastUserText: ctx.lastUserText,
           dryRun: ctx.dryRun,
         })
@@ -169,7 +207,9 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           .describe('Optional focus from the user question'),
       }),
       execute: async () => {
-        const out = await runPortfolioAnalysisAgent(childCtx, {})
+        const out = await runPortfolioAnalysisAgent(childCtx, {
+          dryRun: ctx.dryRun === true,
+        })
         return redactForStorage({
           ok: out.ok,
           error: out.error,
@@ -177,7 +217,10 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           insights: out.insights,
           asOf: out.asOf,
           statusNote: out.statusNote,
-          packageUpdated: out.packageUpdated === true,
+          packageUpdated: ctx.dryRun ? false : out.packageUpdated === true,
+          failureMode: out.failureMode,
+          recovery: out.recovery,
+          dryRun: ctx.dryRun || out.dryRun || undefined,
         })
       },
     }),

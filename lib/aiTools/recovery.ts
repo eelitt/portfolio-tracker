@@ -49,6 +49,12 @@ const RECOVERY_BY_MODE: Record<
   not_a_write_tool: { recovery: 'abort', retryable: false },
   dry_run_blocked_write: { recovery: 'ask_user', retryable: false },
   eval_mode_no_persist: { recovery: 'abort', retryable: false },
+  elevated_confirm_required: { recovery: 'ask_user', retryable: false },
+  validation_failed: { recovery: 'ask_user', retryable: false },
+  portfolio_load_failed: { recovery: 'abort', retryable: false },
+  invalid_scenario_args: { recovery: 'ask_user', retryable: false },
+  estimate_failed: { recovery: 'abort', retryable: false },
+  dry_run_no_live_analysis: { recovery: 'fallback_simpler', retryable: false },
 }
 
 export function recoveryForFailureMode(failureMode: string): {

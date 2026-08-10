@@ -78,6 +78,7 @@ export async function POST(req: Request) {
       lastUserText: sanitized.lastUserText,
     })
 
+    // Dry-run still paced (outer LLM cost); same soft limit as normal chat
     const rate = await checkAndConsumeAnalystRateLimit(user.id)
     if (!rate.allowed) {
       return new Response(rate.error, { status: 429 })
@@ -167,6 +168,7 @@ export async function POST(req: Request) {
           meta: {
             agent_role: 'orchestrator',
             invoked_agents: collectedTools.map((t) => t.name),
+            ...(dryRun ? { dry_run: true } : {}),
           },
         })
       },
@@ -184,6 +186,7 @@ export async function POST(req: Request) {
             stepCount,
             errorSummary: `${name}: ${msg}`.slice(0, 500),
             agentRole: 'orchestrator',
+            meta: dryRun ? { dry_run: true } : undefined,
           })
         }
       },

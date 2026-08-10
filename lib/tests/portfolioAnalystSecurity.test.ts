@@ -5,7 +5,7 @@ import {
   ANALYST_MAX_LAST_USER_CHARS,
   ANALYST_MAX_FIELD_CHARS,
 } from '@/app/actions/ai/portfolio-analyst/sanitizeMessages'
-import { isExplicitConfirmMessage } from '@/app/actions/ai/portfolio-analyst/confirmGate'
+import { isExplicitConfirmMessage } from '@/lib/aiTools'
 
 describe('sanitizeAnalystMessages', () => {
   it('drops system and unknown roles', () => {

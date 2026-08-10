@@ -20,6 +20,8 @@ export type PendingTxDraft = {
   summary: string
   warnings: string[]
   preparedAt: string
+  /** When true, confirm requires elevated phrase (e.g. confirm sell). */
+  requiresElevatedConfirm?: boolean
 }
 
 function parsePending(result: Record<string, unknown> | undefined): PendingTxDraft | null {
@@ -54,6 +56,7 @@ function parsePending(result: Record<string, unknown> | undefined): PendingTxDra
     summary,
     preparedAt,
     warnings: Array.isArray(result.warnings) ? result.warnings.map(String) : [],
+    requiresElevatedConfirm: result.requiresElevatedConfirm === true,
     draft: {
       symbol: d.symbol,
       asset_type: d.asset_type as ValidatedTxDraft['asset_type'],
