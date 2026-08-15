@@ -8,7 +8,11 @@ export default async function TransactionHistorySection() {
   const data = await getPortfolioData()
 
   if (data.error) {
-    return <div className="alert-error mb-6">{data.error}</div>
+    return (
+      <div id="transactions" className="alert-error mb-6 scroll-mt-20">
+        {data.error}
+      </div>
+    )
   }
 
   const transactionsWithFormattedDate = data.transactions.map((tx) => ({
@@ -21,7 +25,7 @@ export default async function TransactionHistorySection() {
   }))
 
   return (
-    <section className="mb-8">
+    <section id="transactions" className="mb-8 scroll-mt-20">
       <h2 className="section-title mb-4">
         <span className="section-title-accent">Transaction History</span>
       </h2>

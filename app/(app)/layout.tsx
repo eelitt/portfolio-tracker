@@ -6,6 +6,7 @@ import GoalsSidebar from './goals/GoalsSidebar'
 import AIInsightsPanel from './ai-insights/AIInsightsPanel'
 import { getCurrentUserProfile } from '@/lib/user'
 import { PrivacyModeProvider } from './privacy/PrivacyModeProvider'
+import { DashboardLayoutProvider } from './dashboard/DashboardLayoutProvider'
 
 export default async function DashboardLayout({
   children,
@@ -29,6 +30,7 @@ export default async function DashboardLayout({
 
   return (
     <PrivacyModeProvider>
+      <DashboardLayoutProvider>
       <div className="flex min-h-screen flex-col bg-transparent">
         <Navbar
           user={user}
@@ -43,6 +45,7 @@ export default async function DashboardLayout({
         <GoalsSidebar preferredCurrency={profile?.preferredCurrency || 'USD'} />
         <AIInsightsPanel isAdmin={profile?.admin === true} />
       </div>
+      </DashboardLayoutProvider>
     </PrivacyModeProvider>
   )
 }

@@ -12,10 +12,10 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { LogOut, KeyRound, Sun, Moon, Target, Sparkles, DollarSign, Euro, Download, Upload, Eye, EyeOff, Calculator, Orbit} from 'lucide-react'
+import { LogOut, Settings, Sun, Moon, Target, Sparkles, DollarSign, Euro, Download, Upload, Eye, EyeOff, Calculator, Orbit} from 'lucide-react'
 import { usePrivacyMode } from './privacy/PrivacyModeProvider'
 import ImportTransactionsModal from './dashboard/transactions/ImportTransactionsModal'
-import ChangePasswordModal from './ChangePasswordModal'
+import SettingsModal from './SettingsModal'
 import TaxEstimatorModal from './tax/TaxEstimatorModal'
 import AdminMenu from './admin/AdminMenu'
 import { getTransactionsForExport, getHoldingsForExport } from '@/app/actions/transactions'
@@ -91,7 +91,7 @@ export default function Navbar({
   const [currentCurrency, setCurrentCurrency] = useState<PreferredCurrency>(
     preferredCurrency || 'USD'
   )
-  const [changePasswordOpen, setChangePasswordOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [taxEstimatorOpen, setTaxEstimatorOpen] = useState(false)
 
   // Sync local state when the server prop changes (e.g. after refresh or currency update)
@@ -147,15 +147,6 @@ export default function Navbar({
             className="text-foreground/90 transition-colors hover:text-gold"
           >
             Dashboard
-          </Link>
-          <Link
-            href="/dashboard#watchlist"
-            className="text-foreground/90 transition-colors hover:text-gold"
-          >
-            Watchlist
-          </Link>
-          <Link href="#" className="cursor-not-allowed text-muted-foreground">
-            Reports
           </Link>
         </div>
 
@@ -312,11 +303,11 @@ export default function Navbar({
                 Account
               </div>
               <DropdownMenuItem
-                onClick={() => setChangePasswordOpen(true)}
+                onClick={() => setSettingsOpen(true)}
                 className="cursor-pointer"
               >
-                <KeyRound className="mr-2 h-4 w-4" />
-                Change password
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={handleLogout}
@@ -332,10 +323,7 @@ export default function Navbar({
 
       {/* Mounted for event-driven open from dropdown + internal dialog state */}
       <ImportTransactionsModal />
-      <ChangePasswordModal
-        open={changePasswordOpen}
-        onOpenChange={setChangePasswordOpen}
-      />
+      <SettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />
       <TaxEstimatorModal
         open={taxEstimatorOpen}
         onOpenChange={setTaxEstimatorOpen}

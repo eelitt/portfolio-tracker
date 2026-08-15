@@ -9,6 +9,7 @@ import SummarySection from './summary/SummarySection'
 import HoldingsSection from './holdings/HoldingsSection'
 import TransactionHistorySection from './transactions/TransactionHistorySection'
 import WatchlistSection from './watchlist/WatchlistSection'
+import DashboardSections from './DashboardSections'
 
 export default async function DashboardPage() {
   // Only await the absolute minimum here (auth check).
@@ -46,53 +47,60 @@ export default async function DashboardPage() {
         The skeletons are real fallbacks now (they were previously placed
         around already-resolved JSX and never showed).
       */}
-      <Suspense fallback={<SummarySkeleton />}>
-        <SummarySection />
-      </Suspense>
-
-      <Suspense fallback={<HoldingsSkeleton />}>
-        <HoldingsSection />
-      </Suspense>
-
-      <Suspense
-        fallback={
-          <section className="mb-8">
-            <div className="skeleton-block mb-4 h-7 w-36" />
-            <div className="mb-4 rounded-xl border border-subtle bg-surface-elevated p-4">
-              <div className="skeleton-block h-10 w-full" />
-            </div>
-            <div className="overflow-hidden rounded-xl border border-subtle bg-surface-elevated p-2">
-              <div className="space-y-2">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="skeleton-block h-12 w-full" />
-                ))}
-              </div>
-            </div>
-          </section>
+      <DashboardSections
+        summary={
+          <Suspense fallback={<SummarySkeleton />}>
+            <SummarySection />
+          </Suspense>
         }
-      >
-        <WatchlistSection />
-      </Suspense>
-
-      <Suspense
-        fallback={
-          <section className="mb-8">
-            <div className="skeleton-block mb-4 h-7 w-48" />
-            <div className="mb-4 rounded-xl border border-subtle bg-surface-elevated p-4">
-              <div className="skeleton-block h-10 w-full" />
-            </div>
-            <div className="overflow-hidden rounded-xl border border-subtle bg-surface-elevated p-2">
-              <div className="space-y-2">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="skeleton-block h-10 w-full" />
-                ))}
-              </div>
-            </div>
-          </section>
+        holdings={
+          <Suspense fallback={<HoldingsSkeleton />}>
+            <HoldingsSection />
+          </Suspense>
         }
-      >
-        <TransactionHistorySection />
-      </Suspense>
+        watchlist={
+          <Suspense
+            fallback={
+              <section className="mb-8">
+                <div className="skeleton-block mb-4 h-7 w-36" />
+                <div className="mb-4 rounded-xl border border-subtle bg-surface-elevated p-4">
+                  <div className="skeleton-block h-10 w-full" />
+                </div>
+                <div className="overflow-hidden rounded-xl border border-subtle bg-surface-elevated p-2">
+                  <div className="space-y-2">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div key={i} className="skeleton-block h-12 w-full" />
+                    ))}
+                  </div>
+                </div>
+              </section>
+            }
+          >
+            <WatchlistSection />
+          </Suspense>
+        }
+        transactions={
+          <Suspense
+            fallback={
+              <section className="mb-8">
+                <div className="skeleton-block mb-4 h-7 w-48" />
+                <div className="mb-4 rounded-xl border border-subtle bg-surface-elevated p-4">
+                  <div className="skeleton-block h-10 w-full" />
+                </div>
+                <div className="overflow-hidden rounded-xl border border-subtle bg-surface-elevated p-2">
+                  <div className="space-y-2">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <div key={i} className="skeleton-block h-10 w-full" />
+                    ))}
+                  </div>
+                </div>
+              </section>
+            }
+          >
+            <TransactionHistorySection />
+          </Suspense>
+        }
+      />
     </div>
   )
 }

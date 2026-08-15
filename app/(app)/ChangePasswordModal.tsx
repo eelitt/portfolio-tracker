@@ -27,24 +27,21 @@ const emptyForm = {
   confirmPassword: '',
 }
 
-export default function ChangePasswordModal({
-  open,
-  onOpenChange,
-}: ChangePasswordModalProps) {
+export function ChangePasswordForm({
+  onSuccess,
+  resetToken = 0,
+}: {
+  onSuccess?: () => void
+  /** Increment to clear fields (e.g. when the parent dialog closes). */
+  resetToken?: number
+}) {
   const [form, setForm] = useState(emptyForm)
   const [pending, setPending] = useState(false)
 
   useEffect(() => {
-    if (!open) {
-      setForm(emptyForm)
-      setPending(false)
-    }
-  }, [open])
-
-  const handleClose = (next: boolean) => {
-    if (pending && !next) return
-    onOpenChange(next)
-  }
+    setForm(emptyForm)
+    setPending(false)
+  }, [resetToken])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -65,7 +62,7 @@ export default function ChangePasswordModal({
       }
       toast.success('Password updated')
       setForm(emptyForm)
-      onOpenChange(false)
+      onSuccess?.()
     } catch {
       toast.error('Could not update password. Try again.')
     } finally {
@@ -74,15 +71,6 @@ export default function ChangePasswordModal({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[420px] shadow-xl rounded-xl border ring-0">
-        <DialogHeader>
-          <DialogTitle>Change password</DialogTitle>
-          <DialogDescription>
-            Enter your current password and choose a new one (at least 8 characters).
-          </DialogDescription>
-        </DialogHeader>
-
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <label htmlFor="current-password" className={labelClassName}>
@@ -141,14 +129,6 @@ export default function ChangePasswordModal({
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleClose(false)}
-              disabled={pending}
-            >
-              Cancel
-            </Button>
             <Button type="submit" disabled={pending}>
               {pending ? (
                 <>
@@ -161,6 +141,33 @@ export default function ChangePasswordModal({
             </Button>
           </DialogFooter>
         </form>
+  )
+}
+
+export default function ChangePasswordModal({
+  open,
+  onOpenChange,
+}: ChangePasswordModalProps) {
+  const [resetToken, setResetToken] = useState(0)
+
+  const handleClose = (next: boolean) => {
+    onOpenChange(next)
+    if (!next) setResetToken((n) => n + 1)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-[420px] shadow-xl rounded-xl border ring-0">
+        <DialogHeader>
+          <DialogTitle>Change password</DialogTitle>
+          <DialogDescription>
+            Enter your current password and choose a new one (at least 8 characters).
+          </DialogDescription>
+        </DialogHeader>
+        <ChangePasswordForm
+          resetToken={resetToken}
+          onSuccess={() => handleClose(false)}
+        />
       </DialogContent>
     </Dialog>
   )

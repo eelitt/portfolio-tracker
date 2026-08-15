@@ -40,11 +40,15 @@ export default async function HoldingsSection() {
     : null
 
   if (data.error) {
-    return <div className="alert-error mb-6">{data.error}</div>
+    return (
+      <div id="holdings" className="alert-error mb-6 scroll-mt-20">
+        {data.error}
+      </div>
+    )
   }
 
   return (
-    <>
+    <div id="holdings" className="scroll-mt-20">
       <section className="mb-8">
         <h2 className="section-title mb-4 flex items-center gap-1.5">
           <span className="section-title-accent">Holdings</span>
@@ -70,6 +74,6 @@ export default async function HoldingsSection() {
         snapshots={snapshotsResult.data ?? []}
         snapshotsError={snapshotsResult.error ?? null}
       />
-    </>
+    </div>
   )
 }
