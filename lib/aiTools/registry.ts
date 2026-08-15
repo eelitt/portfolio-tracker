@@ -127,13 +127,65 @@ export const TOOL_REGISTRY: Record<string, ToolMeta> = {
     ],
     rateLimitKey: null,
   },
+  list_watchlist: {
+    id: 'list_watchlist',
+    name: 'Watchlist',
+    description:
+      'List symbols on the user’s watchlist (ticker, asset type, added time). Use for “what am I watching?” questions. Not holdings.',
+    owner: 'portfolio_analyst',
+    sideEffect: 'read',
+    requiresConfirmation: false,
+    permissions: ['portfolio:read'],
+    costTier: 'free',
+    failureModes: ['not_authenticated', 'watchlist_load_failed'],
+    rateLimitKey: null,
+  },
+  add_watchlist_item: {
+    id: 'add_watchlist_item',
+    name: 'Add to watchlist',
+    description:
+      'Add a catalog stock, ETF, or crypto to the watchlist. Pass query as the user’s symbol/name (e.g. "apple", "BNB"). Resolves against the catalog — never invent a ticker. Refuse symbols the user already holds (watchlist is not for open positions). No extra confirm turn. On ambiguity, ask the user. Not for logging trades.',
+    owner: 'portfolio_analyst',
+    sideEffect: 'write',
+    requiresConfirmation: false,
+    permissions: ['portfolio:write'],
+    costTier: 'low',
+    failureModes: [
+      'catalog_unknown',
+      'catalog_ambiguous',
+      'validation_invalid',
+      'watchlist_duplicate',
+      'watchlist_held',
+      'insert_failed',
+    ],
+    rateLimitKey: null,
+  },
+  remove_watchlist_item: {
+    id: 'remove_watchlist_item',
+    name: 'Remove from watchlist',
+    description:
+      'Remove a catalog symbol from the watchlist. Pass query as the user’s symbol/name. No extra confirm turn. Not for deleting transactions.',
+    owner: 'portfolio_analyst',
+    sideEffect: 'write',
+    requiresConfirmation: false,
+    permissions: ['portfolio:write'],
+    costTier: 'low',
+    failureModes: [
+      'catalog_unknown',
+      'catalog_ambiguous',
+      'validation_invalid',
+      'watchlist_not_found',
+      'insert_failed',
+    ],
+    rateLimitKey: null,
+  },
 
   // ── Orchestrator specialists ───────────────────────────────────
   invoke_news_agent: {
     id: 'invoke_news_agent',
     name: 'News agent',
     description:
-      'Run the News Agent for holding-related news and impact (same pipeline/limits as the Holdings dashboard icon). Returns `brief` plus per-symbol bullets/impact. Optional symbols; omit for biggest holdings. Set forceRefresh true only when the user explicitly asks to fetch/refresh/update/get latest news. Prefer `brief`; if `statusNote` is present, include it briefly for the user.',
+      'Run the News Agent for holdings or watchlist news and impact (same providers as the dashboard news buttons; holdings and watchlist each have their own 24h cooldown). Returns `brief` plus per-symbol bullets/impact. Optional symbols (must be holdings unless universe=watchlist). Omit symbols for biggest holdings, or set universe=watchlist for the watchlist. Set forceRefresh true only when the user explicitly asks to fetch/refresh/update/get latest news. Prefer `brief`; if `statusNote` is present, include it briefly for the user.',
     owner: 'orchestrator',
     sideEffect: 'external',
     requiresConfirmation: false,
@@ -151,7 +203,7 @@ export const TOOL_REGISTRY: Record<string, ToolMeta> = {
     id: 'invoke_portfolio_analyst',
     name: 'Portfolio analyst agent',
     description:
-      'Run the Portfolio Analyst specialist for holdings, P&L, allocation, scenarios, or transaction logging. Not for tax math (use invoke_tax_agent). Pass newsContext only from News Agent output. For confirm/logging, pass the user’s exact words as userMessage.',
+      'Run the Portfolio Analyst specialist for holdings, P&L, allocation, scenarios, transaction logging, or watchlist list/add/remove. Not for tax math (use invoke_tax_agent). Pass newsContext only from News Agent output. For confirm/logging/watchlist, pass the user’s exact words as userMessage.',
     owner: 'orchestrator',
     sideEffect: 'read',
     requiresConfirmation: false,
@@ -203,6 +255,9 @@ export const PORTFOLIO_ANALYST_TOOL_IDS = [
   'simulate_scenario',
   'prepare_transaction',
   'confirm_transaction',
+  'list_watchlist',
+  'add_watchlist_item',
+  'remove_watchlist_item',
 ] as const
 
 /** Tool ids for createOrchestratorTools keys */
@@ -236,15 +291,24 @@ export function listTools(filter?: {
   })
 }
 
-/** Dev/test: key===id; every write tool must require confirmation. */
+const TRANSACTION_WRITE_IDS = new Set(['confirm_transaction'])
+
+/** Dev/test: key===id; money writes require confirm; watchlist writes do not. */
 export function assertRegistryInvariants(): void {
   for (const [key, meta] of Object.entries(TOOL_REGISTRY)) {
     if (key !== meta.id) {
       throw new Error(`Registry key "${key}" !== meta.id "${meta.id}"`)
     }
-    if (meta.sideEffect === 'write' && !meta.requiresConfirmation) {
+    if (meta.sideEffect !== 'write') continue
+    if (TRANSACTION_WRITE_IDS.has(meta.id)) {
+      if (!meta.requiresConfirmation) {
+        throw new Error(
+          `Tool "${meta.id}" is a transaction write but requiresConfirmation is false`
+        )
+      }
+    } else if (meta.requiresConfirmation) {
       throw new Error(
-        `Tool "${meta.id}" is write but requiresConfirmation is false`
+        `Tool "${meta.id}" is a non-transaction write; must not require a confirm turn`
       )
     }
   }

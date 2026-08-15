@@ -9,7 +9,8 @@
  */
 
 import { isCurrentUserAdmin } from '@/lib/user'
-import { getPortfolioData, type PortfolioData } from '@/lib/portfolioData'
+import { getPortfolioData } from '@/lib/portfolioData'
+import { getWatchlist } from '@/app/actions/watchlist'
 import {
   updateLastAICallTime,
   getLatestAIInsight,
@@ -26,12 +27,13 @@ import {
 import {
   HOLDING_NEWS_COOLDOWN_MS,
   HOLDING_NEWS_EXTENDED_LOOKBACK_DAYS,
-  HOLDING_NEWS_FEATURE_TYPE,
+  newsFeatureType,
   type CachedInsight,
   type HoldingNewsSuccessResult,
   computeNewsWindow,
   computeNewsWindowDays,
-  resolveNewsHoldings,
+  resolveNewsTargets,
+  type NewsUniverse,
   parseHoldingNewsJson,
   normalizeHoldingNews,
   newsHasAnyBullets,
@@ -45,7 +47,7 @@ import {
   symbolsEligibleForExtendedLookback,
 } from './newsUtils'
 
-export { resolveNewsHoldings } from './newsUtils'
+export { resolveNewsHoldings, resolveNewsTargets } from './newsUtils'
 
 export type HoldingNewsResult =
   | HoldingNewsSuccessResult
@@ -64,10 +66,12 @@ export type RunHoldingNewsOptions = {
    */
   mode?: 'auto' | 'ui'
   /**
-   * Limit to these symbols (uppercased). Must be open portfolio positions.
-   * When omitted, uses top holdings by market value.
+   * Limit to these symbols (uppercased). May be open holdings or watchlist.
+   * When omitted, uses top holdings (or the watchlist if universe is watchlist).
    */
   symbols?: string[]
+  /** Default holdings. Watchlist button / “news on my watchlist” uses watchlist. */
+  universe?: NewsUniverse
   /** Skip 24h cooldown (admin or internal agent with bypass). */
   skipCooldown?: boolean
 }
@@ -95,16 +99,32 @@ export async function runHoldingNews(
     forceRefresh = false,
     mode = forceRefresh ? 'ui' : 'auto',
     symbols,
+    universe = 'holdings',
   } = options
   const isUi = mode === 'ui'
 
   const data = await getPortfolioData()
-  if (data.error || data.totalMarketValue === 0) {
+  if (data.error) {
     return { error: 'No portfolio data available to analyze.' }
   }
 
-  const holdingsPreview = resolveNewsHoldings(data, symbols)
+  const watchlistResult = await getWatchlist()
+  const watchlist = watchlistResult.data ?? []
+
+  const holdingsPreview = resolveNewsTargets({
+    data,
+    watchlist,
+    symbols,
+    universe,
+  })
   if (holdingsPreview.length === 0) {
+    if (universe === 'watchlist') {
+      return {
+        error: symbols?.length
+          ? 'None of the requested symbols are on your watchlist.'
+          : 'No watchlist symbols to fetch news for.',
+      }
+    }
     return {
       error: symbols?.length
         ? 'None of the requested symbols are open non-cash holdings.'
@@ -129,7 +149,8 @@ export async function runHoldingNews(
   }
 
   try {
-    const cached = await getLatestAIInsight(userId, HOLDING_NEWS_FEATURE_TYPE)
+    const featureType = newsFeatureType(universe)
+    const cached = await getLatestAIInsight(userId, featureType)
     const stored = cached
       ? parseHoldingNewsStored(cached.result, cached.createdAt)
       : null
@@ -204,7 +225,9 @@ export async function runHoldingNews(
       holdingsPreview,
       windowBase,
       cached,
-      stored
+      stored,
+      featureType,
+      universe === 'watchlist'
     )
     if ('error' in live && live.error) {
       return { ...live, fromCache: false, updatedCache: false }
@@ -269,7 +292,9 @@ async function runLiveHoldingNewsFetch(
   holdings: NewsHolding[],
   windowBase: CachedInsight | null,
   previousRow: CachedInsight | null,
-  previousStored: ReturnType<typeof parseHoldingNewsStored>
+  previousStored: ReturnType<typeof parseHoldingNewsStored>,
+  featureType: string,
+  replacePackage: boolean
 ): Promise<HoldingNewsResult> {
   if (holdings.length === 0) {
     return { error: 'No non-cash holdings to fetch news for.' }
@@ -354,18 +379,30 @@ async function runLiveHoldingNewsFetch(
     message = message ? `${message} ${extra}` : extra
   }
 
-  // Merge into full previous package when fetching a symbol subset so we don't wipe others
-  const fullNews = { ...(previousNews ?? {}), ...merge.news }
-  const fullImpact = { ...previousImpact, ...impact }
+  // Holdings: merge into the existing package. Watchlist: only current watched symbols.
+  const fullNews = replacePackage
+    ? Object.fromEntries(symbols.map((s) => [s, merge.news[s] ?? []]))
+    : { ...(previousNews ?? {}), ...merge.news }
+  const fullImpact = replacePackage
+    ? Object.fromEntries(
+        symbols
+          .filter((s) => impact[s])
+          .map((s) => [s, impact[s]])
+      )
+    : { ...previousImpact, ...impact }
 
-  await saveHoldingNewsPackage(userId, {
-    news: fullNews,
-    impact: fullImpact,
-    windowFrom,
-    windowTo,
-    contentFetchedAt,
-    lastCheckedAt: nowIso,
-  })
+  await saveHoldingNewsPackage(
+    userId,
+    {
+      news: fullNews,
+      impact: fullImpact,
+      windowFrom,
+      windowTo,
+      contentFetchedAt,
+      lastCheckedAt: nowIso,
+    },
+    featureType
+  )
   await updateLastAICallTime(userId)
 
   // Return only requested holdings' slice

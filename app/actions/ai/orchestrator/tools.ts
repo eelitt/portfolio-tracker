@@ -38,7 +38,15 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
         symbols: z
           .array(z.string())
           .optional()
-          .describe('Tickers to research (must be holdings). Omit for biggest holdings.'),
+          .describe(
+            'Tickers to research (open holdings or watchlist). Omit for biggest holdings.'
+          ),
+        universe: z
+          .enum(['holdings', 'watchlist'])
+          .optional()
+          .describe(
+            'watchlist when the user asks about watchlist news; omit for holdings (default).'
+          ),
         forceRefresh: z
           .boolean()
           .optional()
@@ -53,6 +61,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
       execute: async (args) => {
         const out = await runNewsAgent(childCtx, {
           symbols: args.symbols,
+          universe: args.universe,
           forceRefresh: ctx.dryRun ? false : args.forceRefresh,
           questionHint: args.questionHint,
           dryRun: ctx.dryRun,
@@ -138,6 +147,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           toolNames: out.toolTrace.map((t) => t.name),
           transactionSaved: ctx.dryRun ? false : out.transactionSaved,
           transactionError: out.transactionError,
+          watchlistChanged: ctx.dryRun ? false : out.watchlistChanged,
           dryRun: ctx.dryRun || undefined,
         })
       },

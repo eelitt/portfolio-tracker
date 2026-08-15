@@ -43,6 +43,17 @@ const HOLDING_NEWS_MAX_HOLDINGS = 6
 /** user_ai_insights.feature_type value for this feature (one row per user). */
 export const HOLDING_NEWS_FEATURE_TYPE = 'holding_news'
 
+/** Separate row + 24h cooldown from holding news. */
+export const WATCHLIST_NEWS_FEATURE_TYPE = 'watchlist_news'
+
+export function newsFeatureType(
+  universe: 'holdings' | 'watchlist' | undefined
+): string {
+  return universe === 'watchlist'
+    ? WATCHLIST_NEWS_FEATURE_TYPE
+    : HOLDING_NEWS_FEATURE_TYPE
+}
+
 /** Shape returned by getLatestAIInsight for holding_news (and similar). */
 export type CachedInsight = { result: Record<string, unknown>; createdAt: string }
 
@@ -455,18 +466,67 @@ export function selectHoldingsForNews(
  * Holdings for a news run: top-N by default, or requested symbols the user holds.
  * Used by the News Agent when the orchestrator passes a symbol filter.
  */
-export function resolveNewsHoldings(
-  data: PortfolioData,
+export type NewsTarget = {
+  symbol: string
+  assetType: string
+  name: string
+}
+
+export type NewsUniverse = 'holdings' | 'watchlist'
+
+function watchlistTargets(
+  watchlist: Array<{ symbol: string; asset_type: string }>
+): NewsTarget[] {
+  const seen = new Set<string>()
+  const out: NewsTarget[] = []
+  for (const row of watchlist) {
+    const symbol = row.symbol.toUpperCase()
+    const key = `${row.asset_type}:${symbol}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({
+      symbol,
+      assetType: row.asset_type,
+      name: resolveAssetName(row.symbol, row.asset_type),
+    })
+    if (out.length >= HOLDING_NEWS_MAX_HOLDINGS) break
+  }
+  return out
+}
+
+/**
+ * Holdings and/or watchlist symbols for a news run.
+ * Default universe is top holdings. Watchlist-only when universe is watchlist.
+ * An explicit symbol filter may match either holdings or watchlist.
+ */
+export function resolveNewsTargets(opts: {
+  data: PortfolioData
+  watchlist?: Array<{ symbol: string; asset_type: string }>
   symbols?: string[]
-): Array<{ symbol: string; assetType: string; name: string }> {
-  if (!symbols?.length) {
-    return selectHoldingsForNews(data)
+  universe?: NewsUniverse
+}): NewsTarget[] {
+  const watchlist = opts.watchlist ?? []
+  const watched = watchlistTargets(watchlist)
+
+  if (opts.universe === 'watchlist') {
+    if (!opts.symbols?.length) return watched
+    const want = new Set(
+      opts.symbols.map((s) => s.toUpperCase().trim()).filter(Boolean)
+    )
+    return watched
+      .filter((t) => want.has(t.symbol))
+      .slice(0, HOLDING_NEWS_MAX_HOLDINGS)
   }
 
-  const want = new Set(symbols.map((s) => s.toUpperCase().trim()).filter(Boolean))
-  const nonCash = data.enrichedHoldings.filter((h) => h.asset_type !== 'cash')
-  return nonCash
-    .filter((h) => want.has(h.symbol.toUpperCase()))
+  if (!opts.symbols?.length) {
+    return selectHoldingsForNews(opts.data)
+  }
+
+  const want = new Set(
+    opts.symbols.map((s) => s.toUpperCase().trim()).filter(Boolean)
+  )
+  return opts.data.enrichedHoldings
+    .filter((h) => h.asset_type !== 'cash' && want.has(h.symbol.toUpperCase()))
     .sort((a, b) => b.marketValue - a.marketValue)
     .slice(0, HOLDING_NEWS_MAX_HOLDINGS)
     .map((h) => ({
@@ -474,6 +534,17 @@ export function resolveNewsHoldings(
       assetType: h.asset_type,
       name: resolveAssetName(h.symbol, h.asset_type),
     }))
+}
+
+/**
+ * Holdings for a news run: top-N by default, or requested symbols the user holds.
+ * Used by the News Agent when the orchestrator passes a symbol filter.
+ */
+export function resolveNewsHoldings(
+  data: PortfolioData,
+  symbols?: string[]
+): NewsTarget[] {
+  return resolveNewsTargets({ data, symbols, universe: 'holdings' })
 }
 
 export type NewsBriefHolding = {

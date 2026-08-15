@@ -42,9 +42,7 @@ export function HoldingCardLogo({ symbol, assetType, className }: Props) {
         onError={() => setIndex((i) => i + 1)}
         className={cn(
           'absolute left-2 top-2 h-24 w-24 object-contain object-left-top sm:h-28 sm:w-28',
-          // Soft brand colors; text stays readable
           'opacity-[0.22]',
-          // Stronger top-left → fade toward bottom-right
           '[mask-image:linear-gradient(to_bottom_right,black_0%,black_30%,transparent_78%)]',
           '[-webkit-mask-image:linear-gradient(to_bottom_right,black_0%,black_30%,transparent_78%)]'
         )}

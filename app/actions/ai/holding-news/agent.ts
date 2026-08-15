@@ -83,6 +83,7 @@ export async function runNewsAgent(
       forceRefresh,
       mode: forceRefresh ? 'ui' : 'auto',
       symbols: input.symbols,
+      universe: input.universe,
     })
 
     toolTrace.push({

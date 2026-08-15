@@ -3,7 +3,13 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { resolveNewsHoldings } from '../../app/actions/ai/holding-news/newsUtils'
+import {
+  resolveNewsHoldings,
+  resolveNewsTargets,
+  newsFeatureType,
+  HOLDING_NEWS_FEATURE_TYPE,
+  WATCHLIST_NEWS_FEATURE_TYPE,
+} from '../../app/actions/ai/holding-news/newsUtils'
 import type { PortfolioData } from '../portfolioData'
 
 function mockData(symbols: Array<{ symbol: string; mv: number; type?: string }>): PortfolioData {
@@ -61,5 +67,36 @@ describe('resolveNewsHoldings', () => {
     const h = resolveNewsHoldings(data, ['nvda', 'ZZZ'])
     expect(h).toHaveLength(1)
     expect(h[0].symbol).toBe('NVDA')
+  })
+})
+
+describe('resolveNewsTargets', () => {
+  it('uses watchlist when universe is watchlist', () => {
+    const data = mockData([{ symbol: 'AAPL', mv: 100 }])
+    const t = resolveNewsTargets({
+      data,
+      universe: 'watchlist',
+      watchlist: [
+        { symbol: 'BNB', asset_type: 'crypto' },
+        { symbol: 'SOL', asset_type: 'crypto' },
+      ],
+    })
+    expect(t.map((x) => x.symbol)).toEqual(['BNB', 'SOL'])
+  })
+
+  it('does not mix watchlist tickers into the holdings universe', () => {
+    const data = mockData([{ symbol: 'AAPL', mv: 100 }])
+    const t = resolveNewsTargets({
+      data,
+      symbols: ['BNB'],
+      watchlist: [{ symbol: 'BNB', asset_type: 'crypto' }],
+    })
+    expect(t).toHaveLength(0)
+  })
+
+  it('uses a separate storage key per universe', () => {
+    expect(newsFeatureType('holdings')).toBe(HOLDING_NEWS_FEATURE_TYPE)
+    expect(newsFeatureType('watchlist')).toBe(WATCHLIST_NEWS_FEATURE_TYPE)
+    expect(newsFeatureType('watchlist')).not.toBe(newsFeatureType('holdings'))
   })
 })

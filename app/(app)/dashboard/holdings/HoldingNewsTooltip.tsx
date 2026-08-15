@@ -47,6 +47,9 @@ interface HoldingNewsTooltipProps {
   cachedAt?: string
   /** Controlled open state (hover on card + panel wrapper). */
   open: boolean
+  /** Pin the panel near the pointer (watchlist). Holdings keep side placement. */
+  followCursor?: boolean
+  cursor?: { x: number; y: number }
 }
 
 /**
@@ -54,15 +57,20 @@ interface HoldingNewsTooltipProps {
  * Desktop: right of card (flips left if near viewport edge), min-height of card.
  * Mobile: below card. Sections collapsible with chevrons.
  */
+const CURSOR_OFFSET = 14
+
 export function HoldingNewsTooltip({
   symbol,
   newsBullets,
   impact,
   cachedAt,
   open,
+  followCursor = false,
+  cursor,
 }: HoldingNewsTooltipProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const [placeLeft, setPlaceLeft] = useState(false)
+  const [cursorPos, setCursorPos] = useState({ left: 0, top: 0 })
   const [newsOpen, setNewsOpen] = useState(true)
   const [impactOpen, setImpactOpen] = useState(true)
   const newsId = useId()
@@ -78,11 +86,26 @@ export function HoldingNewsTooltip({
   }, [])
 
   useEffect(() => {
-    if (!open) return
+    if (!open || followCursor) return
     recomputeSide()
     window.addEventListener('resize', recomputeSide)
     return () => window.removeEventListener('resize', recomputeSide)
-  }, [open, recomputeSide])
+  }, [open, followCursor, recomputeSide])
+
+  useEffect(() => {
+    if (!followCursor || !open || !cursor) return
+    const el = panelRef.current
+    const w = el?.offsetWidth ?? PANEL_WIDTH_PX
+    let left = cursor.x + CURSOR_OFFSET
+    const top = cursor.y + CURSOR_OFFSET
+    if (left + w > window.innerWidth - VIEWPORT_PAD) {
+      left = Math.max(VIEWPORT_PAD, cursor.x - w - CURSOR_OFFSET)
+    }
+    setCursorPos({
+      left: Math.max(VIEWPORT_PAD, left),
+      top,
+    })
+  }, [followCursor, open, cursor])
 
   const stop = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -102,18 +125,25 @@ export function HoldingNewsTooltip({
     <div
       ref={panelRef}
       role="tooltip"
+      style={
+        followCursor
+          ? { left: cursorPos.left, top: cursorPos.top }
+          : undefined
+      }
       className={[
-        'absolute z-50 w-[22.5rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border bg-popover p-3 text-sm shadow-lg',
-        // Tall enough for typical news + impact; scroll only if viewport is short
+        'z-50 w-[22.5rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border bg-popover p-3 text-sm shadow-lg',
         'max-h-[min(32rem,80vh)] overflow-y-auto',
         'transition-opacity duration-150',
-        // Mobile / default: below card
-        'left-0 top-full mt-2',
-        // Desktop side placement
-        positionClass,
-        'md:mt-0 md:min-h-full',
+        followCursor
+          ? 'fixed pointer-events-none'
+          : [
+              'absolute pointer-events-auto',
+              'left-0 top-full mt-2',
+              positionClass,
+              'md:mt-0 md:min-h-full',
+            ].join(' '),
         open
-          ? 'pointer-events-auto opacity-100'
+          ? 'opacity-100'
           : 'pointer-events-none opacity-0',
       ].join(' ')}
     >

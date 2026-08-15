@@ -29,6 +29,10 @@ describe('recoveryForFailureMode', () => {
     expect(recoveryForFailureMode('elevated_confirm_required').recovery).toBe(
       'ask_user'
     )
+    expect(recoveryForFailureMode('catalog_unknown').recovery).toBe('ask_user')
+    expect(recoveryForFailureMode('watchlist_duplicate').recovery).toBe(
+      'ask_user'
+    )
   })
 
   it('defaults unknown to abort', () => {
@@ -171,7 +175,7 @@ describe('registry factory ID lists', () => {
   })
 
   it('every registry entry is on a factory list', () => {
-    const listed = new Set([
+    const listed = new Set<string>([
       ...PORTFOLIO_ANALYST_TOOL_IDS,
       ...ORCHESTRATOR_TOOL_IDS,
     ])

@@ -148,7 +148,10 @@ export default function Navbar({
           >
             Dashboard
           </Link>
-          <Link href="#" className="cursor-not-allowed text-muted-foreground">
+          <Link
+            href="/dashboard#watchlist"
+            className="text-foreground/90 transition-colors hover:text-gold"
+          >
             Watchlist
           </Link>
           <Link href="#" className="cursor-not-allowed text-muted-foreground">

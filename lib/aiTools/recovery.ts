@@ -53,6 +53,12 @@ const RECOVERY_BY_MODE: Record<
   validation_failed: { recovery: 'ask_user', retryable: false },
   portfolio_load_failed: { recovery: 'abort', retryable: false },
   invalid_scenario_args: { recovery: 'ask_user', retryable: false },
+  catalog_unknown: { recovery: 'ask_user', retryable: false },
+  catalog_ambiguous: { recovery: 'ask_user', retryable: false },
+  watchlist_duplicate: { recovery: 'ask_user', retryable: false },
+  watchlist_held: { recovery: 'ask_user', retryable: false },
+  watchlist_not_found: { recovery: 'ask_user', retryable: false },
+  watchlist_load_failed: { recovery: 'abort', retryable: false },
   estimate_failed: { recovery: 'abort', retryable: false },
   dry_run_no_live_analysis: { recovery: 'fallback_simpler', retryable: false },
 }

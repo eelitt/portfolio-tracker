@@ -34,3 +34,16 @@ export {
   validateTransactionDraft,
   sellExceedsHoldingWarning,
 } from './chatAddTransaction'
+export {
+  resolveWatchlistQuery,
+  stripWatchlistFiller,
+  isWatchableCatalogSymbol,
+  catalogNameFor,
+  openHoldingKey,
+  openHoldingKeys,
+} from './watchlistResolve'
+export type {
+  WatchlistAssetType,
+  WatchlistCandidate,
+  ResolveWatchlistQueryResult,
+} from './watchlistResolve'

@@ -30,6 +30,13 @@ export const goalSchema = z.object({
 
 export type GoalFormData = z.infer<typeof goalSchema>
 
+export const watchlistSchema = z.object({
+  symbol: z.string().min(1, 'Symbol is required').toUpperCase(),
+  asset_type: z.enum(['stock', 'etf', 'crypto']),
+})
+
+export type WatchlistFormData = z.infer<typeof watchlistSchema>
+
 /**
  * Zod schema for structured AI output (used with generateObject).
  * 

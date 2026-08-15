@@ -12,6 +12,8 @@ interface SymbolSelectProps {
    *  it is no longer present in the current json for this asset type. */
   preserveSymbolForEdit?: string
   required?: boolean
+  /** Tickers to omit (e.g. already held — not watchable). */
+  excludeSymbols?: string[]
 }
 
 /**
@@ -32,11 +34,14 @@ export default function SymbolSelect({
   className = 'border p-2 rounded',
   preserveSymbolForEdit,
   required = true,
+  excludeSymbols,
 }: SymbolSelectProps) {
-  const options = useMemo(
-    () => getSymbolOptions(assetType, preserveSymbolForEdit),
-    [assetType, preserveSymbolForEdit]
-  )
+  const options = useMemo(() => {
+    const all = getSymbolOptions(assetType, preserveSymbolForEdit)
+    if (!excludeSymbols?.length) return all
+    const skip = new Set(excludeSymbols.map((s) => s.toUpperCase()))
+    return all.filter((opt) => !skip.has(opt.value.toUpperCase()))
+  }, [assetType, preserveSymbolForEdit, excludeSymbols])
 
   if (assetType === 'cash') {
     return (

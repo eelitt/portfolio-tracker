@@ -147,6 +147,20 @@ export async function runPortfolioAnalystAgent(
       confirmTool && !confirmTool.ok
         ? confirmTool.error || 'Transaction was not saved'
         : undefined
+    const watchlistChanged = collected.some((t) => {
+      if (
+        t.name !== 'add_watchlist_item' &&
+        t.name !== 'remove_watchlist_item'
+      ) {
+        return false
+      }
+      if (t.ok !== true) return false
+      const result = t.result
+      if (result && typeof result === 'object' && 'dryRun' in result) {
+        return (result as { dryRun?: boolean }).dryRun !== true
+      }
+      return true
+    })
 
     return {
       ok: true,
@@ -154,6 +168,7 @@ export async function runPortfolioAnalystAgent(
       toolTrace: collected,
       transactionSaved: transactionSaved || undefined,
       transactionError,
+      watchlistChanged: watchlistChanged || undefined,
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Portfolio analyst agent failed'

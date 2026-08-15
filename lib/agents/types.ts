@@ -23,6 +23,8 @@ export type AgentRole =
 /** News Agent — research only; never portfolio math. */
 export type NewsAgentInput = {
   symbols?: string[]
+  /** holdings (default) or watchlist — same 24h news cooldown either way */
+  universe?: 'holdings' | 'watchlist'
   forceRefresh?: boolean
   questionHint?: string
   /** No live fetch / no package write */
@@ -91,6 +93,8 @@ export type PortfolioAnalystAgentOutput = {
   /** Set when confirm_transaction succeeded in this specialist run. */
   transactionSaved?: boolean
   transactionError?: string
+  /** Set when add/remove watchlist succeeded in this specialist run. */
+  watchlistChanged?: boolean
 }
 
 /** Tax Agent — Finnish CGT estimates only; never invents tax figures. */

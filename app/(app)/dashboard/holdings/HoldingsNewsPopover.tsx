@@ -10,11 +10,14 @@ import { useRouter } from 'next/navigation'
 import { Loader2, Orbit } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SectionIconPopover } from '@/components/ui/section-icon-popover'
-import { generateHoldingNews } from '@/app/actions/ai/holding-news/generateHoldingNews'
+import {
+  generateHoldingNews,
+  generateWatchlistNews,
+} from '@/app/actions/ai/holding-news/generateHoldingNews'
 import { getLatestAIInsightForCurrentUser } from '@/app/actions/ai/storage'
 import {
   HOLDING_NEWS_COOLDOWN_MS,
-  HOLDING_NEWS_FEATURE_TYPE,
+  newsFeatureType,
   newsHasAnyBullets,
   parseHoldingNewsStored,
 } from '@/app/actions/ai/holding-news/newsUtils'
@@ -42,9 +45,15 @@ function calmNewsMessage(msg: string | null | undefined): string | null {
 export default function HoldingsNewsPopover({
   initialNews = null,
   isAdmin = false,
+  universe = 'holdings',
+  title = 'Holding news',
+  label = 'AI news for your holdings',
 }: {
   initialNews?: InitialNews
   isAdmin?: boolean
+  universe?: 'holdings' | 'watchlist'
+  title?: string
+  label?: string
 }) {
   const router = useRouter()
   const [news, setNews] = useState<Record<string, string[]> | null>(
@@ -107,7 +116,7 @@ export default function HoldingsNewsPopover({
     setError(null)
     try {
       const latest = await getLatestAIInsightForCurrentUser(
-        HOLDING_NEWS_FEATURE_TYPE
+        newsFeatureType(universe)
       )
       if (latest) applyStored(latest.result, latest.createdAt)
     } catch {
@@ -115,7 +124,7 @@ export default function HoldingsNewsPopover({
     } finally {
       setLoading(false)
     }
-  }, [applyStored])
+  }, [applyStored, universe])
 
   useEffect(() => {
     if (!initialNews?.news) void load()
@@ -130,8 +139,10 @@ export default function HoldingsNewsPopover({
     const onUpdated = () => {
       void load()
     }
-    window.addEventListener('holding-news-updated', onUpdated)
-    return () => window.removeEventListener('holding-news-updated', onUpdated)
+    const eventName =
+      universe === 'watchlist' ? 'watchlist-news-updated' : 'holding-news-updated'
+    window.addEventListener(eventName, onUpdated)
+    return () => window.removeEventListener(eventName, onUpdated)
   }, [load])
 
   // After router.refresh(), server initialNews can change — sync without remount
@@ -168,7 +179,10 @@ export default function HoldingsNewsPopover({
     setError(null)
     setMessage(null)
     try {
-      const result = await generateHoldingNews()
+      const result =
+        universe === 'watchlist'
+          ? await generateWatchlistNews()
+          : await generateHoldingNews()
       if (result.news) {
         setNews(result.news)
         setImpact(result.impact ?? null)
@@ -183,7 +197,13 @@ export default function HoldingsNewsPopover({
           'nextRefreshAt' in result ? result.nextRefreshAt ?? null : null
         )
         setMessage(calmNewsMessage(result.message))
-        window.dispatchEvent(new CustomEvent('holding-news-updated'))
+        window.dispatchEvent(
+          new CustomEvent(
+            universe === 'watchlist'
+              ? 'watchlist-news-updated'
+              : 'holding-news-updated'
+          )
+        )
         router.refresh()
       } else if (result.error) {
         setError(result.error)
@@ -232,8 +252,8 @@ export default function HoldingsNewsPopover({
 
   return (
     <SectionIconPopover
-      label="AI news for your holdings"
-      title="Holding news"
+      label={label}
+      title={title}
       hasData={hasData}
       icon={<Orbit className="h-4 w-4" />}
       headerMeta={headerMeta}
@@ -281,7 +301,9 @@ export default function HoldingsNewsPopover({
 
         {!loading && !hasData && !error && (
           <div className="rounded-lg border border-subtle bg-surface-elevated px-3.5 py-3 text-sm leading-relaxed text-muted-foreground">
-            No news package yet. Fetch recent items for your largest holdings.
+            {universe === 'watchlist'
+              ? 'No news package yet. Fetch recent items for symbols on your watchlist.'
+              : 'No news package yet. Fetch recent items for your largest holdings.'}
           </div>
         )}
 

@@ -22,9 +22,10 @@ export type HoldingNewsPackage = {
  */
 export async function saveHoldingNewsPackage(
   userId: string,
-  pkg: HoldingNewsPackage
+  pkg: HoldingNewsPackage,
+  featureType: string = HOLDING_NEWS_FEATURE_TYPE
 ): Promise<void> {
-  await saveAIInsight(userId, HOLDING_NEWS_FEATURE_TYPE, {
+  await saveAIInsight(userId, featureType, {
     news: pkg.news,
     impact: pkg.impact,
     windowFrom: pkg.windowFrom,

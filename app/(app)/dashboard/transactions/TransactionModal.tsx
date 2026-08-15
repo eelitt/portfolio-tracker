@@ -68,7 +68,11 @@ export default function TransactionModal({
     if (transaction !== undefined) return
 
     const handleAddForHolding = (
-      e: CustomEvent<{ asset_type?: AssetType; symbol?: string }>
+      e: CustomEvent<{
+        asset_type?: AssetType
+        symbol?: string
+        action?: 'buy' | 'sell' | 'inflow' | 'outflow'
+      }>
     ) => {
       const d = e.detail || {}
       if (!d.symbol) return
@@ -76,7 +80,7 @@ export default function TransactionModal({
       setAddPrefill({
         assetType: d.asset_type,
         symbol: d.symbol,
-        action: isCash ? 'inflow' : 'sell',
+        action: d.action ?? (isCash ? 'inflow' : 'sell'),
       })
       setAddFormKey((k) => k + 1)
       setOpen(true)

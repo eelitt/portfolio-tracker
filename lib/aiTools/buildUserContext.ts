@@ -150,7 +150,10 @@ export function formatUserContextForPrompt(pack: UserContextPack): string {
   }
 
   lines.push(
-    '- Writes: only via prepare → user confirm → confirm_transaction (never invent trades).'
+    '- Money writes: only via prepare → user confirm → confirm_transaction (never invent trades).'
+  )
+  lines.push(
+    '- Watchlist add/remove: execute on that turn (no second confirm); never invent tickers.'
   )
 
   return lines.join('\n')

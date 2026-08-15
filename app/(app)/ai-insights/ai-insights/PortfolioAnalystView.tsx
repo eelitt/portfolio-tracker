@@ -111,6 +111,40 @@ function getConfirmTransactionResults(message: {
   return out
 }
 
+function getWatchlistChangeResults(message: {
+  role: string
+  toolInvocations?: AssistantToolHit[]
+  parts?: Array<{
+    type?: string
+    toolInvocation?: AssistantToolHit
+  }>
+}): Array<{ toolCallId: string }> {
+  const out: Array<{ toolCallId: string }> = []
+
+  forEachToolResult(message, ({ toolName, toolCallId, result }) => {
+    if (
+      (toolName === 'add_watchlist_item' ||
+        toolName === 'remove_watchlist_item') &&
+      result &&
+      typeof result === 'object' &&
+      (result as { ok?: boolean }).ok === true &&
+      (result as { dryRun?: boolean }).dryRun !== true
+    ) {
+      out.push({ toolCallId })
+      return
+    }
+
+    if (toolName === 'invoke_portfolio_analyst' && result && typeof result === 'object') {
+      const r = result as { watchlistChanged?: boolean }
+      if (r.watchlistChanged === true) {
+        out.push({ toolCallId })
+      }
+    }
+  })
+
+  return out
+}
+
 /** News agent wrote a new package to storage — dashboard cards/popover should reload. */
 function getHoldingNewsPackageUpdates(message: {
   role: string
@@ -175,6 +209,7 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
   const processedConfirmIds = useRef(new Set<string>())
   const processedNewsPackageIds = useRef(new Set<string>())
   const processedAnalysisPackageIds = useRef(new Set<string>())
+  const processedWatchlistIds = useRef(new Set<string>())
 
   const {
     messages,
@@ -213,6 +248,17 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
         } else {
           toast.error(confirmErrorMessage(result))
         }
+      }
+    }
+  }, [messages, router])
+
+  // Watchlist add/remove from chat → refresh dashboard section
+  useEffect(() => {
+    for (const message of messages) {
+      for (const { toolCallId } of getWatchlistChangeResults(message)) {
+        if (processedWatchlistIds.current.has(toolCallId)) continue
+        processedWatchlistIds.current.add(toolCallId)
+        router.refresh()
       }
     }
   }, [messages, router])

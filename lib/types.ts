@@ -74,3 +74,23 @@ export interface Goal {
   created_at: string
   updated_at: string
 }
+
+/** Catalog types that can be watched (no cash). */
+export type WatchlistAssetType = 'stock' | 'etf' | 'crypto'
+
+/** Persisted watchlist row. */
+export interface WatchlistItem {
+  id: string
+  symbol: string
+  asset_type: WatchlistAssetType
+  added_at: string
+}
+
+/** Watchlist row + live mark for the dashboard table. */
+export type EnrichedWatchlistItem = WatchlistItem & {
+  name: string
+  currentPrice: number | null
+  change24h: number | null
+  priceAvailable: boolean
+  inPortfolio: boolean
+}

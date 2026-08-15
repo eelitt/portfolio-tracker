@@ -11,7 +11,7 @@ logos/
   etf/{symbol}.svg|png      # e.g. spy.svg
 ```
 
-- Filename = **lowercase ticker** only (`BTC` → `btc.svg`).
+- Filename = **lowercase ticker** (`BTC` → `btc.svg`) or catalog name slug (`TSLA` → `tesla.svg`).
 - Prefer **SVG** (mono-friendly); **PNG** with transparency is fine.
 - Missing file → card shows no logo (silent).
 - Cash has no logo folder.

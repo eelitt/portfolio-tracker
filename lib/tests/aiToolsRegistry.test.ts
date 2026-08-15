@@ -35,10 +35,15 @@ describe('aiTools registry', () => {
     expect(Object.keys(TOOL_REGISTRY)).toHaveLength(expected)
   })
 
-  it('confirm_transaction is the only write tool', () => {
+  it('confirm_transaction is the only write that requires confirmation', () => {
     const writes = listTools({ sideEffect: 'write' })
-    expect(writes.map((t) => t.id)).toEqual(['confirm_transaction'])
-    expect(writes[0].requiresConfirmation).toBe(true)
+    const ids = writes.map((t) => t.id).sort()
+    expect(ids).toEqual(
+      ['add_watchlist_item', 'confirm_transaction', 'remove_watchlist_item'].sort()
+    )
+    expect(getTool('confirm_transaction')?.requiresConfirmation).toBe(true)
+    expect(getTool('add_watchlist_item')?.requiresConfirmation).toBe(false)
+    expect(getTool('remove_watchlist_item')?.requiresConfirmation).toBe(false)
   })
 
   it('toolDescription throws on unknown id', () => {

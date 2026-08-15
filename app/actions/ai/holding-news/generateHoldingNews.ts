@@ -28,5 +28,21 @@ export async function generateHoldingNews(): Promise<HoldingNewsResult> {
     userId: user.id,
     forceRefresh: true,
     mode: 'ui',
+    universe: 'holdings',
+  })
+}
+
+/** Same pipeline and 24h cooldown as holding news, scoped to the watchlist. */
+export async function generateWatchlistNews(): Promise<HoldingNewsResult> {
+  const user = await getCurrentUser()
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+
+  return runHoldingNews({
+    userId: user.id,
+    forceRefresh: true,
+    mode: 'ui',
+    universe: 'watchlist',
   })
 }

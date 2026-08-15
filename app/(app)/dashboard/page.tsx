@@ -8,6 +8,7 @@ import HoldingsSkeleton from './components/HoldingsSkeleton'
 import SummarySection from './summary/SummarySection'
 import HoldingsSection from './holdings/HoldingsSection'
 import TransactionHistorySection from './transactions/TransactionHistorySection'
+import WatchlistSection from './watchlist/WatchlistSection'
 
 export default async function DashboardPage() {
   // Only await the absolute minimum here (auth check).
@@ -51,6 +52,26 @@ export default async function DashboardPage() {
 
       <Suspense fallback={<HoldingsSkeleton />}>
         <HoldingsSection />
+      </Suspense>
+
+      <Suspense
+        fallback={
+          <section className="mb-8">
+            <div className="skeleton-block mb-4 h-7 w-36" />
+            <div className="mb-4 rounded-xl border border-subtle bg-surface-elevated p-4">
+              <div className="skeleton-block h-10 w-full" />
+            </div>
+            <div className="overflow-hidden rounded-xl border border-subtle bg-surface-elevated p-2">
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="skeleton-block h-12 w-full" />
+                ))}
+              </div>
+            </div>
+          </section>
+        }
+      >
+        <WatchlistSection />
       </Suspense>
 
       <Suspense
