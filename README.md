@@ -2,7 +2,8 @@
 
 A personal investment tracker where **transactions are the only source of truth** — holdings, cost basis, and P&L are derived, and the AI layer is not allowed to invent numbers.
 
-Built as a real product (auth, private data, live marks, deployable), not a chatbot with a table glued on. Aimed at a technical reader who wants to see whether the money math and the AI write path are actually under control.
+Built as a real product (auth, private data, live marks, deployable), not a chatbot with a table glued on.
+
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)
@@ -10,9 +11,16 @@ Built as a real product (auth, private data, live marks, deployable), not a chat
 ![AI](https://img.shields.io/badge/AI-xAI%20%2B%20Vercel%20AI%20SDK-purple)
 ![Vercel](https://img.shields.io/badge/Deploy-Vercel-black)
 
-<img width="1903" height="786" alt="portfoliotracker" src="https://github.com/user-attachments/assets/abc1da5b-5d1c-4d25-b9a6-163b84b71538" />
+Dashboard:
+<img width="1896" height="917" alt="git1" src="https://github.com/user-attachments/assets/9d47cc24-3001-4181-987d-287edcbe5219" />
+Holding news:
 
-<img width="1906" height="862" alt="portfoliotracker_2" src="https://github.com/user-attachments/assets/8ba7ebd0-1be6-44e7-ad0f-9ef26a28e6e6" />
+<img width="1899" height="920" alt="git4" src="https://github.com/user-attachments/assets/cdda1f88-e3d4-4f05-a41f-54b7bd1a01b4" />
+User menu, Watchlist and Transaction History:
+<img width="1909" height="920" alt="git3" src="https://github.com/user-attachments/assets/776fb231-eb79-4dfc-93da-6c14eb305714" />
+Charts:
+<img width="1905" height="922" alt="git2" src="https://github.com/user-attachments/assets/6a48b62e-892a-48b2-a67d-2543be6fab0b" />
+
 
 ## Why this is different
 
