@@ -123,6 +123,76 @@ describe('toPreferredHolding', () => {
     expect(result.unrealizedPnl).toBe(200)
     expect(result.position24hChange).toBeCloseTo(-20, 8)
   })
+
+  it('converts cost on an unpriced holding and leaves market fields at 0', () => {
+    const h = assetHolding({
+      symbol: 'DEAD',
+      quantity: 10,
+      currency: 'USD',
+      totalCost: 1000,
+      avgCost: 100,
+      realizedPnl: 50,
+      currentPrice: 0,
+      marketValue: 0,
+      unrealizedPnl: 0,
+      unrealizedPnlPercent: 0,
+      position24hChange: 0,
+      priceAvailable: false,
+    })
+
+    const result = toPreferredHolding(h, 'EUR', RATE)
+
+    expect(result.priceAvailable).toBe(false)
+    expect(result.currentPrice).toBe(0)
+    expect(result.marketValue).toBe(0)
+    expect(result.unrealizedPnl).toBe(0)
+    expect(result.unrealizedPnlPercent).toBe(0)
+    expect(result.position24hChange).toBe(0)
+    expect(result.totalCost).toBeCloseTo(1000 * RATE, 8)
+    expect(result.avgCost).toBeCloseTo(100 * RATE, 8)
+    expect(result.realizedPnl).toBeCloseTo(50 * RATE, 8)
+    expect(result.currency).toBe('EUR')
+  })
+
+  it('converts USD-entry realized P&L when preferred is EUR', () => {
+    const h = assetHolding({
+      symbol: 'AAPL',
+      realizedPnl: 250,
+    })
+
+    const result = toPreferredHolding(h, 'EUR', RATE)
+    expect(result.realizedPnl).toBeCloseTo(250 * RATE, 8)
+  })
+
+  it('converts EUR-entry realized P&L when preferred is USD', () => {
+    const h = assetHolding({
+      symbol: 'AAPL',
+      currency: 'EUR',
+      realizedPnl: 250,
+    })
+    const result = toPreferredHolding(h, 'USD', RATE)
+    expect(result.realizedPnl).toBeCloseTo(250 / RATE, 8)
+  })
+
+  it('converts unpriced EUR-entry cost to USD and leaves market at 0', () => {
+    const h = assetHolding({
+      symbol: 'DEAD',
+      currency: 'EUR',
+      totalCost: 870,
+      avgCost: 87,
+      realizedPnl: 50,
+      currentPrice: 0,
+      marketValue: 0,
+      unrealizedPnl: 0,
+      priceAvailable: false,
+    })
+    const result = toPreferredHolding(h, 'USD', RATE)
+    expect(result.priceAvailable).toBe(false)
+    expect(result.marketValue).toBe(0)
+    expect(result.unrealizedPnl).toBe(0)
+    expect(result.totalCost).toBeCloseTo(870 / RATE, 8)
+    expect(result.realizedPnl).toBeCloseTo(50 / RATE, 8)
+  })
 })
 
 describe('calculateCashHoldingsInPreferred', () => {
@@ -158,16 +228,15 @@ describe('calculateCashHoldingsInPreferred', () => {
     expect(cash[0].position24hChange).toBe(0)
   })
 
-  it('converts all-USD cash to EUR preferred', () => {
+  it('converts all-USD cash to EUR preferred (legacy missing currency; non-1 unit price is notional)', () => {
     const txs: Transaction[] = [
       {
         symbol: 'Available Cash',
         asset_type: 'cash',
         action: 'inflow',
-        quantity: 200,
-        unit_price: 1,
+        quantity: 100,
+        unit_price: 2,
         executed_at: '2025-01-01',
-        currency: 'USD',
       },
     ]
 
@@ -211,6 +280,30 @@ describe('calculateCashHoldingsInPreferred', () => {
         unit_price: 100,
         executed_at: '2025-01-01',
         currency: 'USD',
+      },
+    ]
+    expect(calculateCashHoldingsInPreferred(txs, 'EUR', RATE)).toEqual([])
+  })
+
+  it('does not emit a negative cash balance on over-outflow', () => {
+    const txs: Transaction[] = [
+      {
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'inflow',
+        quantity: 50,
+        unit_price: 1,
+        executed_at: '2025-01-01',
+        currency: 'EUR',
+      },
+      {
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'outflow',
+        quantity: 80,
+        unit_price: 1,
+        executed_at: '2025-01-02',
+        currency: 'EUR',
       },
     ]
     expect(calculateCashHoldingsInPreferred(txs, 'EUR', RATE)).toEqual([])

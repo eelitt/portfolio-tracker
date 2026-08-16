@@ -368,7 +368,7 @@ describe('estimateFinnishCapitalGains', () => {
     expect(result.methods.fifo.estimatedTaxEur).toBe(600)
   })
 
-  it('full mode includes year-end notes and dual methods', () => {
+  it('full mode taxes real + hypothetical lots and FIFO vs average can diverge', () => {
     const result = estimateFinnishCapitalGains({
       taxYear: 2024,
       mode: 'full',
@@ -403,12 +403,247 @@ describe('estimateFinnishCapitalGains', () => {
         executedAt: '2024-12-01T00:00:00.000Z',
       },
     })
-    expect(result.methods.fifo.disposals.length).toBeGreaterThanOrEqual(1)
-    expect(result.methods.weightedAverage.disposals.length).toBeGreaterThanOrEqual(1)
-    expect(result.disclaimers.length).toBeGreaterThan(0)
-    expect(result.currency).toBe('EUR')
-    // FIFO cost 10k vs avg 20k on first full unit → methods can diverge
-    expect(result.comparison.taxDeltaEur).toBeGreaterThanOrEqual(0)
+    expect(result.methods.fifo.disposals.some((d) => d.isHypothetical)).toBe(true)
+    expect(result.methods.fifo.estimatedTaxEur).not.toBe(
+      result.methods.weightedAverage.estimatedTaxEur
+    )
+    expect(result.comparison.taxDeltaEur).toBeGreaterThan(0)
+  })
+
+  it('subtracts disposal fees from actual gain (can beat HMO)', () => {
+    const result = estimateFinnishCapitalGains({
+      taxYear: 2024,
+      mode: 'ytd',
+      events: [
+        acq({
+          id: 'b1',
+          assetKey: 'BTC',
+          quantity: 1,
+          unitPriceEur: 5_000,
+          executedAt: '2023-01-01T00:00:00.000Z',
+        }),
+        disp({
+          id: 's1',
+          assetKey: 'BTC',
+          quantity: 1,
+          unitPriceEur: 100_000,
+          feeEur: 20_000,
+          executedAt: '2024-06-01T00:00:00.000Z',
+        }),
+      ],
+    })
+    // no fee: actual 95k vs HMO 80k → HMO; with 20k fee actual 75k wins
+    const line = result.methods.fifo.disposals[0]
+    expect(line.feeEur).toBe(20_000)
+    expect(line.basisUsed).toBe('actual')
+    expect(line.taxableGainOrLossEur).toBe(75_000)
+  })
+
+  it('caps a disposal to open inventory', () => {
+    const fifo = buildLotsAndMatchDisposals(
+      [
+        acq({
+          id: 'b1',
+          assetKey: 'ETH',
+          quantity: 1,
+          unitPriceEur: 1_000,
+          executedAt: '2023-01-01T00:00:00.000Z',
+        }),
+        disp({
+          id: 's1',
+          assetKey: 'ETH',
+          quantity: 2,
+          unitPriceEur: 2_000,
+          executedAt: '2024-01-01T00:00:00.000Z',
+        }),
+      ],
+      'fifo'
+    ).disposalsMatched[0]
+    expect(fifo.quantityCapped).toBe(true)
+    expect(fifo.quantity).toBe(1)
+    expect(fifo.proceedsEur).toBe(2_000)
+    expect(fifo.actualCostEur).toBe(1_000)
+  })
+
+  it('uses 20% HMO when not every consumed lot is ≥ 10 years', () => {
+    const matched = buildLotsAndMatchDisposals(
+      [
+        acq({
+          id: 'old',
+          assetKey: 'NOK',
+          assetClass: 'security',
+          quantity: 1,
+          unitPriceEur: 1,
+          executedAt: '2010-01-01T00:00:00.000Z',
+        }),
+        acq({
+          id: 'new',
+          assetKey: 'NOK',
+          assetClass: 'security',
+          quantity: 1,
+          unitPriceEur: 1,
+          executedAt: '2024-01-01T00:00:00.000Z',
+        }),
+        disp({
+          id: 's1',
+          assetKey: 'NOK',
+          assetClass: 'security',
+          quantity: 2,
+          unitPriceEur: 100,
+          executedAt: '2025-01-01T00:00:00.000Z',
+        }),
+      ],
+      'fifo'
+    ).disposalsMatched[0]
+    expect(matched.hmoRate).toBe(HMO_RATE_UNDER_10Y)
+  })
+
+  it('does not produce a tax refund on a loss-only year', () => {
+    const result = estimateFinnishCapitalGains({
+      taxYear: 2024,
+      mode: 'ytd',
+      events: [
+        acq({
+          id: 'b1',
+          assetKey: 'BTC',
+          quantity: 1,
+          unitPriceEur: 10_000,
+          executedAt: '2023-01-01T00:00:00.000Z',
+        }),
+        disp({
+          id: 's1',
+          assetKey: 'BTC',
+          quantity: 1,
+          unitPriceEur: 4_000,
+          executedAt: '2024-06-01T00:00:00.000Z',
+        }),
+      ],
+    })
+    expect(result.methods.fifo.netGainOrLossEur).toBe(-6_000)
+    expect(result.methods.fifo.taxableBaseEur).toBe(0)
+    expect(result.methods.fifo.estimatedTaxEur).toBe(0)
+  })
+
+  it('small-disposal applies at exactly €1000 proceeds', () => {
+    const result = estimateFinnishCapitalGains({
+      taxYear: 2024,
+      mode: 'ytd',
+      events: [
+        acq({
+          id: 'b1',
+          assetKey: 'AAPL',
+          assetClass: 'security',
+          quantity: 1,
+          unitPriceEur: 10,
+          executedAt: '2023-01-01T00:00:00.000Z',
+        }),
+        disp({
+          id: 's1',
+          assetKey: 'AAPL',
+          assetClass: 'security',
+          quantity: 1,
+          unitPriceEur: 1_000,
+          executedAt: '2024-03-01T00:00:00.000Z',
+        }),
+      ],
+    })
+    expect(result.smallDisposal.totalProceedsInScopeEur).toBe(1_000)
+    expect(result.smallDisposal.mayBeTaxFree).toBe(true)
+    expect(result.methods.fifo.taxableBaseEur).toBe(0)
+    expect(result.methods.fifo.estimatedTaxEur).toBe(0)
+  })
+
+  it('does not apply small-disposal at €1001 proceeds', () => {
+    const result = estimateFinnishCapitalGains({
+      taxYear: 2024,
+      mode: 'ytd',
+      events: [
+        acq({
+          id: 'b1',
+          assetKey: 'AAPL',
+          assetClass: 'security',
+          quantity: 1,
+          unitPriceEur: 10,
+          executedAt: '2023-01-01T00:00:00.000Z',
+        }),
+        disp({
+          id: 's1',
+          assetKey: 'AAPL',
+          assetClass: 'security',
+          quantity: 1,
+          unitPriceEur: 1_001,
+          executedAt: '2024-03-01T00:00:00.000Z',
+        }),
+      ],
+    })
+    expect(result.smallDisposal.mayBeTaxFree).toBe(false)
+    expect(result.methods.fifo.taxableBaseEur).toBeGreaterThan(0)
+  })
+
+  it('does not apply small-disposal when two small sells sum over €1000', () => {
+    const result = estimateFinnishCapitalGains({
+      taxYear: 2024,
+      mode: 'ytd',
+      events: [
+        acq({
+          id: 'b1',
+          assetKey: 'AAA',
+          quantity: 1,
+          unitPriceEur: 100,
+          executedAt: '2023-01-01T00:00:00.000Z',
+        }),
+        disp({
+          id: 's1',
+          assetKey: 'AAA',
+          quantity: 1,
+          unitPriceEur: 600,
+          executedAt: '2024-01-01T00:00:00.000Z',
+        }),
+        acq({
+          id: 'b2',
+          assetKey: 'BBB',
+          quantity: 1,
+          unitPriceEur: 100,
+          executedAt: '2023-01-01T00:00:00.000Z',
+        }),
+        disp({
+          id: 's2',
+          assetKey: 'BBB',
+          quantity: 1,
+          unitPriceEur: 600,
+          executedAt: '2024-02-01T00:00:00.000Z',
+        }),
+      ],
+    })
+    expect(result.smallDisposal.totalProceedsInScopeEur).toBe(1_200)
+    expect(result.smallDisposal.mayBeTaxFree).toBe(false)
+    expect(result.methods.fifo.taxableBaseEur).toBeGreaterThan(0)
+  })
+
+  it('excludes prior-year disposals from YTD taxable base', () => {
+    const result = estimateFinnishCapitalGains({
+      taxYear: 2024,
+      mode: 'ytd',
+      events: [
+        acq({
+          id: 'b1',
+          assetKey: 'BTC',
+          quantity: 1,
+          unitPriceEur: 10_000,
+          executedAt: '2022-01-01T00:00:00.000Z',
+        }),
+        disp({
+          id: 's-old',
+          assetKey: 'BTC',
+          quantity: 1,
+          unitPriceEur: 50_000,
+          executedAt: '2023-06-01T00:00:00.000Z',
+        }),
+      ],
+    })
+    expect(result.methods.fifo.disposals).toHaveLength(0)
+    expect(result.methods.fifo.taxableBaseEur).toBe(0)
+    expect(result.smallDisposal.mayBeTaxFree).toBe(false)
   })
 
   it('progressive tax with other capital income', () => {
@@ -494,21 +729,21 @@ describe('appTransactionsToTaxableEvents', () => {
     expect(events[0].unitPriceEur).toBe(100)
   })
 
-  it('converts USD unit prices to EUR', () => {
+  it('converts missing/USD prices to EUR and maps ETF to security', () => {
     const txs: Transaction[] = [
       {
         id: '1',
-        symbol: 'AAPL',
-        asset_type: 'stock',
+        symbol: 'voo',
+        asset_type: 'etf',
         action: 'buy',
         quantity: 1,
         unit_price: 100,
         executed_at: '2024-01-01T00:00:00.000Z',
-        currency: 'USD',
       },
     ]
     const events = appTransactionsToTaxableEvents(txs, { usdToEurRate: 0.9 })
     expect(events[0].unitPriceEur).toBe(90)
     expect(events[0].assetClass).toBe('security')
+    expect(events[0].assetKey).toBe('VOO')
   })
 })

@@ -252,6 +252,16 @@ describe('simulateSellFraction', () => {
     const result = simulateSellFraction(holdings, { symbol: 'BTC', fraction: 1.5 })
     expect(result.ok).toBe(false)
   })
+
+  it('sells the full position when fraction is 1', () => {
+    const result = simulateSellFraction(holdings, { symbol: 'BTC', fraction: 1 })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.soldQuantity).toBe(2)
+    expect(result.impliedRealized).toBe(20000)
+    expect(result.after.holdingsCount).toBe(0)
+    expect(result.after.totalMarketValue).toBe(0)
+  })
 })
 
 describe('simulatePriceShock', () => {
@@ -294,6 +304,17 @@ describe('simulatePriceShock', () => {
       { symbol: 'DOGE', priceChangePercent: -50 },
     ])
     expect(result.ok).toBe(false)
+  })
+
+  it('leaves unshocked symbols at their original mark', () => {
+    const result = simulatePriceShock(holdings, [
+      { symbol: 'BTC', priceChangePercent: -50 },
+    ])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.after.totalMarketValue).toBe(80000) // 50k + 30k
+    const eth = result.after.allocationBySymbol.find((s) => s.key === 'ETH')
+    expect(eth?.marketValue).toBe(30000)
   })
 })
 

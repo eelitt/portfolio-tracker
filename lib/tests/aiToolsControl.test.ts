@@ -79,6 +79,10 @@ describe('confirm messages', () => {
   it('explicit confirm allows bare yes', () => {
     expect(isExplicitConfirmMessage('yes')).toBe(true)
     expect(isExplicitConfirmMessage('confirm')).toBe(true)
+    expect(isExplicitConfirmMessage('yes!')).toBe(true)
+    expect(isExplicitConfirmMessage('confirm.')).toBe(true)
+    expect(isExplicitConfirmMessage('')).toBe(false)
+    expect(isExplicitConfirmMessage('   ')).toBe(false)
   })
   it('elevated requires stronger phrase', () => {
     expect(isElevatedConfirmMessage('yes')).toBe(false)
@@ -140,6 +144,7 @@ describe('resolveDryRun', () => {
   })
   it('normal chat false', () => {
     expect(resolveDryRun({ lastUserText: 'Show my allocation' })).toBe(false)
+    expect(resolveDryRun({ lastUserText: 'confirm' })).toBe(false)
   })
 })
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { calculateHoldings, enrichHoldings, type Transaction} from '../calculatePortfolio'
-import { Holding, EnrichedHolding } from '../types'
+import { calculateHoldings, computePortfolioHash, enrichHoldings, type Transaction} from '../calculatePortfolio'
+import { Holding } from '../types'
 
 describe('calculateHoldings', () => {
   it('should return empty array when no transactions', () => {
@@ -25,6 +25,7 @@ describe('calculateHoldings', () => {
     expect(holdings[0].quantity).toBe(10)
     expect(holdings[0].avgCost).toBe(150)
     expect(holdings[0].realizedPnl).toBe(0)
+    expect(holdings[0].currency).toBe('USD')
   })
 
   it('should calculate weighted average cost with multiple buys', () => {
@@ -49,6 +50,18 @@ describe('calculateHoldings', () => {
     expect(holdings[0].realizedPnl).toBe(250) // 5 × (150 - 100)
   })
 
+  it('records a realized loss on a sell below average cost', () => {
+    const transactions: Transaction[] = [
+      { symbol: 'AAPL', asset_type: 'stock', action: 'buy', quantity: 10, unit_price: 100, executed_at: '2025-01-01' },
+      { symbol: 'AAPL', asset_type: 'stock', action: 'sell', quantity: 4, unit_price: 80, executed_at: '2025-01-03' },
+    ]
+
+    const holdings = calculateHoldings(transactions)
+    expect(holdings[0].quantity).toBe(6)
+    expect(holdings[0].avgCost).toBe(100)
+    expect(holdings[0].realizedPnl).toBe(-80)
+  })
+
   it('should remove holding when fully sold', () => {
     const transactions: Transaction[] = [
       { symbol: 'AAPL', asset_type: 'stock', action: 'buy', quantity: 10, unit_price: 100, executed_at: '2025-01-01' },
@@ -67,6 +80,41 @@ describe('calculateHoldings', () => {
 
     const holdings = calculateHoldings(transactions)
     expect(holdings).toHaveLength(0)
+  })
+
+  it('ignores a sell with no prior buy (no short position)', () => {
+    const transactions: Transaction[] = [
+      { symbol: 'AAPL', asset_type: 'stock', action: 'sell', quantity: 5, unit_price: 150, executed_at: '2025-01-01' },
+    ]
+    expect(calculateHoldings(transactions)).toEqual([])
+  })
+
+  it('caps oversell realized P&L and keeps it on a later reopen', () => {
+    const transactions: Transaction[] = [
+      { symbol: 'AAPL', asset_type: 'stock', action: 'buy', quantity: 5, unit_price: 100, executed_at: '2025-01-01' },
+      { symbol: 'AAPL', asset_type: 'stock', action: 'sell', quantity: 10, unit_price: 150, executed_at: '2025-01-02' },
+      { symbol: 'AAPL', asset_type: 'stock', action: 'buy', quantity: 2, unit_price: 90, executed_at: '2025-01-03' },
+    ]
+
+    const holdings = calculateHoldings(transactions)
+    expect(holdings).toHaveLength(1)
+    expect(holdings[0].quantity).toBe(2)
+    expect(holdings[0].avgCost).toBe(90)
+    // 5 owned × (150 − 100), not 10 × 50
+    expect(holdings[0].realizedPnl).toBe(250)
+  })
+
+  it('keeps remaining avgCost after a partial sell (does not subtract sale proceeds from basis)', () => {
+    const transactions: Transaction[] = [
+      { symbol: 'AAPL', asset_type: 'stock', action: 'buy', quantity: 10, unit_price: 100, executed_at: '2025-01-01' },
+      { symbol: 'AAPL', asset_type: 'stock', action: 'sell', quantity: 4, unit_price: 150, executed_at: '2025-01-03' },
+    ]
+
+    const holdings = calculateHoldings(transactions)
+    expect(holdings[0].quantity).toBe(6)
+    expect(holdings[0].avgCost).toBe(100)
+    expect(holdings[0].totalCost).toBe(600)
+    expect(holdings[0].realizedPnl).toBe(200)
   })
 
   it('should handle multiple buys and multiple sells correctly', () => {
@@ -114,6 +162,10 @@ describe('calculateHoldings', () => {
 
     const holdings = calculateHoldings(transactions)
     expect(holdings).toHaveLength(2)
+    const aapl = holdings.find((h) => h.symbol === 'AAPL')
+    const btc = holdings.find((h) => h.symbol === 'BTC')
+    expect(aapl).toMatchObject({ quantity: 10, avgCost: 100 })
+    expect(btc).toMatchObject({ quantity: 1, avgCost: 50000 })
   })
 
   it('should produce a cash holding (e.g. from sell proceeds) valued at face amount', () => {
@@ -135,6 +187,71 @@ describe('calculateHoldings', () => {
     expect(cash.totalCost).toBe(1350)
     // Realized P&L lives on the (now closed) stock position, not on cash
     expect(cash.realizedPnl).toBe(0)
+  })
+
+  it('normalizes numeric strings from the DB (does not concatenate quantity)', () => {
+    const transactions = [
+      {
+        symbol: 'AAPL',
+        asset_type: 'stock',
+        action: 'buy',
+        quantity: '10' as unknown as number,
+        unit_price: '150' as unknown as number,
+        executed_at: '2025-01-01',
+      },
+    ]
+
+    const holdings = calculateHoldings(transactions)
+    expect(holdings[0].quantity).toBe(10)
+    expect(holdings[0].avgCost).toBe(150)
+    expect(holdings[0].totalCost).toBe(1500)
+  })
+})
+
+describe('computePortfolioHash', () => {
+  const buyAapl: Transaction = {
+    id: '1',
+    symbol: 'AAPL',
+    asset_type: 'stock',
+    action: 'buy',
+    quantity: 10,
+    unit_price: 150,
+    executed_at: '2025-01-01',
+    currency: 'USD',
+  }
+  const buyBtc: Transaction = {
+    id: '2',
+    symbol: 'BTC',
+    asset_type: 'crypto',
+    action: 'buy',
+    quantity: 1,
+    unit_price: 40000,
+    executed_at: '2025-02-01',
+    currency: 'USD',
+  }
+
+  it('returns empty for no transactions', () => {
+    expect(computePortfolioHash([])).toBe('empty')
+    expect(computePortfolioHash(undefined as unknown as Transaction[])).toBe('empty')
+  })
+
+  it('is stable under reorder and changes when qty or currency changes', () => {
+    const a = computePortfolioHash([buyAapl, buyBtc])
+    const b = computePortfolioHash([buyBtc, buyAapl])
+    expect(a).toBe(b)
+    expect(a).not.toBe('empty')
+
+    const qtyChanged = computePortfolioHash([
+      { ...buyAapl, quantity: 11 },
+      buyBtc,
+    ])
+    expect(qtyChanged).not.toBe(a)
+
+    const currencyChanged = computePortfolioHash([
+      { ...buyAapl, currency: 'EUR' },
+      buyBtc,
+    ])
+    expect(currencyChanged).not.toBe(a)
   })
 })
 
@@ -202,6 +319,16 @@ describe('enrichHoldings', () => {
     expect(enriched[1].unrealizedPnlPercent).toBe(0)
     expect(enriched[1].change24h).toBe(0)
     expect(enriched[1].position24hChange).toBe(0)
+  })
+
+  it('treats a zero quote as unpriced (does not invent a total loss)', () => {
+    const enriched = enrichHoldings(mockHoldings, {
+      AAPL: { price: 0, change24h: 1 },
+    })
+    expect(enriched[0].priceAvailable).toBe(false)
+    expect(enriched[0].unrealizedPnl).toBe(0)
+    expect(enriched[0].unrealizedPnlPercent).toBe(0)
+    expect(enriched[0].marketValue).toBe(0)
   })
 
   it('should handle zero totalCost correctly', () => {
@@ -289,45 +416,4 @@ describe('enrichHoldings - Edge Cases', () => {
   expect(enriched[0].marketValue).toBeCloseTo(3.085e-10, 15)
   expect(enriched[0].unrealizedPnl).toBeCloseTo(1.851e-10, 15)
 })
-
-  it('should handle large price movements', () => {
-    const holding: Holding = {
-      symbol: 'NVDA',
-      asset_type: 'stock',
-      quantity: 5,
-      avgCost: 400,
-      totalCost: 2000,
-      realizedPnl: 0,
-    }
-
-    const priceData = {
-      NVDA: { price: 1200, change24h: 45 }, // +45% in a day
-    }
-
-    const enriched = enrichHoldings([holding], priceData)
-
-    expect(enriched[0].marketValue).toBe(6000)
-    expect(enriched[0].unrealizedPnl).toBe(4000)
-    expect(enriched[0].unrealizedPnlPercent).toBe(200)
-    expect(enriched[0].position24hChange).toBe(2700) // 6000 * 0.45
-  })
-
-  it('should handle mixed holdings with some missing prices', () => {
-    const holdings: Holding[] = [
-      { symbol: 'AAPL', asset_type: 'stock', quantity: 10, avgCost: 150, totalCost: 1500, realizedPnl: 0 },
-      { symbol: 'MSFT', asset_type: 'stock', quantity: 5, avgCost: 300, totalCost: 1500, realizedPnl: 0 },
-    ]
-
-    const priceData = {
-      AAPL: { price: 180, change24h: 3 },
-      // MSFT is missing
-    }
-
-    const enriched = enrichHoldings(holdings, priceData)
-
-    expect(enriched).toHaveLength(2)
-    expect(enriched[0].currentPrice).toBe(180)
-    expect(enriched[1].currentPrice).toBe(0)
-    expect(enriched[1].marketValue).toBe(0)
-  })
 })

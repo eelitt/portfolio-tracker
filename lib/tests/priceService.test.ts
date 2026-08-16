@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   getCryptoPrice,
+  getStockPrice,
   getPricesForHoldings,
   buildBinance24hrUrl,
   parseBinance24hrTickers,
@@ -268,6 +269,42 @@ describe('priceService', () => {
       const prices = await pricesPromise
 
       expect(prices.BTC).toBeUndefined()
+    })
+  })
+
+  describe('getStockPrice', () => {
+    const originalKey = process.env.FINNHUB_API_KEY
+
+    afterEach(() => {
+      if (originalKey === undefined) {
+        delete process.env.FINNHUB_API_KEY
+      } else {
+        process.env.FINNHUB_API_KEY = originalKey
+      }
+    })
+
+    it('returns null without calling Finnhub when API key is missing', async () => {
+      delete process.env.FINNHUB_API_KEY
+      mockFetch.mockClear()
+      expect(await getStockPrice('AAPL')).toBeNull()
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('returns null when last price is zero', async () => {
+      process.env.FINNHUB_API_KEY = 'test-key'
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ c: 0, dp: 1 }),
+      })
+      expect(await getStockPrice('AAPL')).toBeNull()
+    })
+
+    it('returns null when HTTP response is not ok', async () => {
+      process.env.FINNHUB_API_KEY = 'test-key'
+      mockFetch.mockResolvedValue({ ok: false })
+      const pricePromise = getStockPrice('AAPL')
+      await vi.runAllTimersAsync()
+      expect(await pricePromise).toBeNull()
     })
   })
 })

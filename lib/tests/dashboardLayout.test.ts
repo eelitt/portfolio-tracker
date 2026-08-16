@@ -16,6 +16,7 @@ describe('dashboardLayout helpers', () => {
     expect(parseDashboardTab(null)).toBe('holdings')
     expect(parseDashboardTab('watchlist')).toBe('watchlist')
     expect(parseDashboardTab('transactions')).toBe('transactions')
+    expect(parseDashboardTab('nope')).toBe('holdings')
   })
 
   it('reads tab from hash', () => {

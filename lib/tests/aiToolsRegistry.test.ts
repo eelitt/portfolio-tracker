@@ -105,4 +105,15 @@ describe('assertWriteAllowed', () => {
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.failureMode).toBe('not_a_write_tool')
   })
+
+  it('does not treat watchlist writes as confirmable through this gate', () => {
+    const r = assertWriteAllowed({
+      toolId: 'add_watchlist_item',
+      lastUserText: 'confirm',
+      preparedThisRequest: false,
+      hasPendingDraft: true,
+    })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.failureMode).toBe('registry_invariant')
+  })
 })

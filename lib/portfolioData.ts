@@ -6,6 +6,7 @@ import { getCurrentUserProfile } from '@/lib/user'
 import type { PreferredCurrency } from '@/lib/userTypes'
 import { getUsdToEurRate } from './currency'
 import {
+  aggregatePreferredPortfolio,
   calculateCashHoldingsInPreferred,
   toPreferredHolding,
 } from './convertToPreferred'
@@ -78,42 +79,12 @@ export const getPortfolioData = cache(async (): Promise<PortfolioData> => {
       priceData[cash.symbol] = { price: 1, change24h: 0 }
     }
 
-    const enrichedHoldings = [...preferredAssets, ...preferredCash]
-
-    const unpricedSymbols = preferredAssets
-      .filter((h) => !h.priceAvailable)
-      .map((h) => h.symbol)
-    const pricedAssets = preferredAssets.filter((h) => h.priceAvailable)
-
-    // MV + 24h: priced assets + cash only (never treat missing quote as price 0)
-    const totalMarketValue =
-      pricedAssets.reduce((sum, h) => sum + h.marketValue, 0) +
-      preferredCash.reduce((sum, h) => sum + h.marketValue, 0)
-
-    // Full book cost (including unpriced assets)
-    const totalCost = enrichedHoldings.reduce((sum, h) => sum + h.totalCost, 0)
-
-    // Unrealized only where we have a fair mark
-    const totalUnrealizedPnl = pricedAssets.reduce((sum, h) => sum + h.unrealizedPnl, 0)
-
-    const total24hChange = pricedAssets.reduce((sum, h) => sum + h.position24hChange, 0)
-    const previousTotalValue = totalMarketValue - total24hChange
-    const total24hChangePercent =
-      previousTotalValue > 0 ? (total24hChange / previousTotalValue) * 100 : 0
+    const totals = aggregatePreferredPortfolio(preferredAssets, preferredCash)
 
     return {
       transactions: transactions || [],
-      enrichedHoldings,
+      ...totals,
       priceData,
-      holdingsCount: enrichedHoldings.length,
-      assetCount: preferredAssets.length,
-      pricedAssetCount: pricedAssets.length,
-      unpricedSymbols,
-      totalMarketValue,
-      totalCost,
-      totalUnrealizedPnl,
-      total24hChange,
-      total24hChangePercent,
       preferredCurrency,
       usdToPreferredRate,
       usdToEurRate,

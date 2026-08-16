@@ -2,6 +2,60 @@ import type { Currency } from './currency'
 import { convertAmount, convertBetweenCurrencies } from './currency'
 import type { EnrichedHolding, Transaction } from './types'
 
+/** Totals computed from preferred-currency assets + cash (no I/O). */
+export type PreferredPortfolioAggregates = {
+  enrichedHoldings: EnrichedHolding[]
+  unpricedSymbols: string[]
+  pricedAssetCount: number
+  assetCount: number
+  holdingsCount: number
+  totalMarketValue: number
+  totalCost: number
+  totalUnrealizedPnl: number
+  total24hChange: number
+  total24hChangePercent: number
+}
+
+/**
+ * Market value and 24h change include priced assets + cash only.
+ * Cost basis includes unpriced assets. Unrealized P&L is priced-only
+ * so a missing quote is not treated as $0.
+ */
+export function aggregatePreferredPortfolio(
+  preferredAssets: EnrichedHolding[],
+  preferredCash: EnrichedHolding[]
+): PreferredPortfolioAggregates {
+  const enrichedHoldings = [...preferredAssets, ...preferredCash]
+  const unpricedSymbols = preferredAssets
+    .filter((h) => !h.priceAvailable)
+    .map((h) => h.symbol)
+  const pricedAssets = preferredAssets.filter((h) => h.priceAvailable)
+
+  const totalMarketValue =
+    pricedAssets.reduce((sum, h) => sum + h.marketValue, 0) +
+    preferredCash.reduce((sum, h) => sum + h.marketValue, 0)
+
+  const totalCost = enrichedHoldings.reduce((sum, h) => sum + h.totalCost, 0)
+  const totalUnrealizedPnl = pricedAssets.reduce((sum, h) => sum + h.unrealizedPnl, 0)
+  const total24hChange = pricedAssets.reduce((sum, h) => sum + h.position24hChange, 0)
+  const previousTotalValue = totalMarketValue - total24hChange
+  const total24hChangePercent =
+    previousTotalValue > 0 ? (total24hChange / previousTotalValue) * 100 : 0
+
+  return {
+    enrichedHoldings,
+    unpricedSymbols,
+    pricedAssetCount: pricedAssets.length,
+    assetCount: preferredAssets.length,
+    holdingsCount: enrichedHoldings.length,
+    totalMarketValue,
+    totalCost,
+    totalUnrealizedPnl,
+    total24hChange,
+    total24hChangePercent,
+  }
+}
+
 /**
  * Convert an enriched non-cash holding into the user's preferred display currency.
  *

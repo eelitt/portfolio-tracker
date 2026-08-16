@@ -135,6 +135,29 @@ describe('scoreCase', () => {
     expect(r.passed).toBe(true)
   })
 
+  it('mustIncludeWarning fails when warnings missing or empty', () => {
+    expect(
+      scoreCase({ mustIncludeWarning: true }, [
+        {
+          name: 'prepare_transaction',
+          args: {},
+          result: { status: 'ready' },
+          ok: true,
+        },
+      ]).passed
+    ).toBe(false)
+    expect(
+      scoreCase({ mustIncludeWarning: true }, [
+        {
+          name: 'prepare_transaction',
+          args: {},
+          result: { status: 'ready', warnings: [] },
+          ok: true,
+        },
+      ]).passed
+    ).toBe(false)
+  })
+
   it('expectDryRun requires dryRun flag', () => {
     const r = scoreCase(
       { expectDryRun: true },
@@ -148,6 +171,40 @@ describe('scoreCase', () => {
       ]
     )
     expect(r.passed).toBe(true)
+  })
+
+  it('expectDryRun fails when dryRun is absent', () => {
+    const r = scoreCase(
+      { expectDryRun: true },
+      [
+        {
+          name: 'prepare_transaction',
+          args: {},
+          result: { status: 'ready' },
+          ok: true,
+        },
+      ]
+    )
+    expect(r.passed).toBe(false)
+  })
+
+  it('failureModeOnTool fails on the wrong mode', () => {
+    const r = scoreCase(
+      {
+        failureModeOnTool: [
+          { tool: 'confirm_transaction', failureMode: 'no_explicit_confirm' },
+        ],
+      },
+      [
+        {
+          name: 'confirm_transaction',
+          args: {},
+          result: { ok: false, failureMode: 'no_pending_draft' },
+          ok: false,
+        },
+      ]
+    )
+    expect(r.passed).toBe(false)
   })
 })
 

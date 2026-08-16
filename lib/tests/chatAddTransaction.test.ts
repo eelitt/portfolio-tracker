@@ -83,6 +83,14 @@ describe('validateTransactionDraft', () => {
     expect(r.missing).toContain('symbol')
   })
 
+  it('is not ready when quantity is zero', () => {
+    const r = validateTransactionDraft({
+      ...base,
+      quantity: 0,
+    })
+    expect(r.status).not.toBe('ready')
+  })
+
   it('is invalid for unknown symbol', () => {
     const r = validateTransactionDraft({
       ...base,
@@ -166,6 +174,24 @@ describe('sellExceedsHoldingWarning', () => {
       2
     )
     expect(msg).toMatch(/greater than/)
+  })
+
+  it('is silent for a buy', () => {
+    expect(
+      sellExceedsHoldingWarning(
+        {
+          symbol: 'ETH',
+          asset_type: 'crypto',
+          action: 'buy',
+          quantity: 10,
+          unit_price: 100,
+          executed_at: new Date().toISOString(),
+          currency: 'USD',
+          currencySource: 'text',
+        },
+        1
+      )
+    ).toBeNull()
   })
 
   it('silent when ok', () => {
