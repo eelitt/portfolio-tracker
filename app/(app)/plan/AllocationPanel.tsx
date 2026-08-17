@@ -9,11 +9,11 @@ import { SegmentedControl } from '@/app/(app)/dashboard/holdings/SegmentedContro
 import SensitiveValue from '@/components/SensitiveValue'
 import { formatCurrency } from '@/lib/currency'
 import type { PreferredCurrency } from '@/lib/userTypes'
-import { getInvestorProfile } from '@/app/actions/users'
 import {
   getAllocationWorkspace,
   previewMixFromProfile,
   upsertAllocationPolicy,
+  type AllocationWorkspaceData,
 } from '@/app/actions/allocation'
 import { ALLOC_ASSET_TYPES, type TypeWeightMap } from '@/lib/allocationTargets'
 import type { DriftRow, RebalanceSuggestion } from '@/lib/allocationTargets'
@@ -26,28 +26,44 @@ const TYPE_LABEL: Record<string, string> = {
   cash: 'Cash',
 }
 
+const DEFAULT_TYPE_WEIGHTS: TypeWeightMap = {
+  stock: 40,
+  etf: 20,
+  crypto: 20,
+  cash: 20,
+}
+
 export default function AllocationPanel({
   preferredCurrency,
+  initialWorkspace,
+  initialCanSuggestMix = false,
 }: {
   preferredCurrency: PreferredCurrency
+  initialWorkspace?: AllocationWorkspaceData
+  initialCanSuggestMix?: boolean
 }) {
-  const [typeWeights, setTypeWeights] = useState<TypeWeightMap>({
-    stock: 40,
-    etf: 20,
-    crypto: 20,
-    cash: 20,
-  })
-  const [tolerancePp, setTolerancePp] = useState(5)
+  const [typeWeights, setTypeWeights] = useState<TypeWeightMap>(
+    initialWorkspace?.policy?.typeWeights ?? DEFAULT_TYPE_WEIGHTS
+  )
+  const [tolerancePp, setTolerancePp] = useState(
+    initialWorkspace?.policy?.tolerancePp ?? 5
+  )
   const [symbolRows, setSymbolRows] = useState<
     Array<{ symbol: string; assetType: 'stock' | 'etf' | 'crypto'; weightPercent: number }>
-  >([])
-  const [hasPolicy, setHasPolicy] = useState(false)
-  const [byType, setByType] = useState<DriftRow[]>([])
-  const [bySymbol, setBySymbol] = useState<DriftRow[]>([])
-  const [suggestions, setSuggestions] = useState<RebalanceSuggestion[]>([])
-  const [notes, setNotes] = useState<string[]>([])
-  const [totalMv, setTotalMv] = useState(0)
-  const [unpriced, setUnpriced] = useState<string[]>([])
+  >(initialWorkspace?.policy?.symbolOverrides ?? [])
+  const [hasPolicy, setHasPolicy] = useState(Boolean(initialWorkspace?.policy))
+  const [byType, setByType] = useState<DriftRow[]>(initialWorkspace?.byType ?? [])
+  const [bySymbol, setBySymbol] = useState<DriftRow[]>(
+    initialWorkspace?.bySymbol ?? []
+  )
+  const [suggestions, setSuggestions] = useState<RebalanceSuggestion[]>(
+    initialWorkspace?.suggestions ?? []
+  )
+  const [notes, setNotes] = useState<string[]>(initialWorkspace?.notes ?? [])
+  const [totalMv, setTotalMv] = useState(initialWorkspace?.totalMarketValue ?? 0)
+  const [unpriced, setUnpriced] = useState<string[]>(
+    initialWorkspace?.unpricedSymbols ?? []
+  )
   const [mode, setMode] = useState<'inplace' | 'new_cash'>('inplace')
   const [cashIn, setCashIn] = useState('')
   const [mixPreview, setMixPreview] = useState<TypeWeightMap | null>(null)
@@ -55,7 +71,7 @@ export default function AllocationPanel({
   const [saving, setSaving] = useState(false)
   const [newSymbol, setNewSymbol] = useState('')
   const [newSymPct, setNewSymPct] = useState('5')
-  const [canSuggestMix, setCanSuggestMix] = useState(false)
+  const canSuggestMix = initialCanSuggestMix
 
   const typeSum = ALLOC_ASSET_TYPES.reduce((s, t) => s + Number(typeWeights[t] || 0), 0)
 
@@ -83,20 +99,12 @@ export default function AllocationPanel({
   }, [mode, cashIn])
 
   useEffect(() => {
+    // In-place workspace is hydrated from the dashboard GET. Refetch only
+    // when the user switches rebalance mode (or after save / cash blur).
+    if (mode === 'inplace' && initialWorkspace) return
     void load()
-    // Reload when mode changes; cash amount is applied on blur.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
-
-  useEffect(() => {
-    void getInvestorProfile().then((r) => {
-      if ('error' in r) {
-        setCanSuggestMix(false)
-        return
-      }
-      setCanSuggestMix(Boolean(r.data.riskTolerance && r.data.horizon))
-    })
-  }, [])
 
   const save = async (weights = typeWeights, symbols = symbolRows, tol = tolerancePp) => {
     setSaving(true)

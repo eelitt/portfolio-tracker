@@ -2,8 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Navbar from './Navbar'
 import SiteFooter from './SiteFooter'
-import PlanSidebar from './plan/PlanSidebar'
+import PlanSidebarHost from './plan/PlanSidebarHost'
 import AIInsightsPanel from './ai-insights/AIInsightsPanel'
+import { Suspense } from 'react'
 import { getCurrentUserProfile } from '@/lib/user'
 import { PrivacyModeProvider } from './privacy/PrivacyModeProvider'
 import { DashboardLayoutProvider } from './dashboard/DashboardLayoutProvider'
@@ -42,7 +43,12 @@ export default async function DashboardLayout({
           {children}
         </main>
         <SiteFooter />
-        <PlanSidebar preferredCurrency={profile?.preferredCurrency || 'USD'} />
+        <Suspense fallback={null}>
+          <PlanSidebarHost
+            preferredCurrency={profile?.preferredCurrency || 'USD'}
+            canSuggestMix={Boolean(profile?.riskTolerance && profile?.horizon)}
+          />
+        </Suspense>
         <AIInsightsPanel isAdmin={profile?.admin === true} />
       </div>
       </DashboardLayoutProvider>

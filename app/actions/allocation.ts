@@ -17,6 +17,17 @@ import {
 
 export type SavedAllocationPolicy = AllocationPolicySpec
 
+export type AllocationWorkspaceData = {
+  policy: SavedAllocationPolicy | null
+  totalMarketValue: number
+  preferredCurrency: 'USD' | 'EUR'
+  unpricedSymbols: string[]
+  byType: ReturnType<typeof computeDrift>['byType']
+  bySymbol: ReturnType<typeof computeDrift>['bySymbol']
+  suggestions: ReturnType<typeof suggestRebalance>['suggestions']
+  notes: string[]
+}
+
 function emptySpec(): AllocationPolicySpec {
   return {
     typeWeights: { stock: 0, etf: 0, crypto: 0, cash: 0 },
@@ -148,21 +159,7 @@ export async function upsertAllocationPolicy(input: unknown): Promise<
 export async function getAllocationWorkspace(opts?: {
   mode?: RebalanceMode
   cashIn?: number
-}): Promise<
-  | {
-      data: {
-        policy: SavedAllocationPolicy | null
-        totalMarketValue: number
-        preferredCurrency: 'USD' | 'EUR'
-        unpricedSymbols: string[]
-        byType: ReturnType<typeof computeDrift>['byType']
-        bySymbol: ReturnType<typeof computeDrift>['bySymbol']
-        suggestions: ReturnType<typeof suggestRebalance>['suggestions']
-        notes: string[]
-      }
-    }
-  | { error: string }
-> {
+}): Promise<{ data: AllocationWorkspaceData } | { error: string }> {
   const user = await getCurrentUser()
   if (!user) return { error: 'Not authenticated' }
 

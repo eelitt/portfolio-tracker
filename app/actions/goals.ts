@@ -4,7 +4,6 @@ import { createClient } from '@/lib/supabase/server'
 import { goalSchema } from '@/lib/schemas'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from '@/lib/user'
-import { getPortfolioData } from '@/lib/portfolioData'
 import { Goal } from '@/lib/types'
 
 export type ActionState = {
@@ -161,12 +160,4 @@ export async function getUserGoals() {
   }
 
   return (goals || []) as Goal[]
-}
-
-export async function getCurrentPortfolioValue(): Promise<number> {
-  const data = await getPortfolioData()
-  if (data.error) {
-    return 0
-  }
-  return data.totalMarketValue
 }

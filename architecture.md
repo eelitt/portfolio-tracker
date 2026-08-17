@@ -165,6 +165,8 @@ Analyst tools `get_target_allocation`, `get_rebalance_plan`, `suggest_allocation
 
 Investor profile (age band, horizon, risk, monthly contribution **band** in preferred currency) lives on `profiles`. Mix-from-profile requires risk + horizon; the Plan UI hides the suggest button until those exist.
 
+Plan/Goals hydrate from the same document GET (`PlanSidebarHost` → `getAllocationWorkspace` / `getUserGoals`, sharing `getPortfolioData` via `React.cache`). They must not call `getPortfolioData` again on client mount — each Server Action is a new request and re-hits price APIs in dev.
+
 ---
 
 ## History

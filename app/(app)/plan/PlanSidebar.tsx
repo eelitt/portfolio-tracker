@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { getUserGoals, getCurrentPortfolioValue } from '@/app/actions/goals'
+import { useEffect, useState } from 'react'
+import { getUserGoals } from '@/app/actions/goals'
+import type { AllocationWorkspaceData } from '@/app/actions/allocation'
 import type { PreferredCurrency } from '@/lib/userTypes'
 import { Goal } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -30,37 +31,25 @@ function readOpen(): boolean {
 
 export default function PlanSidebar({
   preferredCurrency = 'USD',
+  initialGoals = [],
+  initialPortfolioValue = 0,
+  initialWorkspace,
+  initialCanSuggestMix = false,
 }: {
   preferredCurrency?: PreferredCurrency
+  initialGoals?: Goal[]
+  initialPortfolioValue?: number
+  initialWorkspace?: AllocationWorkspaceData
+  initialCanSuggestMix?: boolean
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [tab, setTab] = useState<PlanTab>('goals')
-  const isOpenRef = useRef(false)
-  const hasPortfolioValueRef = useRef(false)
-  const [goals, setGoals] = useState<Goal[]>([])
-  const [portfolioValue, setPortfolioValue] = useState(0)
+  const [goals, setGoals] = useState<Goal[]>(initialGoals)
+  const [portfolioValue, setPortfolioValue] = useState(initialPortfolioValue)
 
   const loadGoals = async () => {
     setGoals(await getUserGoals())
   }
-
-  const loadPortfolioValueFallback = async () => {
-    if (hasPortfolioValueRef.current) return
-    const val = await getCurrentPortfolioValue()
-    hasPortfolioValueRef.current = true
-    setPortfolioValue(val)
-  }
-
-  useEffect(() => {
-    isOpenRef.current = isOpen
-    if (isOpen) {
-      void loadGoals()
-      const t = window.setTimeout(() => {
-        void loadPortfolioValueFallback()
-      }, 1500)
-      return () => window.clearTimeout(t)
-    }
-  }, [isOpen])
 
   useEffect(() => {
     const applyOpen = () => setIsOpen(readOpen())
@@ -69,7 +58,6 @@ export default function PlanSidebar({
     const handlePortfolioValue = (e: Event) => {
       const detail = (e as CustomEvent<PortfolioValueDetail>).detail
       if (!detail || typeof detail.value !== 'number') return
-      hasPortfolioValueRef.current = true
       setPortfolioValue(detail.value)
     }
 
@@ -98,10 +86,11 @@ export default function PlanSidebar({
     localStorage.setItem(TAB_KEY, next)
   }
 
-  if (!isOpen) return null
-
   return (
-    <div className="surface-panel panel-gold-grid panel-gold-grid--right fixed right-0 top-16 bottom-0 z-40 flex w-80 flex-col overflow-hidden border-l border-border shadow-xl">
+    <div
+      hidden={!isOpen}
+      className="surface-panel panel-gold-grid panel-gold-grid--right fixed right-0 top-16 bottom-0 z-40 flex w-80 flex-col overflow-hidden border-l border-border shadow-xl"
+    >
       <div className="panel-gold-grid-bg" aria-hidden />
       <div className="panel-gold-grid-header relative z-10 flex shrink-0 items-center justify-between gap-2 border-b border-subtle px-4 pb-4 pt-4">
         <div className="flex min-w-0 items-center gap-2">
@@ -134,16 +123,21 @@ export default function PlanSidebar({
       </div>
 
       <div className="panel-scroll min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        {tab === 'goals' ? (
+        <div hidden={tab !== 'goals'}>
           <GoalsPanel
             goals={goals}
             portfolioValue={portfolioValue}
             preferredCurrency={preferredCurrency}
             onChanged={loadGoals}
           />
-        ) : (
-          <AllocationPanel preferredCurrency={preferredCurrency} />
-        )}
+        </div>
+        <div hidden={tab !== 'allocation'}>
+          <AllocationPanel
+            preferredCurrency={preferredCurrency}
+            initialWorkspace={initialWorkspace}
+            initialCanSuggestMix={initialCanSuggestMix}
+          />
+        </div>
       </div>
     </div>
   )

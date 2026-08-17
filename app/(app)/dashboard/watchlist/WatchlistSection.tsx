@@ -32,13 +32,19 @@ export default async function WatchlistSection() {
   }
 
   const rows = listResult.data
-  const quotes =
-    rows.length > 0
+  const bookQuotes = portfolio.priceData ?? {}
+  const missing = rows.filter((r) => {
+    const q = bookQuotes[r.symbol]
+    return !(q && Number.isFinite(q.price) && q.price > 0)
+  })
+  const extraQuotes =
+    missing.length > 0
       ? await getPricesForHoldings(
-          rows.map((r) => ({ symbol: r.symbol, asset_type: r.asset_type })),
+          missing.map((r) => ({ symbol: r.symbol, asset_type: r.asset_type })),
           { forceFresh: false }
         )
       : {}
+  const quotes = { ...bookQuotes, ...extraQuotes }
 
   const heldSymbols = (portfolio.enrichedHoldings ?? [])
     .filter(
