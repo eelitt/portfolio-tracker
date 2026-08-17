@@ -9,17 +9,28 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import AllocationPie from './AllocationPie'
 import PerformanceChart, { buildSeriesMeta } from './PerformanceChart'
 import PriceChartTab from './PriceChartTab'
+import ContributionTable from './ContributionTable'
 import { SegmentedControl } from './SegmentedControl'
 import {
+  aggregateSnapshotSeries,
   holdingSeriesId,
   PORTFOLIO_SERIES_ID,
   type PerformanceScaleMode,
   type SnapshotPoint,
   type SnapshotRangeMode,
 } from '@/lib/aggregateSnapshots'
+import {
+  BENCHMARK_PRESETS,
+  benchmarkSeriesId,
+  contributionFromDeltas,
+  seriesDelta,
+  type BenchmarkId,
+} from '@/lib/benchmarks'
 import type { PreferredCurrency } from '@/lib/userTypes'
 import type { EnrichedHolding } from '@/lib/types'
 import { getHoldingSnapshotsBatch } from '@/app/actions/snapshots'
+import { getBenchmarkSeries } from '@/app/actions/benchmarks'
+import { cn } from '@/lib/utils'
 
 type ChartTab = 'allocation' | 'performance' | 'price'
 
@@ -42,6 +53,8 @@ const PERF_SCALE: { value: PerformanceScaleMode; label: string }[] = [
 
 const LS_VISIBLE = 'perfChartVisibleSeries'
 const LS_SCALE = 'perfChartScaleMode'
+const LS_BENCH = 'perfChartBenchmarks'
+const LS_TAB = 'chartsTab'
 
 function readVisibleSet(defaultOn: string[]): Set<string> {
   try {
@@ -73,6 +86,29 @@ function readScaleMode(): PerformanceScaleMode {
   return 'absolute'
 }
 
+function readBenchIds(): Set<BenchmarkId> {
+  try {
+    const raw = localStorage.getItem(LS_BENCH)
+    if (!raw) return new Set()
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return new Set()
+    const allowed = new Set(BENCHMARK_PRESETS.map((p) => p.id))
+    return new Set(
+      parsed.filter((x): x is BenchmarkId => typeof x === 'string' && allowed.has(x as BenchmarkId))
+    )
+  } catch {
+    return new Set()
+  }
+}
+
+function writeBenchIds(ids: Set<BenchmarkId>) {
+  try {
+    localStorage.setItem(LS_BENCH, JSON.stringify([...ids]))
+  } catch {
+    // ignore
+  }
+}
+
 interface HoldingsChartsPanelProps {
   enrichedHoldings: EnrichedHolding[]
   preferredCurrency: PreferredCurrency
@@ -99,6 +135,13 @@ export default function HoldingsChartsPanel({
   >({})
   const [holdingError, setHoldingError] = useState<string | null>(null)
   const [holdingLoading, setHoldingLoading] = useState(false)
+  const [benchOn, setBenchOn] = useState<Set<BenchmarkId>>(() => new Set())
+  const [benchSeries, setBenchSeries] = useState<Record<string, SnapshotPoint[]>>(
+    {}
+  )
+  const [benchError, setBenchError] = useState<string | null>(null)
+  const [benchLoading, setBenchLoading] = useState(false)
+  const [priceVisited, setPriceVisited] = useState(false)
 
   const legendHoldings = useMemo(() => {
     // Cash off by default and listed last; assets first alphabetically
@@ -116,18 +159,47 @@ export default function HoldingsChartsPanel({
     }))
   }, [enrichedHoldings])
 
-  const seriesMeta = useMemo(
-    () =>
-      buildSeriesMeta(
-        legendHoldings.map((h) => ({ id: h.id, label: h.label }))
-      ),
-    [legendHoldings]
-  )
+  const seriesMeta = useMemo(() => {
+    const holdings = buildSeriesMeta(
+      legendHoldings.map((h) => ({ id: h.id, label: h.label }))
+    )
+    const benches = BENCHMARK_PRESETS.map((p) => ({
+      id: benchmarkSeriesId(p.id),
+      label: p.shortLabel,
+      color: p.color,
+      dashed: true as const,
+    }))
+    return [...holdings, ...benches]
+  }, [legendHoldings])
 
   // Load persisted prefs after mount (avoid SSR localStorage)
   useEffect(() => {
     setVisible(readVisibleSet([PORTFOLIO_SERIES_ID]))
     setScaleMode(readScaleMode())
+    setBenchOn(readBenchIds())
+    try {
+      const stored = localStorage.getItem(LS_TAB)
+      if (
+        stored === 'allocation' ||
+        stored === 'performance' ||
+        stored === 'price'
+      ) {
+        setTab(stored)
+        if (stored === 'price') setPriceVisited(true)
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const onTabChange = useCallback((next: ChartTab) => {
+    setTab(next)
+    if (next === 'price') setPriceVisited(true)
+    try {
+      localStorage.setItem(LS_TAB, next)
+    } catch {
+      // ignore
+    }
   }, [])
 
   // Lazy-load all holding series when Performance tab opens
@@ -165,15 +237,60 @@ export default function HoldingsChartsPanel({
     }
   }, [tab, legendHoldings])
 
+  // Lazy-load only newly enabled benches (session cache in benchSeries)
+  useEffect(() => {
+    if (tab !== 'performance') return
+    const needed = [...benchOn].filter(
+      (id) => !benchSeries[benchmarkSeriesId(id)]
+    )
+    if (needed.length === 0) return
+
+    let cancelled = false
+    setBenchLoading(true)
+    setBenchError(null)
+    void getBenchmarkSeries(needed).then((result) => {
+      if (cancelled) return
+      setBenchLoading(false)
+      if (result.error) {
+        setBenchError(result.error)
+        return
+      }
+      setBenchSeries((prev) => ({ ...prev, ...(result.data ?? {}) }))
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [tab, benchOn, benchSeries])
+
   const seriesById = useMemo(() => {
     const map: Record<string, SnapshotPoint[]> = {
       [PORTFOLIO_SERIES_ID]: snapshots,
       ...holdingSeries,
+      ...benchSeries,
     }
     return map
-  }, [snapshots, holdingSeries])
+  }, [snapshots, holdingSeries, benchSeries])
 
-  const visibleIds = useMemo(() => [...visible], [visible])
+  const visibleIds = useMemo(() => {
+    const ids = [...visible]
+    for (const id of benchOn) ids.push(benchmarkSeriesId(id))
+    return ids
+  }, [visible, benchOn])
+
+  const contributionRows = useMemo(() => {
+    const portWin = aggregateSnapshotSeries(snapshots, rangeMode)
+    const portDelta = seriesDelta(portWin)
+    if (portDelta == null) return []
+    const inputs = legendHoldings.flatMap((h) => {
+      const raw = holdingSeries[h.id]
+      if (!raw || raw.length < 2) return []
+      const delta = seriesDelta(aggregateSnapshotSeries(raw, rangeMode))
+      if (delta == null) return []
+      return [{ id: h.id, label: h.label, delta }]
+    })
+    return contributionFromDeltas(portDelta, inputs)
+  }, [snapshots, holdingSeries, legendHoldings, rangeMode])
 
   const onToggleSeries = useCallback((id: string) => {
     setVisible((prev) => {
@@ -217,7 +334,26 @@ export default function HoldingsChartsPanel({
     }
   }, [])
 
-  const performanceError = snapshotsError || holdingError
+  const onToggleBench = useCallback(
+    (id: BenchmarkId) => {
+      setBenchOn((prev) => {
+        const next = new Set(prev)
+        if (next.has(id)) {
+          next.delete(id)
+        } else {
+          next.add(id)
+          if (prev.size === 0 && scaleMode === 'absolute') {
+            onScaleChange('indexed')
+          }
+        }
+        writeBenchIds(next)
+        return next
+      })
+    },
+    [scaleMode, onScaleChange]
+  )
+
+  const performanceWarning = [holdingError, benchError].filter(Boolean).join(' · ') || null
 
   return (
     <section className="mb-8">
@@ -243,6 +379,9 @@ export default function HoldingsChartsPanel({
                 value={scaleMode}
                 onChange={onScaleChange}
               />
+              <span className="text-[11px] text-muted-foreground">
+                Groups snapshot dates — not the same as Price 1M / 3M / 1Y.
+              </span>
             </>
           ) : null}
         </div>
@@ -251,19 +390,59 @@ export default function HoldingsChartsPanel({
           size="sm"
           options={MAIN_TABS}
           value={tab}
-          onChange={setTab}
+          onChange={onTabChange}
         />
       </div>
 
       <div className="rounded-xl border border-subtle bg-surface-elevated p-4 shadow-sm sm:p-5">
-        {tab === 'allocation' ? (
+        <div hidden={tab !== 'allocation'}>
           <AllocationPie
             enrichedHoldings={enrichedHoldings}
             preferredCurrency={preferredCurrency}
             usdToPreferredRate={usdToPreferredRate}
           />
-        ) : tab === 'performance' ? (
-          <>
+        </div>
+        <div hidden={tab !== 'performance'}>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="text-[11px] text-muted-foreground">
+                Benchmarks
+              </span>
+              {BENCHMARK_PRESETS.map((p) => {
+                const on = benchOn.has(p.id)
+                const sid = benchmarkSeriesId(p.id)
+                const hasData = (benchSeries[sid]?.length ?? 0) > 0
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => onToggleBench(p.id)}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
+                      on
+                        ? 'border-border bg-muted/60 text-foreground'
+                        : 'border-transparent bg-transparent text-muted-foreground hover:bg-muted/40'
+                    )}
+                    title={
+                      on
+                        ? `Hide ${p.label}`
+                        : `Compare to ${p.label}`
+                    }
+                  >
+                    <span
+                      className="inline-block h-2 w-2 shrink-0 rounded-full"
+                      style={{
+                        backgroundColor: on ? p.color : 'transparent',
+                        boxShadow: on ? undefined : `inset 0 0 0 1px ${p.color}`,
+                      }}
+                    />
+                    {p.shortLabel}
+                    {on && benchLoading && !hasData ? (
+                      <span className="text-muted-foreground">…</span>
+                    ) : null}
+                  </button>
+                )
+              })}
+            </div>
             <PerformanceChart
               seriesById={seriesById}
               seriesMeta={seriesMeta}
@@ -272,7 +451,8 @@ export default function HoldingsChartsPanel({
               rangeMode={rangeMode}
               scaleMode={scaleMode}
               preferredCurrency={preferredCurrency}
-              error={performanceError}
+              error={snapshotsError}
+              warning={performanceWarning}
               loading={
                 holdingLoading &&
                 snapshots.length === 0 &&
@@ -304,13 +484,19 @@ export default function HoldingsChartsPanel({
                 (click chips to show/hide · cash off by default)
               </span>
             </div>
-          </>
-        ) : (
-          <PriceChartTab
-            holdings={enrichedHoldings}
-            preferredCurrency={preferredCurrency}
-          />
-        )}
+            <ContributionTable
+              rows={contributionRows}
+              preferredCurrency={preferredCurrency}
+            />
+        </div>
+        {priceVisited ? (
+          <div hidden={tab !== 'price'}>
+            <PriceChartTab
+              holdings={enrichedHoldings}
+              preferredCurrency={preferredCurrency}
+            />
+          </div>
+        ) : null}
       </div>
     </section>
   )

@@ -91,7 +91,7 @@ Called only for **open non-cash holdings** (and watchlist / fund NAVs when those
 | Kind | Source |
 |---|---|
 | Stock / most ETFs | Finnhub quote (`FINNHUB_API_KEY`; missing key → no fetch) |
-| Selected Finnish funds | Yahoo chart NAV, EUR → USD |
+| Selected Finnish funds | Yahoo chart NAV, EUR → USD (same catalog route for Price-tab history) |
 | Crypto | Binance 24hr ticker, batched; stables = 1, no network |
 | Cash | Face 1, no network |
 
@@ -173,13 +173,17 @@ Plan/Goals hydrate from the same document GET (`PlanSidebarHost` → `getAllocat
 
 Daily USD snapshots: Edge Function `portfolio-snapshots` → `portfolio_snapshots` (RLS read). Performance chart: `getPortfolioSnapshots` + `lib/aggregateSnapshots.ts` (daily 90d / monthly 24m / yearly). That series is **not** rebuilt from transactions + historical marks on each page load.
 
+Chart / Price-tab history uses the same catalog routing as live marks: `yahoo_chart` funds (e.g. OP Amerikka) load Yahoo daily bars, not Finnhub. Bars are stored USD (EUR NAV ÷ USD/EUR).
+
+Optional benchmarks (SPY, URTH, BTC) overlay that chart as **price** series from `price_bars` (`syncSymbolHistory`: full backfill once, then gap-fill / cache_only). They are **not** fetched on the dashboard GET — only when a Performance-tab chip is on. Excess return and tracking error live in `lib/benchmarks/` (intersection dates; TE from daily excess even if the chart is monthly/yearly). Contribution is Δ market value of open holdings + cash over the selected window, not a factor model. Do not call the difference vs a bench “alpha”: the book line includes cash flows.
+
 ---
 
 ## What tests are for
 
 Unit tests under `lib/tests/` are the architecture’s proof for **money and gates**, not for CSS.
 
-They are supposed to fail if: weighted-average / remaining basis / oversell cap changes; missing quote invents −100% P&L; mixed-currency P&L is scaled; cash nets raw faces; HMO applies to a loss; confirm accepts a jailbreak sentence; type weights do not sum to 100.
+They are supposed to fail if: weighted-average / remaining basis / oversell cap changes; missing quote invents −100% P&L; mixed-currency P&L is scaled; cash nets raw faces; HMO applies to a loss; confirm accepts a jailbreak sentence; type weights do not sum to 100; excess/TE uses fill-forward or a single overlapping point; contribution % is shown when book Δ is 0.
 
 They are **not** supposed to prove RLS. User A vs user B is a policy + integration concern.
 
@@ -194,6 +198,7 @@ They are **not** supposed to prove RLS. User A vs user B is a policy + integrati
 | FX + cash + totals | `lib/convertToPreferred.ts`, `lib/currency.ts` |
 | Live marks | `lib/prices/` |
 | Targets / drift / mix | `lib/allocationTargets/` |
+| Benchmarks / excess / contribution | `lib/benchmarks/` |
 | Tax | `lib/tax/` |
 | Analyst math | `lib/portfolioAnalyst/` |
 | Tool registry / confirm / dry-run / context | `lib/aiTools/` |

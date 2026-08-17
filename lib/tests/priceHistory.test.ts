@@ -11,6 +11,9 @@ import {
   dayMarkerStyles,
   getBinanceSpotSymbol,
   parseBinanceKlines,
+  parseYahooDailyBars,
+  buildYahooHistoryUrl,
+  historyProviderForSymbol,
 } from '@/lib/priceHistory'
 import type { Transaction } from '@/lib/types'
 
@@ -171,5 +174,88 @@ describe('markersFromTransactions', () => {
     expect(styles).toHaveLength(1)
     expect(styles[0].side).toBe('mixed')
     expect(styles[0].text).toBe('3')
+  })
+})
+
+describe('Yahoo daily history', () => {
+  it('builds a period1/period2 chart URL', () => {
+    const url = buildYahooHistoryUrl('0P0000UP8V.F', 1700000000, 1700600000)
+    expect(url).toContain('0P0000UP8V.F')
+    expect(url).toContain('interval=1d')
+    expect(url).toContain('period1=1700000000')
+    expect(url).toContain('period2=1700600000')
+  })
+
+  it('parses OHLC timestamps', () => {
+    const bars = parseYahooDailyBars({
+      chart: {
+        result: [
+          {
+            timestamp: [1704067200, 1704153600],
+            indicators: {
+              quote: [
+                {
+                  open: [100, 110],
+                  high: [120, 115],
+                  low: [90, 108],
+                  close: [110, 112],
+                  volume: [1, 2],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    })
+    expect(bars).toHaveLength(2)
+    expect(bars[0]).toMatchObject({
+      time: '2024-01-01',
+      open: 100,
+      high: 120,
+      low: 90,
+      close: 110,
+    })
+    expect(bars[1].close).toBe(112)
+  })
+
+  it('uses close for missing open/high/low', () => {
+    const bars = parseYahooDailyBars({
+      chart: {
+        result: [
+          {
+            timestamp: [1704067200],
+            indicators: {
+              quote: [{ close: [50], open: [null], high: [null], low: [null] }],
+            },
+          },
+        ],
+      },
+    })
+    expect(bars).toEqual([
+      {
+        time: '2024-01-01',
+        open: 50,
+        high: 50,
+        low: 50,
+        close: 50,
+        volume: null,
+      },
+    ])
+  })
+
+  it('returns empty for bad payloads', () => {
+    expect(parseYahooDailyBars({})).toEqual([])
+    expect(parseYahooDailyBars({ chart: { error: 'Not Found' } })).toEqual([])
+  })
+})
+
+describe('historyProviderForSymbol', () => {
+  it('routes catalog Yahoo funds away from Finnhub', () => {
+    expect(historyProviderForSymbol('OP AMERIKKA INDEKSI A', 'etf')).toBe(
+      'yahoo'
+    )
+    expect(historyProviderForSymbol('SPY', 'etf')).toBe('finnhub')
+    expect(historyProviderForSymbol('TSLA', 'stock')).toBe('finnhub')
+    expect(historyProviderForSymbol('BTC', 'crypto')).toBe('binance')
   })
 })

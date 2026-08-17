@@ -3,7 +3,7 @@ import type { AssetType } from '@/lib/types'
 export type ChartAssetType = Exclude<AssetType, 'cash'>
 
 /** Who wrote bars to price_bars. `coingecko` may exist on legacy rows only. */
-export type PriceBarSource = 'finnhub' | 'coingecko' | 'binance'
+export type PriceBarSource = 'finnhub' | 'coingecko' | 'binance' | 'yahoo'
 
 export type SyncMode = 'full' | 'gap' | 'cache_only'
 

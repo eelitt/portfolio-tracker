@@ -186,3 +186,15 @@ export const PERFORMANCE_SERIES_COLORS = [
 export function colorForSeriesIndex(i: number): string {
   return PERFORMANCE_SERIES_COLORS[i % PERFORMANCE_SERIES_COLORS.length]
 }
+
+/** Stable color for a holding symbol (skips portfolio gold at index 0). */
+export function colorForHoldingSymbol(symbol: string): string {
+  const palette = PERFORMANCE_SERIES_COLORS
+  if (palette.length < 2) return palette[0] ?? '#64748b'
+  let h = 0
+  const s = symbol.toUpperCase()
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) >>> 0
+  }
+  return palette[1 + (h % (palette.length - 1))]
+}

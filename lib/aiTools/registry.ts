@@ -52,6 +52,19 @@ export const TOOL_REGISTRY: Record<string, ToolMeta> = {
     failureModes: [...analystReadFailures],
     rateLimitKey: null,
   },
+  get_relative_performance: {
+    id: 'get_relative_performance',
+    name: 'Relative performance',
+    description:
+      'Compare portfolio market-value path to SPY / URTH (MSCI World) / BTC over the Performance-chart window (daily 90d, monthly 24m, yearly). Returns window % , excess pp, daily tracking error, and ΔMV contribution by open holding (cash included). This is value-path vs price-path, not time-weighted alpha. Use for “did I beat the S&P / BTC?”. If snapshots are missing, say so — do not invent returns.',
+    owner: 'portfolio_analyst',
+    sideEffect: 'read',
+    requiresConfirmation: false,
+    permissions: ['portfolio:read'],
+    costTier: 'free',
+    failureModes: [...analystReadFailures, 'no_snapshot_history'],
+    rateLimitKey: null,
+  },
   get_target_allocation: {
     id: 'get_target_allocation',
     name: 'Target allocation',
@@ -289,6 +302,7 @@ export const PORTFOLIO_ANALYST_TOOL_IDS = [
   'get_portfolio_summary',
   'get_holdings',
   'get_allocation',
+  'get_relative_performance',
   'get_target_allocation',
   'get_rebalance_plan',
   'suggest_allocation_mix',

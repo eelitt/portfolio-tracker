@@ -8,6 +8,9 @@ import {
 } from './constants'
 import { fetchFinnhubDailyCandles } from './fetchFinnhubCandles'
 import { fetchBinanceDailyKlines } from './fetchBinanceKlines'
+import { fetchYahooDailyBars } from './fetchYahooBars'
+import { getSecurityPricing } from '@/lib/symbols'
+import { getUsdToEurRate } from '@/lib/currency'
 import type {
   ChartAssetType,
   PriceBar,
@@ -193,6 +196,26 @@ async function fetchCryptoBars(
   }
 }
 
+/** Who writes history for this holding. Catalog yahoo_chart funds skip Finnhub. */
+export function historyProviderForSymbol(
+  symbol: string,
+  assetType: ChartAssetType
+): Exclude<PriceBarSource, 'coingecko'> {
+  if (assetType === 'crypto') return 'binance'
+  if (getSecurityPricing(symbol).kind === 'yahoo_chart') return 'yahoo'
+  return 'finnhub'
+}
+
+function scaleBarsEurToUsd(bars: PriceBar[], usdToEurRate: number): PriceBar[] {
+  return bars.map((b) => ({
+    ...b,
+    open: b.open / usdToEurRate,
+    high: b.high / usdToEurRate,
+    low: b.low / usdToEurRate,
+    close: b.close / usdToEurRate,
+  }))
+}
+
 async function fetchBarsForRange(
   assetType: ChartAssetType,
   symbol: string,
@@ -205,6 +228,32 @@ async function fetchBarsForRange(
 
   const fromUnix = Math.floor(utcDayStart(fromDay).getTime() / 1000)
   const toUnix = Math.floor(utcDayStart(toDay).getTime() / 1000) + 86400 - 1
+
+  const pricing = getSecurityPricing(symbol)
+  if (pricing.kind === 'yahoo_chart') {
+    const fetched = await fetchYahooDailyBars(
+      pricing.yahooSymbol,
+      fromUnix,
+      toUnix
+    )
+    if (fetched.error && fetched.bars.length === 0) {
+      return { bars: [], error: fetched.error, source: 'yahoo' }
+    }
+    let bars = fetched.bars
+    if (pricing.quoteCurrency === 'EUR') {
+      const rate = await getUsdToEurRate()
+      if (!(rate > 0)) {
+        return {
+          bars: [],
+          error: 'Missing FX rate for fund history',
+          source: 'yahoo',
+        }
+      }
+      bars = scaleBarsEurToUsd(bars, rate)
+    }
+    return { bars, error: fetched.error, source: 'yahoo' }
+  }
+
   const fin = await fetchFinnhubDailyCandles(symbol, fromUnix, toUnix)
   return { bars: fin.bars, error: fin.error, source: 'finnhub' }
 }
@@ -401,7 +450,8 @@ export async function loadBarsFromDb(
   const source: PriceBarSource | null =
     lastSource === 'binance' ||
     lastSource === 'coingecko' ||
-    lastSource === 'finnhub'
+    lastSource === 'finnhub' ||
+    lastSource === 'yahoo'
       ? lastSource
       : null
 

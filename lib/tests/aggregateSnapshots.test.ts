@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   aggregateSnapshotSeries,
+  colorForHoldingSymbol,
   indexSnapshotSeries,
   mergeSeriesToChartRows,
   seriesRangeChange,
@@ -128,5 +129,12 @@ describe('mergeSeriesToChartRows', () => {
     expect(rows[0]['crypto:BTC']).toBeUndefined()
     expect(rows[1].portfolio).toBe(110)
     expect(rows[1]['crypto:BTC']).toBe(50)
+  })
+})
+
+describe('colorForHoldingSymbol', () => {
+  it('is stable and not the portfolio gold slot', () => {
+    expect(colorForHoldingSymbol('BTC')).toBe(colorForHoldingSymbol('btc'))
+    expect(colorForHoldingSymbol('BTC')).not.toBe(colorForHoldingSymbol('ETH'))
   })
 })

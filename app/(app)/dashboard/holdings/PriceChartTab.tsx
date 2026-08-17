@@ -6,7 +6,8 @@
  * Data flow:
  * 1. User selects symbol / range (debounced).
  * 2. Server action getHoldingPriceChart:
- *    - full backfill if DB empty (crypto: Binance ~3Y; stocks: Finnhub ~2Y)
+ *    - full backfill if DB empty (crypto: Binance ~3Y; Yahoo-catalog funds:
+ *      Yahoo daily; other stocks/ETFs: Finnhub ~2Y)
  *    - otherwise gap-fill latest days from the same APIs
  *    - returns bars (display currency) + buy/sell markers from transactions
  * 3. HoldingPriceChart renders candles + markers.
@@ -27,6 +28,7 @@ import type {
 } from '@/lib/priceHistory'
 import type { EnrichedHolding } from '@/lib/types'
 import type { PreferredCurrency } from '@/lib/userTypes'
+import { getSecurityPricing } from '@/lib/symbols'
 import HoldingPriceChart from './HoldingPriceChart'
 import { SegmentedControl } from './SegmentedControl'
 
@@ -44,24 +46,6 @@ const RANGE_OPTIONS: { value: ChartRange; label: string }[] = [
   { value: '1Y', label: '1Y' },
   { value: 'Max', label: 'Max' },
 ]
-
-/** Approximate progress width while the single server action is in flight. */
-function progressForPhase(phase: LoadPhase): number {
-  switch (phase) {
-    case 'idle':
-      return 0
-    case 'loading':
-      return 15
-    case 'backfilling':
-      return 55
-    case 'ready':
-      return 100
-    case 'error':
-      return 100
-    default:
-      return 0
-  }
-}
 
 function statusLabel(
   phase: LoadPhase,
@@ -95,7 +79,6 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
   const [symbol, setSymbol] = useState(assetHoldings[0]?.symbol ?? '')
   const [range, setRange] = useState<ChartRange>('Max')
   const [phase, setPhase] = useState<LoadPhase>('idle')
-  const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [bars, setBars] = useState<PriceBar[]>([])
   const [markers, setMarkers] = useState<TradeMarker[]>([])
@@ -127,19 +110,11 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
 
     const reqId = ++reqIdRef.current
     setPhase('loading')
-    setProgress(15)
     setError(null)
     setSoftWarning(null)
     // Clear previous series so we never flash the wrong symbol's candles
     setBars([])
     setMarkers([])
-
-    // Fake progress while waiting (one round-trip; real work is on the server)
-    const tick = window.setInterval(() => {
-      setProgress((p) => Math.min(p + 4, 85))
-    }, 400)
-
-    // Default copy assumes full download; refined after response via syncMode
     setPhase('backfilling')
 
     try {
@@ -152,11 +127,8 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
       // A newer request was started — drop this result
       if (reqId !== reqIdRef.current) return
 
-      window.clearInterval(tick)
-
       if (!result.data) {
         setPhase('error')
-        setProgress(100)
         setError(result.error || 'Failed to load chart')
         setBars([])
         setMarkers([])
@@ -165,7 +137,6 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
 
       const mode = result.data.sync.mode
       setSyncMode(mode)
-      setProgress(100)
       setBars(result.data.bars)
       setMarkers(result.data.markers)
       setLastSyncedAt(result.data.sync.lastSyncedAt)
@@ -174,9 +145,7 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
       setPhase('ready')
     } catch {
       if (reqId !== reqIdRef.current) return
-      window.clearInterval(tick)
       setPhase('error')
-      setProgress(100)
       setError('Failed to load chart. Please try again.')
     }
   }, [selected, range])
@@ -235,50 +204,30 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
           </select>
         </div>
 
-        <SegmentedControl
-          aria-label="Price chart time range"
-          size="sm"
-          options={RANGE_OPTIONS}
-          value={range}
-          onChange={setRange}
-          disabled={busy}
-        />
+        <div className="flex flex-col items-stretch gap-1 sm:items-end">
+          <SegmentedControl
+            aria-label="Price chart time range"
+            size="sm"
+            options={RANGE_OPTIONS}
+            value={range}
+            onChange={setRange}
+            disabled={busy}
+          />
+          <span className="text-[11px] text-muted-foreground">
+            Candle window for this holding — not Performance Daily / Monthly.
+          </span>
+        </div>
       </div>
 
-      {/* Progress bar: cold full backfill can take several seconds */}
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          <span>
-            {statusLabel(phase, selected?.symbol ?? '', syncMode)}
-          </span>
-          {busy && (
-            <span>
-              {Math.round(progressForPhase(phase) || progress)}%
-            </span>
-          )}
-        </div>
-        <div
-          className="h-2 w-full overflow-hidden rounded-full bg-muted"
-          role="progressbar"
-          aria-valuenow={Math.round(progress)}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label="Price history load progress"
-        >
-          <div
-            className={`h-full rounded-full transition-all duration-300 ${
-              phase === 'error' ? 'bg-destructive' : 'bg-primary'
-            }`}
-            style={{
-              width: `${
-                phase === 'ready' || phase === 'error'
-                  ? 100
-                  : Math.max(progress, progressForPhase(phase))
-              }%`,
-            }}
-          />
-        </div>
-      </div>
+      {busy ? (
+        <p className="text-xs text-muted-foreground">
+          {statusLabel(phase, selected?.symbol ?? '', syncMode)}
+        </p>
+      ) : phase === 'ready' ? (
+        <p className="text-xs text-muted-foreground">
+          {statusLabel(phase, selected?.symbol ?? '', syncMode)}
+        </p>
+      ) : null}
 
       {error && (
         <div className="alert-error flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -329,7 +278,10 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
           <span>
             {assetType === 'crypto'
               ? 'Daily candles · Binance spot (USDT)'
-              : 'Daily candles (Finnhub OHLC)'}
+              : selected &&
+                  getSecurityPricing(selected.symbol).kind === 'yahoo_chart'
+                ? 'Daily NAV · Yahoo Finance'
+                : 'Daily candles · Finnhub OHLC'}
           </span>
         </div>
         <div className="text-right">

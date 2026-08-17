@@ -43,6 +43,8 @@ const RECOVERY_BY_MODE: Record<
   not_configured: { recovery: 'abort', retryable: false },
   not_authenticated: { recovery: 'abort', retryable: false },
   empty_portfolio: { recovery: 'abort', retryable: false },
+  no_snapshot_history: { recovery: 'ask_user', retryable: false },
+  no_target_policy: { recovery: 'ask_user', retryable: false },
   insert_failed: { recovery: 'abort', retryable: false },
   registry_invariant: { recovery: 'abort', retryable: false },
   unknown_tool: { recovery: 'abort', retryable: false },

@@ -10,6 +10,11 @@ export {
   groupMarkersByDay,
   dayMarkerStyles,
 } from './markersFromTransactions'
-export { syncSymbolHistory, loadBarsFromDb } from './syncSymbolHistory'
+export {
+  syncSymbolHistory,
+  loadBarsFromDb,
+  historyProviderForSymbol,
+} from './syncSymbolHistory'
+export { parseYahooDailyBars, buildYahooHistoryUrl } from './fetchYahooBars'
 export { getBinanceSpotSymbol } from './binanceSymbol'
 export { parseBinanceKlines, fetchBinanceDailyKlines } from './fetchBinanceKlines'
