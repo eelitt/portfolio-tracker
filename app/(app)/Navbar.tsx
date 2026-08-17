@@ -68,11 +68,15 @@ export default function Navbar({
     }
   }
 
-  const toggleGoalsSidebar = () => {
-    const currentlyOpen = localStorage.getItem('goalsSidebarOpen') === 'true'
+  const togglePlanSidebar = () => {
+    const stored = localStorage.getItem('planSidebarOpen')
+    const currentlyOpen =
+      stored !== null
+        ? stored === 'true'
+        : localStorage.getItem('goalsSidebarOpen') === 'true'
     const newOpen = !currentlyOpen
-    localStorage.setItem('goalsSidebarOpen', newOpen.toString())
-    window.dispatchEvent(new CustomEvent('goals-sidebar-toggle'))
+    localStorage.setItem('planSidebarOpen', newOpen.toString())
+    window.dispatchEvent(new CustomEvent('plan-sidebar-toggle'))
   }
 
   const toggleAIInsights = () => {
@@ -185,16 +189,15 @@ export default function Navbar({
             </Button>
           )}
 
-          {/* Goals sidebar toggle */}
           <Button
             variant="ghost"
             size="sm"
-            onClick={toggleGoalsSidebar}
+            onClick={togglePlanSidebar}
             className="flex items-center gap-2"
-            aria-label="Toggle investing goals sidebar"
+            aria-label="Toggle plan sidebar"
           >
             <Target className="h-4 w-4" />
-            Goals
+            Plan
           </Button>
 
           {/* User Dropdown */}
@@ -323,7 +326,11 @@ export default function Navbar({
 
       {/* Mounted for event-driven open from dropdown + internal dialog state */}
       <ImportTransactionsModal />
-      <SettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <SettingsModal
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        preferredCurrency={currentCurrency}
+      />
       <TaxEstimatorModal
         open={taxEstimatorOpen}
         onOpenChange={setTaxEstimatorOpen}

@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Navbar from './Navbar'
 import SiteFooter from './SiteFooter'
-import GoalsSidebar from './goals/GoalsSidebar'
+import PlanSidebar from './plan/PlanSidebar'
 import AIInsightsPanel from './ai-insights/AIInsightsPanel'
 import { getCurrentUserProfile } from '@/lib/user'
 import { PrivacyModeProvider } from './privacy/PrivacyModeProvider'
@@ -42,7 +42,7 @@ export default async function DashboardLayout({
           {children}
         </main>
         <SiteFooter />
-        <GoalsSidebar preferredCurrency={profile?.preferredCurrency || 'USD'} />
+        <PlanSidebar preferredCurrency={profile?.preferredCurrency || 'USD'} />
         <AIInsightsPanel isAdmin={profile?.admin === true} />
       </div>
       </DashboardLayoutProvider>

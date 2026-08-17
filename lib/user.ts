@@ -28,7 +28,9 @@ export const getCurrentUserProfile = cache(async (): Promise<UserProfile | null>
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('preferred_currency, admin, access_to_app')
+    .select(
+      'preferred_currency, admin, access_to_app, age_band, horizon, risk_tolerance, monthly_contribution'
+    )
     .eq('id', user.id)
     .maybeSingle()
 
@@ -38,6 +40,11 @@ export const getCurrentUserProfile = cache(async (): Promise<UserProfile | null>
     preferredCurrency: (profile?.preferred_currency as PreferredCurrency) || 'USD',
     admin: profile?.admin === true,
     accessToApp: profile?.access_to_app === true,
+    ageBand: (profile?.age_band as UserProfile['ageBand']) ?? null,
+    horizon: (profile?.horizon as UserProfile['horizon']) ?? null,
+    riskTolerance: (profile?.risk_tolerance as UserProfile['riskTolerance']) ?? null,
+    monthlyContribution:
+      (profile?.monthly_contribution as UserProfile['monthlyContribution']) ?? null,
   }
 })
 

@@ -1,88 +1,202 @@
 # Architecture
 
-How the tracker is put together. The [README](./README.md) is the short pitch; this file is the map.
+How a request becomes numbers the user is allowed to trust.
 
-## Core product
+The [README](./README.md) is the pitch. [AGENTS.md](./AGENTS.md) is phases, layout, and coding rules. This file is the **control plane**: what is source of truth, which functions are allowed to invent money, and what happens on the paths that matter.
+
+---
+
+## Thesis
+
+1. **`transactions` are the only ledger.** There is no holdings table. Open positions, cost basis, and realized P&L are reduced in process.
+2. **Money math is pure and shared.** Dashboard, Plan sidebar, tax estimate, and analyst tools call the same helpers. The model does not compute balances.
+3. **Isolation is layered.** Session cookies, `profiles.access_to_app`, and Postgres RLS all have to agree. The AI stack is not a second data plane — it uses the user-scoped Supabase client.
+
+If those three fail, the UI being pretty does not matter.
+
+---
+
+## Isolation
+
+A signed-in user is not enough. Signup creates a `profiles` row with `access_to_app = false` until an admin grants it.
+
+| Layer | What it does |
+|---|---|
+| Middleware (`lib/supabase/middleware.ts`) | Refreshes the auth cookie. Unauthenticated app routes → `/login`. Authenticated but `access_to_app !== true` → sign out, `/login?reason=access`. Fail **closed** if the profile read fails. |
+| Login `ensureAppAccess` | Same flag after password/session; signs out on deny. |
+| `(app)/layout.tsx` | Loads profile; no access → sign out + redirect. |
+| `POST /api/portfolio-analyst` | 401 if no user, 403 if no access. |
+| RLS | User tables (`transactions`, `watchlist`, `goals`, `allocation_*`, `portfolio_snapshots`, `user_ai_insights`, …) use `user_id = auth.uid()`. Admin list/update uses the service-role client **after** `requireAdmin`. |
+
+The browser never sees Finnhub or service-role keys. Price and AI calls are Server Actions / Route Handlers.
+
+---
+
+## Dashboard load — the money pipeline
+
+Every dashboard section that needs a book calls `getPortfolioData()` (`lib/portfolioData.ts`). It is wrapped in `React.cache`, so layout, summary, holdings, and a same-request Plan/workspace read share one run.
 
 ```
-Transactions (Postgres + RLS)
-        ↓ pure reduce
-   Holdings + cost basis + realized P&L
-        ↓ live marks (server-side)
-   Dashboard summary, allocation, charts
+profile (preferred currency)
+        + Frankfurter USD→EUR (fallback 0.92)
+        + getUserTransactions()          -- RLS
+        │
+        ├─ calculateHoldings(txs)        -- weighted average, per symbol
+        │       drop cash rows from this book
+        │       getPricesForHoldings(assets, { forceFresh: false })
+        │       enrichHoldings            -- missing/0 quote ⇒ priceAvailable false, uPnL 0
+        │       toPreferredHolding        -- marks are USD; costs in entry currency; recompute P&L
+        │
+        └─ calculateCashHoldingsInPreferred(txs)
+                convert each cash tx, then net
+        │
+        └─ aggregatePreferredPortfolio(assets, cash)
+                MV / 24h = priced assets + cash
+                cost = all open positions (including unpriced)
+                uPnL = priced assets only
 ```
 
-- **Single source of truth:** `transactions`. There is no holdings table.
-- **Domain logic** lives in tested helpers: `lib/calculatePortfolio.ts`, `lib/portfolioAnalyst/`, `lib/tax/`, `lib/convertToPreferred.ts`.
-- **Prices** are fetched only for open holdings and watchlist symbols (Finnhub stocks/ETFs, Binance crypto, Yahoo-chart NAVs for selected funds). Never for the full JSON catalogs.
-- **Snapshots:** Supabase Edge Function `portfolio-snapshots` writes daily USD marks; the Performance chart aggregates them (`lib/aggregateSnapshots.ts`).
+### Why cash is a second reduce
 
-Auth is Supabase. Row Level Security is `user_id = auth.uid()` on user tables. Server Actions return `{ data?: T; error?: string }`. Inputs go through Zod before any write.
+`calculateHoldings` groups by symbol and stamps **currency from the first chronological row**. Mixed EUR+USD cash would become a nonsense face sum. Cash is therefore converted **per transaction** into preferred currency and netted there. Asset positions still use the first-tx currency as the cost denomination (one currency per symbol is the current model, not a multi-lot FX book).
 
-## AI layer
+### Invariants this pipeline exists to protect
+
+- **Weighted average cost.** A sell uses average cost at that moment, not FIFO. Oversells are capped to quantity owned; remaining `avgCost` does not change.
+- **A missing or zero live quote is not a total loss.** `enrichHoldings` zeros market fields and sets `priceAvailable: false`. Aggregates must not treat that as mark-to-market $0.
+- **Do not FX-scale mixed P&L.** Live quotes are USD. Cost / realized P&L are in the holding’s entry currency. `toPreferredHolding` converts each side, then recomputes unrealized P&L. `500 * rate` of a mixed-unit P&L is a bug.
+- **24h %** uses previous total = MV − 24h $, and is 0 when that base is not positive.
+
+`getCurrentUserProfile` is also `React.cache`’d so layout and the pipeline do not double-query `profiles`.
+
+---
+
+## Two books: dashboard vs tax
+
+| Book | Method | Where |
+|---|---|---|
+| Operating P&L | Weighted average, all history, preferred currency after FX | `calculateHoldings` + enrich + convert |
+| Finnish CG estimate | FIFO **and** weighted average, EUR, HMO compare, calendar year | `lib/tax/` via `appTransactionsToTaxableEvents` |
+
+They must not share a lot engine. Dashboard “realized P&L” is not taxable gain. Tax skips cash / inflow / outflow, converts unit prices to EUR, and can apply hankintameno-olettama (never on a loss). Small-disposal (€1,000 proceeds), progressive 30/34%, and hypothetical sells are estimator rules, not portfolio state.
+
+UI: navbar tax modal. Chat: Tax Agent, same functions. Estimate only.
+
+---
+
+## Prices
+
+Called only for **open non-cash holdings** (and watchlist / fund NAVs when those UIs need them). Never for the full `lib/symbols/*.json` catalogs.
+
+| Kind | Source |
+|---|---|
+| Stock / most ETFs | Finnhub quote (`FINNHUB_API_KEY`; missing key → no fetch) |
+| Selected Finnish funds | Yahoo chart NAV, EUR → USD |
+| Crypto | Binance 24hr ticker, batched; stables = 1, no network |
+| Cash | Face 1, no network |
+
+`getPricesForHoldings` defaults to **fresh** (`forceFresh` undefined → `true`) and retries missing symbols once. The dashboard pipeline passes **`forceFresh: false`** so a 60s Data Cache tag `prices` is reused across currency toggles and Plan reloads. The Refresh control `revalidateTag('prices')` then fetches again.
+
+Unpriced names stay in the holdings list and in **cost**; they drop out of MV, allocation weights, 24h, and rebalance notionals.
+
+---
+
+## Writes
+
+### Form
+
+`transactionSchema` (Zod) → `createTransaction` / update / delete. Optional currency; if omitted, preferred currency. Cash quantities rounded to 2 dp. RLS still requires `user_id = auth.uid()`.
+
+The schema currently allows `cash` + `buy`. Chat validation rejects that combo (`inflow`/`outflow` only). Forms should not rely on chat rules.
+
+### Chat (prepare → confirm)
+
+Pending drafts are **not** a first-class table. They are a `user_ai_insights` row (`feature_type = portfolio_analyst_pending_tx`) with a 30-minute TTL.
 
 ```
-User (dashboard icons / Assistant chat)
-    → Server Actions / API
-         → Context pack (currency, goals, last analysis, news age)
-         → Orchestrator (streamText)
-              ├── Portfolio Analyst   (holdings, P&L, what-if, NL trades, watchlist)
-              ├── Analysis Agent      (insight bullets)
-              ├── News Agent          (holding / watchlist news + impact)
-              └── Tax Agent           (Finnish CG estimate)
-         → Tool registry + write gates + recovery envelopes
-         → pure domain (lib/) + storage
-    → Supabase RLS + agent_runs (parent/child)
+user text
+  → validateTransactionDraft (catalog, €/$, cash actions)
+  → prepare_transaction     staging; stores draft; confirmLevel hard | elevated_hard
+  → user new message        "yes" / "confirm"  or  "confirm sell" if warned
+  → assertWriteAllowed      not same HTTP turn as prepare; draft must exist
+  → confirm_transaction     createTransactionRecord({ requireCurrency: true })
 ```
 
-Chat: `POST /api/portfolio-analyst`. Feature code: `app/actions/ai/<feature>/`. Registry: `lib/aiTools/`.
+`assertWriteAllowed` is the only confirm gate. Watchlist add/remove are writes **without** that gate (commanding turn). They must not be sent through `assertWriteAllowed` (registry: `requiresConfirmation: false`).
 
-The model does not invent balances. Numbers come from tools that call the same pure functions the dashboard uses.
+Dry-run (`body.dryRun` or phrases like “dry run:” / “what would you do”) validates and describes. No draft persist, no insert, no forced news refresh.
 
-### Progressive disclosure
+---
 
-Same engines in the UI and in chat.
+## AI control plane
 
-| Feature | Primary UI | Chat |
-|---------|------------|------|
-| Analysis | Summary Orbit icon → popover | Analysis agent (same storage) |
-| Holding / watchlist news | Section Orbit icon → popover + row/card tooltips | News agent (same package per feature type) |
-| Tax | Navbar modal | Tax agent (same engine) |
-| Logging / watchlist mutate | Forms | Analyst: prepare → confirm (trades); watchlist add/remove on the commanding turn |
+```
+POST /api/portfolio-analyst
+  sanitize messages (drop system/developer; cap size)
+  resolveDryRun
+  buildUserContext          -- currency, goals, investor one-liner, target mix, last analysis/news
+  orchestrator streamText
+       invoke_news_agent
+       invoke_portfolio_analyst   -- may receive news handoff from THIS request only
+       invoke_tax_agent
+       invoke_portfolio_analysis_agent
+  parent agent_runs + child runs
+```
 
-### Tool control
+The orchestrator **does not** do portfolio math. Specialists call `getPortfolioData` / tax / news the same way the UI does.
 
-| Class | Examples | Rules |
-|-------|----------|--------|
-| **Read** | holdings, allocation, scenarios, tax estimate, list watchlist | Safe to call freely |
-| **Staging** | `prepare_transaction` | Draft only; warnings → elevated confirm (e.g. “confirm sell”) |
-| **Write** | `confirm_transaction` (money); watchlist add/remove (not a confirm turn) | Trades: explicit confirm in a **new** turn; never same turn as prepare |
-| **External / storage** | news live fetch, analysis generation | Rate-limited; not portfolio writes |
+`lib/aiTools/registry.ts` is the contract: `id`, owner, sideEffect (`read` | `staging` | `write` | `external` | `storage`), `requiresConfirmation`, permissions, `failureModes`. Tools return a `failureMode` mapped to `ask_user` / `fallback_simpler` / `retry_same` / `abort`.
 
-**Dry-run:** `dryRun: true` on the API body, or phrasing like “dry run: …” / “what would you do if…”. Validates and describes; no pending draft, no transaction write, no forced live news refresh.
+**Progressive disclosure:** same engines in UI and chat (analysis popover, news popovers, tax modal, Plan sidebar). Chat is another client, not another calculator.
 
-**Shared limits:** analysis ~1 minute between new runs when the portfolio changed (reuse if unchanged); holding news and watchlist news each have their own 24h live-fetch cooldown (non-admin); chat has a soft rate limit.
+News handoff is a parsed slim payload (`parseNewsContextHandoff`). The analyst may cite those bullets; it may not invent headlines.
 
-**Recovery:** tools return a stable `failureMode` mapped to `ask_user` / `fallback_simpler` / `retry_same` / `abort` (`lib/aiTools/recovery.ts`).
+Admin: `agent_runs` (tokens, cost, confirm flags, parent/child). Eval fixtures inject a portfolio and must not write real txs (`evalMode` / dry-run).
 
-## Observability and eval (admin)
+---
 
-- **`agent_runs`** — parent + child: tools, latency, tokens, estimated cost, confirm flags.
-- **Admin menu → Agent observability** — Overview, Runs, Eval.
-- **Eval suite** — fixtures in `lib/agentEval/fixtures/`; pure `scoreCase`; live run via `POST /api/admin/agent-eval`.
-- **Isolation** — fixture portfolio injection; eval/dry-run must not write real transactions.
+## Plan (targets), not a third book
+
+One `allocation_policies` row per user + `allocation_targets` (type weights summing to 100%, optional symbol % of **total** MV, capped by that type’s bucket).
+
+`lib/allocationTargets/` is pure: validate, `computeDrift`, `suggestRebalance` (cash-first inplace, or new-cash buys only), `suggestMixFromProfile` (templates from Settings enums — the model does not invent weights).
+
+Analyst tools `get_target_allocation`, `get_rebalance_plan`, `suggest_allocation_mix` are **read**. Applying a mix is a sidebar `upsertAllocationPolicy`. Suggestions are not transactions.
+
+Investor profile (age band, horizon, risk, monthly contribution **band** in preferred currency) lives on `profiles`. Mix-from-profile requires risk + horizon; the Plan UI hides the suggest button until those exist.
+
+---
+
+## History
+
+Daily USD snapshots: Edge Function `portfolio-snapshots` → `portfolio_snapshots` (RLS read). Performance chart: `getPortfolioSnapshots` + `lib/aggregateSnapshots.ts` (daily 90d / monthly 24m / yearly). That series is **not** rebuilt from transactions + historical marks on each page load.
+
+---
+
+## What tests are for
+
+Unit tests under `lib/tests/` are the architecture’s proof for **money and gates**, not for CSS.
+
+They are supposed to fail if: weighted-average / remaining basis / oversell cap changes; missing quote invents −100% P&L; mixed-currency P&L is scaled; cash nets raw faces; HMO applies to a loss; confirm accepts a jailbreak sentence; type weights do not sum to 100.
+
+They are **not** supposed to prove RLS. User A vs user B is a policy + integration concern.
+
+---
 
 ## Repo map
 
-| Area | Where |
-|------|--------|
-| Dashboard UI | `app/(app)/dashboard/` |
-| Assistant UI | `app/(app)/ai-insights/` |
-| AI features | `app/actions/ai/` + `app/api/portfolio-analyst` |
-| Tool registry / control | `lib/aiTools/` |
-| Multi-agent contracts | `lib/agents/` |
-| Portfolio math | `lib/calculatePortfolio.ts`, `lib/portfolioAnalyst/` |
-| Tax domain | `lib/tax/` |
-| Observability & eval | `lib/agentObservability/`, `lib/agentEval/` |
-| Unit tests | `lib/tests/` |
-
+| Concern | Where |
+|---|---|
+| Dashboard pipeline | `lib/portfolioData.ts` |
+| Reduce / enrich | `lib/calculatePortfolio.ts` |
+| FX + cash + totals | `lib/convertToPreferred.ts`, `lib/currency.ts` |
+| Live marks | `lib/prices/` |
+| Targets / drift / mix | `lib/allocationTargets/` |
+| Tax | `lib/tax/` |
+| Analyst math | `lib/portfolioAnalyst/` |
+| Tool registry / confirm / dry-run / context | `lib/aiTools/` |
+| Child-agent runs | `lib/agents/` |
+| Server actions | `app/actions/` (`allocation.ts`, `transactions.ts`, `ai/…`) |
+| Chat route | `app/api/portfolio-analyst/route.ts` |
+| Plan UI | `app/(app)/plan/` |
+| Tests | `lib/tests/` |

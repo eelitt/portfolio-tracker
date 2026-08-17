@@ -68,4 +68,6 @@ export type UserContextPack = {
     symbolCount: number
   } | null
   portfolioOneLiner: string | null
+  investorOneLiner: string | null
+  targetOneLiner: string | null
 }

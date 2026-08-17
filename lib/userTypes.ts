@@ -5,7 +5,24 @@
 
 export type PreferredCurrency = 'USD' | 'EUR'
 
-export interface UserProfile {
+export type AgeBand = 'under_30' | '30_45' | '45_60' | '60_plus'
+export type Horizon = 'lt_3y' | '3_10y' | 'gt_10y'
+export type RiskTolerance = 'conservative' | 'moderate' | 'aggressive'
+export type MonthlyContribution =
+  | 'none'
+  | '1_500'
+  | '500_1000'
+  | '1000_5000'
+  | '5000_plus'
+
+export interface InvestorProfileFields {
+  ageBand: AgeBand | null
+  horizon: Horizon | null
+  riskTolerance: RiskTolerance | null
+  monthlyContribution: MonthlyContribution | null
+}
+
+export interface UserProfile extends InvestorProfileFields {
   id: string
   email?: string
   preferredCurrency: PreferredCurrency

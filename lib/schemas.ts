@@ -30,6 +30,39 @@ export const goalSchema = z.object({
 
 export type GoalFormData = z.infer<typeof goalSchema>
 
+export const investorProfileSchema = z.object({
+  ageBand: z.enum(['under_30', '30_45', '45_60', '60_plus']).nullable().optional(),
+  horizon: z.enum(['lt_3y', '3_10y', 'gt_10y']).nullable().optional(),
+  riskTolerance: z.enum(['conservative', 'moderate', 'aggressive']).nullable().optional(),
+  monthlyContribution: z
+    .enum(['none', '1_500', '500_1000', '1000_5000', '5000_plus'])
+    .nullable()
+    .optional(),
+})
+
+export type InvestorProfileForm = z.infer<typeof investorProfileSchema>
+
+export const allocationPolicySchema = z.object({
+  typeWeights: z.object({
+    stock: z.coerce.number(),
+    etf: z.coerce.number(),
+    crypto: z.coerce.number(),
+    cash: z.coerce.number(),
+  }),
+  symbolOverrides: z
+    .array(
+      z.object({
+        symbol: z.string().min(1).toUpperCase(),
+        assetType: z.enum(['stock', 'etf', 'crypto']),
+        weightPercent: z.coerce.number(),
+      })
+    )
+    .default([]),
+  tolerancePp: z.coerce.number().min(0).max(50).default(5),
+})
+
+export type AllocationPolicyForm = z.infer<typeof allocationPolicySchema>
+
 export const watchlistSchema = z.object({
   symbol: z.string().min(1, 'Symbol is required').toUpperCase(),
   asset_type: z.enum(['stock', 'etf', 'crypto']),

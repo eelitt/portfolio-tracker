@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { calculateHoldings, computePortfolioHash, enrichHoldings, type Transaction} from '../calculatePortfolio'
-import { Holding } from '../types'
+import { calculateHoldings, computePortfolioHash, enrichHoldings } from '../calculatePortfolio'
+import { Holding, type Transaction } from '../types'
 
 describe('calculateHoldings', () => {
   it('should return empty array when no transactions', () => {
@@ -201,7 +201,7 @@ describe('calculateHoldings', () => {
       },
     ]
 
-    const holdings = calculateHoldings(transactions)
+    const holdings = calculateHoldings(transactions as Transaction[])
     expect(holdings[0].quantity).toBe(10)
     expect(holdings[0].avgCost).toBe(150)
     expect(holdings[0].totalCost).toBe(1500)

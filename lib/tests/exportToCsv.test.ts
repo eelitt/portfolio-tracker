@@ -27,7 +27,7 @@ async function captureDownload(run: () => void): Promise<{ filename: string; tex
   run()
 
   expect(blob).not.toBeNull()
-  const text = await (blob as Blob).text()
+  const text = await (blob as unknown as Blob).text()
   createObjectURL.mockRestore()
   return { filename, text }
 }

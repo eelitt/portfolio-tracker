@@ -11,6 +11,7 @@ import { getPortfolioData } from '@/lib/portfolioData'
 import { getLatestAIInsight } from '@/app/actions/ai/storage'
 import { HOLDING_NEWS_FEATURE_TYPE } from '@/app/actions/ai/holding-news/newsUtils'
 import type { UserContextPack } from './types'
+import { formatContributionContext } from '@/lib/allocationTargets'
 
 const MAX_GOALS = 5
 const MAX_ANALYSIS_BULLETS = 6
@@ -99,6 +100,37 @@ export async function buildUserContext(
     portfolioOneLiner = null
   }
 
+  const bits: string[] = []
+  if (profile?.ageBand) bits.push(profile.ageBand.replace('_', '–'))
+  if (profile?.horizon) bits.push(profile.horizon.replace('_', '–'))
+  if (profile?.riskTolerance) bits.push(profile.riskTolerance)
+  if (profile?.monthlyContribution) {
+    bits.push(
+      formatContributionContext(profile.monthlyContribution, preferredCurrency)
+    )
+  }
+  const investorOneLiner = bits.length > 0 ? bits.join(', ') : null
+
+  let targetOneLiner: string | null = null
+  const { data: policyRows } = await supabase
+    .from('allocation_policies')
+    .select('id, tolerance_pp')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (policyRows) {
+    const { data: trows } = await supabase
+      .from('allocation_targets')
+      .select('scope, key, weight_percent')
+      .eq('policy_id', policyRows.id)
+      .eq('scope', 'asset_type')
+    if (trows && trows.length > 0) {
+      const parts = trows
+        .map((r) => `${r.key} ${Number(r.weight_percent)}`)
+        .join(' / ')
+      targetOneLiner = `Target: ${parts}`
+    }
+  }
+
   return {
     preferredCurrency,
     isAdmin,
@@ -106,6 +138,8 @@ export async function buildUserContext(
     lastAnalysis,
     lastNews,
     portfolioOneLiner,
+    investorOneLiner,
+    targetOneLiner,
   }
 }
 
@@ -118,6 +152,16 @@ export function formatUserContextForPrompt(pack: UserContextPack): string {
 
   if (pack.portfolioOneLiner) {
     lines.push(`- Portfolio snapshot: ${pack.portfolioOneLiner}`)
+  }
+  if (pack.investorOneLiner) {
+    lines.push(`- Investor: ${pack.investorOneLiner}`)
+  } else {
+    lines.push('- Investor profile: not set')
+  }
+  if (pack.targetOneLiner) {
+    lines.push(`- ${pack.targetOneLiner}`)
+  } else {
+    lines.push('- Target allocation: not set')
   }
 
   if (pack.goals.length > 0) {
