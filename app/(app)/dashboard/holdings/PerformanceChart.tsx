@@ -18,19 +18,12 @@ import {
   indexSnapshotSeries,
   mergeSeriesToChartRows,
   PORTFOLIO_SERIES_ID,
-  seriesRangeChange,
   type PerformanceScaleMode,
   type SnapshotPoint,
   type SnapshotRangeMode,
 } from '@/lib/aggregateSnapshots'
-import {
-  clipToDateRange,
-  excessReturn,
-  isBenchmarkSeriesId,
-  trackingError,
-} from '@/lib/benchmarks'
+import { isBenchmarkSeriesId } from '@/lib/benchmarks'
 import type { PreferredCurrency } from '@/lib/userTypes'
-import SensitiveValue from '@/components/SensitiveValue'
 import { useHideMoney } from '@/app/(app)/privacy/PrivacyModeProvider'
 import { MONEY_MASK } from '@/lib/privacyMode'
 import { cn } from '@/lib/utils'
@@ -59,8 +52,6 @@ interface PerformanceChartProps {
   preferredCurrency: PreferredCurrency
   /** Fatal: no portfolio history (blank the chart). */
   error?: string | null
-  /** Non-fatal: holding or benchmark load failed; chart still draws. */
-  warning?: string | null
   loading?: boolean
 }
 
@@ -91,7 +82,6 @@ export default function PerformanceChart({
   scaleMode,
   preferredCurrency,
   error,
-  warning,
   loading,
 }: PerformanceChartProps) {
   const hideMoney = useHideMoney()
@@ -113,12 +103,12 @@ export default function PerformanceChart({
     )
   }
 
-  const windowedById: Record<string, SnapshotPoint[]> = {}
   const aggregated: Record<string, SnapshotPoint[]> = {}
   for (const meta of seriesMeta) {
-    const raw = seriesById[meta.id] ?? []
-    const windowed = aggregateSnapshotSeries(raw, rangeMode)
-    windowedById[meta.id] = windowed
+    const windowed = aggregateSnapshotSeries(
+      seriesById[meta.id] ?? [],
+      rangeMode
+    )
     if (isIndexed) {
       const indexed = indexSnapshotSeries(windowed)
       aggregated[meta.id] = indexed ?? []
@@ -153,115 +143,11 @@ export default function PerformanceChart({
     })
   )
 
-  const portfolioAgg = aggregated[PORTFOLIO_SERIES_ID] ?? []
-  const portfolioChange =
-    !isIndexed && visibleIds.includes(PORTFOLIO_SERIES_ID)
-      ? seriesRangeChange(portfolioAgg)
-      : null
-
   const metaById = new Map(seriesMeta.map((m) => [m.id, m]))
   const holdingLegend = seriesMeta.filter((m) => !isBenchmarkSeriesId(m.id))
-  const visibleBenches = visibleIds.filter((id) => isBenchmarkSeriesId(id))
-  const portWindowed = windowedById[PORTFOLIO_SERIES_ID] ?? []
-  const windowStart = portWindowed[0]?.date
-  const windowEnd = portWindowed[portWindowed.length - 1]?.date
 
   return (
     <div>
-      {warning ? (
-        <p className="mb-2 text-xs text-muted-foreground">{warning}</p>
-      ) : null}
-      {portfolioChange && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-muted-foreground">Portfolio change in range</span>
-          <span
-            className={
-              portfolioChange.absolute >= 0
-                ? 'font-medium text-pnl-positive'
-                : 'font-medium text-pnl-negative'
-            }
-          >
-            <SensitiveValue
-              value={formatCurrency(
-                portfolioChange.absolute,
-                preferredCurrency,
-                1
-              )}
-            />{' '}
-            ({portfolioChange.percent >= 0 ? '+' : ''}
-            {portfolioChange.percent.toFixed(2)}%)
-          </span>
-        </div>
-      )}
-
-      {isIndexed && (
-        <p className="mb-2 text-xs text-muted-foreground">
-          Indexed: each series starts at 0% at the beginning of the range.
-        </p>
-      )}
-
-      {visibleBenches.length > 0 && (
-        <div className="mb-3 space-y-1.5">
-          {visibleBenches.map((id) => {
-            const meta = metaById.get(id)
-            const benchWin = windowedById[id] ?? []
-            const ex = excessReturn(portWindowed, benchWin)
-            const te =
-              windowStart && windowEnd
-                ? trackingError(
-                    clipToDateRange(
-                      seriesById[PORTFOLIO_SERIES_ID] ?? [],
-                      windowStart,
-                      windowEnd
-                    ),
-                    clipToDateRange(seriesById[id] ?? [], windowStart, windowEnd)
-                  )
-                : null
-            if (!ex) {
-              return (
-                <p key={id} className="text-xs text-muted-foreground">
-                  {meta?.label ?? id}: not enough overlapping history in this range.
-                </p>
-              )
-            }
-            return (
-              <p key={id} className="text-xs text-muted-foreground">
-                <span className="text-foreground">{meta?.label ?? id}</span>
-                {' · '}
-                Portfolio {ex.portfolioPercent >= 0 ? '+' : ''}
-                {ex.portfolioPercent.toFixed(2)}%
-                {' · '}
-                Bench {ex.benchmarkPercent >= 0 ? '+' : ''}
-                {ex.benchmarkPercent.toFixed(2)}%
-                {' · '}
-                Excess{' '}
-                <span
-                  className={
-                    ex.excessPp >= 0 ? 'text-pnl-positive' : 'text-pnl-negative'
-                  }
-                >
-                  {ex.excessPp >= 0 ? '+' : ''}
-                  {ex.excessPp.toFixed(2)} pp
-                </span>
-                {te ? (
-                  <>
-                    {' · '}
-                    TE {te.dailyStDevPp.toFixed(2)} pp daily
-                    {te.annualizedStDevPp != null && (
-                      <> · {te.annualizedStDevPp.toFixed(1)} pp ann.</>
-                    )}
-                  </>
-                ) : null}
-              </p>
-            )
-          })}
-          <p className="text-[11px] text-muted-foreground/90">
-            Portfolio is market value (cash in/out counts). Benchmarks are price
-            only — not time-weighted return.
-          </p>
-        </div>
-      )}
-
       {chartRows.length === 0 || visibleWithData.length === 0 ? (
         <div className="empty-state h-64">
           <p className="text-muted-foreground">

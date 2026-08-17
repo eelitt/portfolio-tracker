@@ -9,6 +9,7 @@ import { getCurrentUserProfile } from '@/lib/user'
 import HoldingsGrid from './HoldingsGrid'
 import HoldingsChartsPanel from './HoldingsChartsPanel'
 import HoldingsNewsPopover from './HoldingsNewsPopover'
+import { cashFlowsFromTransactions } from '@/lib/performance'
 
 /**
  * Open Holdings title + grid; Charts is a sibling elevated panel.
@@ -73,6 +74,11 @@ export default async function HoldingsSection() {
         usdToPreferredRate={data.usdToPreferredRate}
         snapshots={snapshotsResult.data ?? []}
         snapshotsError={snapshotsResult.error ?? null}
+        cashFlows={cashFlowsFromTransactions(
+          data.transactions,
+          data.preferredCurrency,
+          data.usdToEurRate
+        )}
       />
     </div>
   )

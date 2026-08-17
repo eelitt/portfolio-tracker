@@ -56,7 +56,7 @@ export const TOOL_REGISTRY: Record<string, ToolMeta> = {
     id: 'get_relative_performance',
     name: 'Relative performance',
     description:
-      'Compare portfolio market-value path to SPY / URTH (MSCI World) / BTC over the Performance-chart window (daily 90d, monthly 24m, yearly). Returns window % , excess pp, daily tracking error, and ΔMV contribution by open holding (cash included). This is value-path vs price-path, not time-weighted alpha. Use for “did I beat the S&P / BTC?”. If snapshots are missing, say so — do not invent returns.',
+      'Compare daily-linked TWR (cash in/out as flows) to SPY / URTH / BTC over the Performance-chart window. Returns TWR %, vol, max drawdown, TWR-minus-bench excess, daily tracking error, and ΔMV contribution. Not alpha; snapshots are end-of-day. If snapshots are missing, say so — do not invent returns.',
     owner: 'portfolio_analyst',
     sideEffect: 'read',
     requiresConfirmation: false,

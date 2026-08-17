@@ -175,7 +175,7 @@ Daily USD snapshots: Edge Function `portfolio-snapshots` → `portfolio_snapshot
 
 Chart / Price-tab history uses the same catalog routing as live marks: `yahoo_chart` funds (e.g. OP Amerikka) load Yahoo daily bars, not Finnhub. Bars are stored USD (EUR NAV ÷ USD/EUR).
 
-Optional benchmarks (SPY, URTH, BTC) overlay that chart as **price** series from `price_bars` (`syncSymbolHistory`: full backfill once, then gap-fill / cache_only). They are **not** fetched on the dashboard GET — only when a Performance-tab chip is on. Excess return and tracking error live in `lib/benchmarks/` (intersection dates; TE from daily excess even if the chart is monthly/yearly). Contribution is Δ market value of open holdings + cash over the selected window, not a factor model. Do not call the difference vs a bench “alpha”: the book line includes cash flows.
+Optional benchmarks (SPY, URTH, BTC) overlay that chart as **price** series from `price_bars` (`syncSymbolHistory`: full backfill once, then gap-fill / cache_only). They are **not** fetched on the dashboard GET — only when a Performance-tab chip is on. Tracking error lives in `lib/benchmarks/` (daily MV vs price). Daily-linked TWR, vol, and max drawdown live in `lib/performance/` (cash inflow/outflow only; buys/sells are not CF). Headline excess is TWR − bench price return. Contribution is still ΔMV. Formulas: [calculation_logic.md](./calculation_logic.md).
 
 ---
 
@@ -183,7 +183,7 @@ Optional benchmarks (SPY, URTH, BTC) overlay that chart as **price** series from
 
 Unit tests under `lib/tests/` are the architecture’s proof for **money and gates**, not for CSS.
 
-They are supposed to fail if: weighted-average / remaining basis / oversell cap changes; missing quote invents −100% P&L; mixed-currency P&L is scaled; cash nets raw faces; HMO applies to a loss; confirm accepts a jailbreak sentence; type weights do not sum to 100; excess/TE uses fill-forward or a single overlapping point; contribution % is shown when book Δ is 0.
+They are supposed to fail if: weighted-average / remaining basis / oversell cap changes; missing quote invents −100% P&L; mixed-currency P&L is scaled; cash nets raw faces; HMO applies to a loss; confirm accepts a jailbreak sentence; type weights do not sum to 100; excess/TE uses fill-forward or a single overlapping point; contribution % is shown when book Δ is 0; a cash deposit is treated as TWR; TWR invents a return when base MV is 0.
 
 They are **not** supposed to prove RLS. User A vs user B is a policy + integration concern.
 
@@ -198,7 +198,9 @@ They are **not** supposed to prove RLS. User A vs user B is a policy + integrati
 | FX + cash + totals | `lib/convertToPreferred.ts`, `lib/currency.ts` |
 | Live marks | `lib/prices/` |
 | Targets / drift / mix | `lib/allocationTargets/` |
-| Benchmarks / excess / contribution | `lib/benchmarks/` |
+| Benchmarks / TE / contribution | `lib/benchmarks/` |
+| TWR / vol / drawdown | `lib/performance/` |
+| Formula sheet | `calculation_logic.md` |
 | Tax | `lib/tax/` |
 | Analyst math | `lib/portfolioAnalyst/` |
 | Tool registry / confirm / dry-run / context | `lib/aiTools/` |
