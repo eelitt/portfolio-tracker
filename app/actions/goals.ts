@@ -11,35 +11,48 @@ export type ActionState = {
   success?: boolean
 }
 
+function rawFromForm(formData: FormData) {
+  return {
+    name: formData.get('name'),
+    target_amount: formData.get('target_amount'),
+    notes: formData.get('notes'),
+    is_completed: formData.get('is_completed') === 'true',
+    target_date: formData.get('target_date'),
+    planned_monthly: formData.get('planned_monthly'),
+    assigned_amount: formData.get('assigned_amount'),
+    include_cash: formData.get('include_cash') === 'true',
+  }
+}
+
 export async function createGoal(
   prevState: ActionState,
   formData: FormData
 ): Promise<ActionState> {
   const supabase = await createClient()
 
-  const rawData = {
-    name: formData.get('name'),
-    target_amount: formData.get('target_amount'),
-    notes: formData.get('notes'),
-    is_completed: formData.get('is_completed') === 'true',
-  }
-
-  const result = goalSchema.safeParse(rawData)
+  const result = goalSchema.safeParse(rawFromForm(formData))
 
   if (!result.success) {
-    return { 
-      error: result.error.flatten().fieldErrors 
+    return {
+      error: result.error.flatten().fieldErrors,
     }
   }
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
   if (!user) {
     return { error: 'Not authenticated' }
   }
 
-  const insertData: any = { ...result.data, user_id: user.id }
+  const insertData: Record<string, unknown> = {
+    ...result.data,
+    user_id: user.id,
+    target_date: result.data.target_date ?? null,
+    planned_monthly: result.data.planned_monthly ?? null,
+    assigned_amount: result.data.assigned_amount ?? null,
+  }
 
-  // If marking as completed on create, set completed_at
   if (insertData.is_completed && !insertData.completed_at) {
     insertData.completed_at = new Date().toISOString()
   }
@@ -60,21 +73,17 @@ export async function deleteGoal(goalId: string) {
   if (!user) {
     return { error: 'Not authenticated' }
   }
-  // verify ownership
   const { data: goal } = await supabase
     .from('goals')
     .select('user_id')
     .eq('id', goalId)
     .single()
 
-    if (!goal || goal.user_id !== user.id) {
+  if (!goal || goal.user_id !== user.id) {
     return { error: 'Unauthorized' }
   }
 
-  const { error } = await supabase
-    .from('goals')
-    .delete()
-    .eq('id', goalId)
+  const { error } = await supabase.from('goals').delete().eq('id', goalId)
 
   if (error) {
     return { error: error.message }
@@ -84,55 +93,45 @@ export async function deleteGoal(goalId: string) {
   return { success: true }
 }
 
-export async function updateGoal(
-  goalId: string,
-  formData: FormData
-) {
+export async function updateGoal(goalId: string, formData: FormData) {
   const supabase = await createClient()
- const user = await getCurrentUser()
- 
+  const user = await getCurrentUser()
+
   if (!user) {
     return { error: 'Not authenticated' }
   }
 
-  // verify ownership
   const { data: goal } = await supabase
     .from('goals')
     .select('user_id, is_completed, completed_at')
     .eq('id', goalId)
     .single()
 
-    if (!goal || goal.user_id !== user.id) {
+  if (!goal || goal.user_id !== user.id) {
     return { error: 'Unauthorized' }
   }
 
-  const rawData = {
-    name: formData.get('name'),
-    target_amount: formData.get('target_amount'),
-    notes: formData.get('notes'),
-    is_completed: formData.get('is_completed') === 'true',
-  }
-
-  // Reuse the same Zod schema 
-  const result = goalSchema.safeParse(rawData)
+  const result = goalSchema.safeParse(rawFromForm(formData))
 
   if (!result.success) {
     return { error: result.error.flatten().fieldErrors }
   }
 
-  const updateData: any = { ...result.data, updated_at: new Date().toISOString() }
+  const updateData: Record<string, unknown> = {
+    ...result.data,
+    target_date: result.data.target_date ?? null,
+    planned_monthly: result.data.planned_monthly ?? null,
+    assigned_amount: result.data.assigned_amount ?? null,
+    updated_at: new Date().toISOString(),
+  }
 
-  // Set completed_at only if becoming completed now (was not before)
   if (updateData.is_completed && !goal.is_completed) {
     updateData.completed_at = new Date().toISOString()
   } else if (!updateData.is_completed) {
     updateData.completed_at = null
   }
 
-  const { error } = await supabase
-    .from('goals')
-    .update(updateData)
-    .eq('id', goalId)
+  const { error } = await supabase.from('goals').update(updateData).eq('id', goalId)
 
   if (error) {
     return { error: error.message }
@@ -141,6 +140,9 @@ export async function updateGoal(
   revalidatePath('/dashboard')
   return { success: true }
 }
+
+const GOAL_COLUMNS =
+  'id, name, target_amount, notes, is_completed, completed_at, target_date, planned_monthly, assigned_amount, include_cash, created_at, updated_at'
 
 export async function getUserGoals() {
   const user = await getCurrentUser()
@@ -150,7 +152,7 @@ export async function getUserGoals() {
 
   const { data: goals, error } = await supabase
     .from('goals')
-    .select('id, name, target_amount, notes, is_completed, completed_at, created_at, updated_at')
+    .select(GOAL_COLUMNS)
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
 

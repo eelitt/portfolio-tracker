@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { getUserGoals } from '@/app/actions/goals'
+import { getAssumptionRates } from '@/app/actions/assumptions'
 import type { AllocationWorkspaceData } from '@/app/actions/allocation'
+import type { Horizon, MonthlyContribution } from '@/lib/allocationTargets'
+import {
+  CRYPTO_RATE_FALLBACK,
+  type AssumptionPack,
+} from '@/lib/projections'
 import type { PreferredCurrency } from '@/lib/userTypes'
 import { Goal } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -29,23 +35,46 @@ function readOpen(): boolean {
   return localStorage.getItem(LEGACY_OPEN_KEY) === 'true'
 }
 
+const FALLBACK_ASSUMPTIONS: AssumptionPack = {
+  fallbackCrypto: CRYPTO_RATE_FALLBACK,
+  btc: {
+    cryptoRate: CRYPTO_RATE_FALLBACK,
+    rawCagr: null,
+    windowStart: null,
+    windowEnd: null,
+    source: 'fallback',
+    computedAt: null,
+  },
+  coins: [],
+}
+
 export default function PlanSidebar({
   preferredCurrency = 'USD',
   initialGoals = [],
   initialPortfolioValue = 0,
   initialWorkspace,
   initialCanSuggestMix = false,
+  initialAssumptions = FALLBACK_ASSUMPTIONS,
+  contributionBand = null,
+  horizon = null,
+  initialCashPrefill,
 }: {
   preferredCurrency?: PreferredCurrency
   initialGoals?: Goal[]
   initialPortfolioValue?: number
   initialWorkspace?: AllocationWorkspaceData
   initialCanSuggestMix?: boolean
+  initialAssumptions?: AssumptionPack
+  contributionBand?: MonthlyContribution | null
+  horizon?: Horizon | null
+  initialCashPrefill?: number
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [tab, setTab] = useState<PlanTab>('goals')
   const [goals, setGoals] = useState<Goal[]>(initialGoals)
   const [portfolioValue, setPortfolioValue] = useState(initialPortfolioValue)
+  const [assumptions, setAssumptions] = useState(initialAssumptions)
+  const returnSlices = initialWorkspace?.returnSlices
 
   const loadGoals = async () => {
     setGoals(await getUserGoals())
@@ -85,6 +114,14 @@ export default function PlanSidebar({
     setTab(next)
     localStorage.setItem(TAB_KEY, next)
   }
+
+  useEffect(() => {
+    if (!isOpen) return
+    const symbols = (initialWorkspace?.returnSlices ?? [])
+      .filter((s) => s.assetType === 'crypto')
+      .map((s) => s.symbol)
+    void getAssumptionRates({ refresh: true, symbols }).then(setAssumptions)
+  }, [isOpen, initialWorkspace?.returnSlices])
 
   return (
     <div
@@ -128,6 +165,13 @@ export default function PlanSidebar({
             goals={goals}
             portfolioValue={portfolioValue}
             preferredCurrency={preferredCurrency}
+            returnSlices={returnSlices ?? []}
+            assumptions={assumptions}
+            monthlyBuys={initialWorkspace?.monthlyBuys ?? 0}
+            monthlyCash={initialWorkspace?.monthlyCash ?? 0}
+            inflowByMonth={initialWorkspace?.inflowByMonth ?? []}
+            contributionBand={contributionBand}
+            horizon={horizon}
             onChanged={loadGoals}
           />
         </div>
@@ -136,6 +180,7 @@ export default function PlanSidebar({
             preferredCurrency={preferredCurrency}
             initialWorkspace={initialWorkspace}
             initialCanSuggestMix={initialCanSuggestMix}
+            initialCashPrefill={initialCashPrefill}
           />
         </div>
       </div>

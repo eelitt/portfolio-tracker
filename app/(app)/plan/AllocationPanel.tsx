@@ -37,10 +37,12 @@ export default function AllocationPanel({
   preferredCurrency,
   initialWorkspace,
   initialCanSuggestMix = false,
+  initialCashPrefill,
 }: {
   preferredCurrency: PreferredCurrency
   initialWorkspace?: AllocationWorkspaceData
   initialCanSuggestMix?: boolean
+  initialCashPrefill?: number
 }) {
   const [typeWeights, setTypeWeights] = useState<TypeWeightMap>(
     initialWorkspace?.policy?.typeWeights ?? DEFAULT_TYPE_WEIGHTS
@@ -65,7 +67,11 @@ export default function AllocationPanel({
     initialWorkspace?.unpricedSymbols ?? []
   )
   const [mode, setMode] = useState<'inplace' | 'new_cash'>('inplace')
-  const [cashIn, setCashIn] = useState('')
+  const [cashIn, setCashIn] = useState(
+    initialCashPrefill != null && Number.isFinite(initialCashPrefill)
+      ? String(Math.round(initialCashPrefill * 100) / 100)
+      : ''
+  )
   const [mixPreview, setMixPreview] = useState<TypeWeightMap | null>(null)
   const [mixNotes, setMixNotes] = useState<string[]>([])
   const [saving, setSaving] = useState(false)

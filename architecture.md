@@ -161,11 +161,13 @@ One `allocation_policies` row per user + `allocation_targets` (type weights summ
 
 `lib/allocationTargets/` is pure: validate, `computeDrift`, `suggestRebalance` (cash-first inplace, or new-cash buys only), `suggestMixFromProfile` (templates from Settings enums — the model does not invent weights).
 
-Analyst tools `get_target_allocation`, `get_rebalance_plan`, `suggest_allocation_mix` are **read**. Applying a mix is a sidebar `upsertAllocationPolicy`. Suggestions are not transactions.
+Analyst tools `get_target_allocation`, `get_rebalance_plan`, `suggest_allocation_mix`, `get_goal_projection` are **read**. Applying a mix is a sidebar `upsertAllocationPolicy`. Suggestions are not transactions.
 
 Investor profile (age band, horizon, risk, monthly contribution **band** in preferred currency) lives on `profiles`. Mix-from-profile requires risk + horizon; the Plan UI hides the suggest button until those exist.
 
-Plan/Goals hydrate from the same document GET (`PlanSidebarHost` → `getAllocationWorkspace` / `getUserGoals`, sharing `getPortfolioData` via `React.cache`). They must not call `getPortfolioData` again on client mount — each Server Action is a new request and re-hits price APIs in dev.
+Plan/Goals hydrate from the same document GET (`PlanSidebarHost` → `getAllocationWorkspace` / `getUserGoals` / `getAssumptionRates({ refresh: false })`, sharing `getPortfolioData` via `React.cache`). They must not call `getPortfolioData` again on client mount — each Server Action is a new request and re-hits price APIs in dev. Yahoo BTC refresh runs when the Plan sidebar opens (or `get_goal_projection` runs), not on every layout GET.
+
+Goals persist name, target, optional `target_date` / `planned_monthly` / `assigned_amount`. Projected FV, required monthly, and on-track status are **derived** in `lib/projections/` (monthly ordinary annuity). `r` is holdings-weighted: stock/etf 8%, cash 0%, stables 0%, each non-stable crypto its Yahoo CAGR if history ≥ 5 years else BTC/6%. Stored in `market_return_assumptions` per ticker. Not allocation targets. Actual monthly deposits = asset buys + user cash inflows last 90d / 3 (popover lists each month). Per-goal `include_cash` can drop cash from PV, `r`, and that total. Goal UI always labels growth-only vs with-planned. One global `market_return_assumptions` row (`btc`); authenticated SELECT; service-role upsert; 30-day refresh; 6% crypto fallback. Analyst `get_goal_projection` is read-only and must not invent `r`.
 
 ---
 

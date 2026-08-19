@@ -71,6 +71,10 @@ export interface Goal {
   notes?: string                    // Optional notes (e.g. "Invest €300/month")
   is_completed: boolean             // Controls visibility
   completed_at?: string             // When it was marked as completed
+  target_date?: string | null
+  planned_monthly?: number | null
+  assigned_amount?: number | null
+  include_cash?: boolean
   created_at: string
   updated_at: string
 }

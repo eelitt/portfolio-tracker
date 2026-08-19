@@ -41,7 +41,7 @@ export async function buildUserContext(
   const supabase = await createClient()
   const { data: goalRows } = await supabase
     .from('goals')
-    .select('name, target_amount, is_completed')
+    .select('name, target_amount, is_completed, target_date, planned_monthly')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(MAX_GOALS)
@@ -50,6 +50,9 @@ export async function buildUserContext(
     name: String(g.name),
     targetAmount: Number(g.target_amount) || 0,
     isCompleted: g.is_completed === true,
+    targetDate: typeof g.target_date === 'string' ? g.target_date : null,
+    plannedMonthly:
+      g.planned_monthly == null ? null : Number(g.planned_monthly) || 0,
   }))
 
   const analysisRow = await getLatestAIInsight(userId, 'portfolio_insights')
@@ -168,7 +171,10 @@ export function formatUserContextForPrompt(pack: UserContextPack): string {
     lines.push('- Goals:')
     for (const g of pack.goals) {
       const done = g.isCompleted ? 'done' : 'open'
-      lines.push(`  • ${g.name} (target ${g.targetAmount}, ${done})`)
+      const date = g.targetDate ? `, date ${g.targetDate}` : ''
+      const pmt =
+        g.plannedMonthly != null ? `, planned ${g.plannedMonthly}/mo` : ''
+      lines.push(`  • ${g.name} (target ${g.targetAmount}${date}${pmt}, ${done})`)
     }
   } else {
     lines.push('- Goals: none set')

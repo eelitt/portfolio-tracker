@@ -58,6 +58,8 @@ export type UserContextPack = {
     name: string
     targetAmount: number
     isCompleted: boolean
+    targetDate: string | null
+    plannedMonthly: number | null
   }>
   lastAnalysis: {
     bullets: string[]

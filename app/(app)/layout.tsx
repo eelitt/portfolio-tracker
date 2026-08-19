@@ -47,6 +47,8 @@ export default async function DashboardLayout({
           <PlanSidebarHost
             preferredCurrency={profile?.preferredCurrency || 'USD'}
             canSuggestMix={Boolean(profile?.riskTolerance && profile?.horizon)}
+            contributionBand={profile?.monthlyContribution ?? null}
+            horizon={profile?.horizon ?? null}
           />
         </Suspense>
         <AIInsightsPanel isAdmin={profile?.admin === true} />

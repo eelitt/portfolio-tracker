@@ -104,6 +104,19 @@ export const TOOL_REGISTRY: Record<string, ToolMeta> = {
     failureModes: ['profile_incomplete'],
     rateLimitKey: null,
   },
+  get_goal_projection: {
+    id: 'get_goal_projection',
+    name: 'Goal projection',
+    description:
+      'Deterministic goal / DCA projection: required monthly, projected value at the target date, months to target, and ahead/on-track/behind. r is holdings-weighted: stock/etf 8%, cash 0%, stables 0%, each non-stable crypto its Yahoo CAGR if the series is ≥5 years else BTC/6% fallback. Not allocation targets. Optional overrides: goalId, monthly, months. Do not invent r or a probability of success.',
+    owner: 'portfolio_analyst',
+    sideEffect: 'read',
+    requiresConfirmation: false,
+    permissions: ['portfolio:read'],
+    costTier: 'free',
+    failureModes: [...analystReadFailures, 'no_goals', 'goal_not_found'],
+    rateLimitKey: null,
+  },
   get_realized_pnl: {
     id: 'get_realized_pnl',
     name: 'Realized P&L',
@@ -306,6 +319,7 @@ export const PORTFOLIO_ANALYST_TOOL_IDS = [
   'get_target_allocation',
   'get_rebalance_plan',
   'suggest_allocation_mix',
+  'get_goal_projection',
   'get_realized_pnl',
   'get_transactions',
   'simulate_scenario',

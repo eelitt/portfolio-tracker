@@ -21,11 +21,36 @@ export const transactionSchema = z.object({
 
 export type TransactionFormData = z.infer<typeof transactionSchema>
 
+const emptyToNull = (v: unknown) => (v === '' || v === undefined ? null : v)
+
 export const goalSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   target_amount: z.coerce.number().positive('Target must be greater than 0'),
   notes: z.string().optional(),
   is_completed: z.coerce.boolean().default(false),
+  target_date: z.preprocess(
+    emptyToNull,
+    z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a valid date')
+      .nullable()
+      .optional()
+  ),
+  planned_monthly: z.preprocess(
+    emptyToNull,
+    z.coerce.number().nonnegative('Monthly must be 0 or more').nullable().optional()
+  ),
+  assigned_amount: z.preprocess(
+    emptyToNull,
+    z.coerce.number().nonnegative('Assigned amount must be 0 or more').nullable().optional()
+  ),
+  include_cash: z.preprocess(
+    (v) =>
+      v === undefined || v === null || v === ''
+        ? true
+        : v === true || v === 'true',
+    z.boolean()
+  ),
 })
 
 export type GoalFormData = z.infer<typeof goalSchema>

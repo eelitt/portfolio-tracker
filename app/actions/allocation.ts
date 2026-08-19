@@ -13,7 +13,15 @@ import {
   validatePolicySpec,
   type AllocationPolicySpec,
   type RebalanceMode,
+  type TypeWeightMap,
 } from '@/lib/allocationTargets'
+import { allocationBreakdown } from '@/lib/portfolioAnalyst'
+import {
+  averageMonthlyUserInflows,
+  weightsFromMarketValues,
+  type InflowMonth,
+  type ReturnSlice,
+} from '@/lib/projections'
 
 export type SavedAllocationPolicy = AllocationPolicySpec
 
@@ -22,6 +30,12 @@ export type AllocationWorkspaceData = {
   totalMarketValue: number
   preferredCurrency: 'USD' | 'EUR'
   unpricedSymbols: string[]
+  actualTypeWeights: TypeWeightMap
+  returnSlices: ReturnSlice[]
+  actualMonthlyInflow: number
+  monthlyBuys: number
+  monthlyCash: number
+  inflowByMonth: InflowMonth[]
   byType: ReturnType<typeof computeDrift>['byType']
   bySymbol: ReturnType<typeof computeDrift>['bySymbol']
   suggestions: ReturnType<typeof suggestRebalance>['suggestions']
@@ -189,12 +203,48 @@ export async function getAllocationWorkspace(opts?: {
       })
     : { suggestions: [], notes: [] }
 
+  const breakdown = allocationBreakdown(portfolio.enrichedHoldings)
+  const mvByType: Partial<TypeWeightMap> = {}
+  for (const s of breakdown.byAssetType) {
+    if (
+      s.key === 'stock' ||
+      s.key === 'etf' ||
+      s.key === 'crypto' ||
+      s.key === 'cash'
+    ) {
+      mvByType[s.key] = s.marketValue
+    }
+  }
+
+  const returnSlices: ReturnSlice[] = portfolio.enrichedHoldings
+    .filter((h) => (h.asset_type === 'cash' || h.priceAvailable) && h.marketValue > 0)
+    .map((h) => ({
+      symbol: h.symbol,
+      assetType: h.asset_type,
+      marketValue: h.marketValue,
+    }))
+
   return {
     data: {
       policy,
       totalMarketValue: drift.totalMarketValue,
       preferredCurrency: portfolio.preferredCurrency,
       unpricedSymbols: drift.unpricedSymbols,
+      actualTypeWeights: weightsFromMarketValues(mvByType),
+      returnSlices,
+      ...(() => {
+        const inflows = averageMonthlyUserInflows(
+          portfolio.transactions || [],
+          portfolio.preferredCurrency,
+          portfolio.usdToEurRate
+        )
+        return {
+          actualMonthlyInflow: inflows.monthly,
+          monthlyBuys: inflows.monthlyBuys,
+          monthlyCash: inflows.monthlyCash,
+          inflowByMonth: inflows.months,
+        }
+      })(),
       byType: drift.byType,
       bySymbol: drift.bySymbol,
       suggestions: plan.suggestions,

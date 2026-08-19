@@ -84,6 +84,23 @@ describe('goalSchema', () => {
       false
     )
   })
+
+  it('treats empty date and monthly as null', () => {
+    const r = goalSchema.safeParse({
+      name: 'House',
+      target_amount: 10000,
+      target_date: '',
+      planned_monthly: '',
+      assigned_amount: '',
+    })
+    expect(r.success).toBe(true)
+    if (r.success) {
+      expect(r.data.target_date).toBeNull()
+      expect(r.data.planned_monthly).toBeNull()
+      expect(r.data.assigned_amount).toBeNull()
+      expect(r.data.include_cash).toBe(true)
+    }
+  })
 })
 
 describe('csvParsedTransactionsSchema', () => {

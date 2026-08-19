@@ -41,6 +41,7 @@ export function createPortfolioAnalystTools(
     get_target_allocation: plan.get_target_allocation,
     get_rebalance_plan: plan.get_rebalance_plan,
     suggest_allocation_mix: plan.suggest_allocation_mix,
+    get_goal_projection: plan.get_goal_projection,
     get_realized_pnl: read.get_realized_pnl,
     get_transactions: read.get_transactions,
     simulate_scenario: scenario.simulate_scenario,
