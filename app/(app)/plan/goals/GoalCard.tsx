@@ -8,28 +8,8 @@ import SensitiveValue from '@/components/SensitiveValue'
 import { Button } from '@/components/ui/button'
 import { Pencil, Trash2 } from 'lucide-react'
 import type { AssumptionPack, InflowMonth, ReturnSlice } from '@/lib/projections'
-import { formatFiDate, formatHitDate } from './goalFormat'
-
-function reachedLabel(months: number | null): string {
-  if (months == null) return 'never (at this return)'
-  if (months <= 0) return 'already there'
-  return formatHitDate(months) ?? '—'
-}
-
-function MoneyDate({
-  value,
-  date,
-}: {
-  value: string
-  date: string
-}) {
-  return (
-    <span className="inline-flex flex-wrap items-baseline gap-x-1">
-      <span className="shrink-0">On target date {date}:</span>
-      <SensitiveValue value={value} className="whitespace-nowrap tabular-nums" />
-    </span>
-  )
-}
+import { formatFiDate } from './goalFormat'
+import { OnTargetDateValue, reachedLabel } from './goalCopy'
 import { buildGoalCardModel } from './buildGoalCardModel'
 import { statusChipClass, statusLabel } from './goalStatusUi'
 import { GoalProjectionPopover } from './GoalProjectionPopover'
@@ -224,9 +204,9 @@ export function GoalCard({
               </div>
               {goal.target_date && model.growthOnlyAtDate != null && (
                 <div>
-                  <MoneyDate
+                  <OnTargetDateValue
                     value={money(model.growthOnlyAtDate)}
-                    date={formatFiDate(goal.target_date)}
+                    dateIso={goal.target_date}
                   />
                 </div>
               )}
@@ -249,9 +229,9 @@ export function GoalCard({
                 </div>
                 {goal.target_date && proj.projectedValue != null && (
                   <div>
-                    <MoneyDate
+                    <OnTargetDateValue
                       value={money(proj.projectedValue)}
-                      date={formatFiDate(goal.target_date)}
+                      dateIso={goal.target_date}
                     />
                   </div>
                 )}

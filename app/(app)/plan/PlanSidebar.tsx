@@ -13,21 +13,16 @@ import type { PreferredCurrency } from '@/lib/userTypes'
 import { Goal } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { X } from 'lucide-react'
-import { SegmentedControl } from '@/app/(app)/dashboard/holdings/SegmentedControl'
 import {
   PORTFOLIO_VALUE_EVENT,
   type PortfolioValueDetail,
 } from '@/app/(app)/dashboard/summary/PortfolioValueSync'
 import GoalsPanel from './GoalsPanel'
-import AllocationPanel from './AllocationPanel'
 
 const OPEN_KEY = 'planSidebarOpen'
 const LEGACY_OPEN_KEY = 'goalsSidebarOpen'
-const TAB_KEY = 'planSidebarTab'
 const TOGGLE_EVENT = 'plan-sidebar-toggle'
 const LEGACY_TOGGLE = 'goals-sidebar-toggle'
-
-type PlanTab = 'goals' | 'allocation'
 
 function readOpen(): boolean {
   const next = localStorage.getItem(OPEN_KEY)
@@ -53,11 +48,9 @@ export default function PlanSidebar({
   initialGoals = [],
   initialPortfolioValue = 0,
   initialWorkspace,
-  initialCanSuggestMix = false,
   initialAssumptions = FALLBACK_ASSUMPTIONS,
   contributionBand = null,
   horizon = null,
-  initialCashPrefill,
 }: {
   preferredCurrency?: PreferredCurrency
   initialGoals?: Goal[]
@@ -70,7 +63,6 @@ export default function PlanSidebar({
   initialCashPrefill?: number
 }) {
   const [isOpen, setIsOpen] = useState(false)
-  const [tab, setTab] = useState<PlanTab>('goals')
   const [goals, setGoals] = useState<Goal[]>(initialGoals)
   const [portfolioValue, setPortfolioValue] = useState(initialPortfolioValue)
   const [assumptions, setAssumptions] = useState(initialAssumptions)
@@ -95,8 +87,6 @@ export default function PlanSidebar({
     window.addEventListener(PORTFOLIO_VALUE_EVENT, handlePortfolioValue)
 
     applyOpen()
-    const storedTab = localStorage.getItem(TAB_KEY)
-    if (storedTab === 'goals' || storedTab === 'allocation') setTab(storedTab)
 
     return () => {
       window.removeEventListener(TOGGLE_EVENT, handleToggle)
@@ -108,11 +98,6 @@ export default function PlanSidebar({
   const closeSidebar = () => {
     localStorage.setItem(OPEN_KEY, 'false')
     setIsOpen(false)
-  }
-
-  const changeTab = (next: PlanTab) => {
-    setTab(next)
-    localStorage.setItem(TAB_KEY, next)
   }
 
   useEffect(() => {
@@ -146,43 +131,20 @@ export default function PlanSidebar({
         </div>
       </div>
 
-      <div className="relative z-10 px-4 pt-3">
-        <SegmentedControl
-          aria-label="Plan section"
-          size="sm"
-          value={tab}
-          onChange={changeTab}
-          options={[
-            { value: 'goals', label: 'Goals' },
-            { value: 'allocation', label: 'Allocation' },
-          ]}
-        />
-      </div>
-
       <div className="panel-scroll min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <div hidden={tab !== 'goals'}>
-          <GoalsPanel
-            goals={goals}
-            portfolioValue={portfolioValue}
-            preferredCurrency={preferredCurrency}
-            returnSlices={returnSlices ?? []}
-            assumptions={assumptions}
-            monthlyBuys={initialWorkspace?.monthlyBuys ?? 0}
-            monthlyCash={initialWorkspace?.monthlyCash ?? 0}
-            inflowByMonth={initialWorkspace?.inflowByMonth ?? []}
-            contributionBand={contributionBand}
-            horizon={horizon}
-            onChanged={loadGoals}
-          />
-        </div>
-        <div hidden={tab !== 'allocation'}>
-          <AllocationPanel
-            preferredCurrency={preferredCurrency}
-            initialWorkspace={initialWorkspace}
-            initialCanSuggestMix={initialCanSuggestMix}
-            initialCashPrefill={initialCashPrefill}
-          />
-        </div>
+        <GoalsPanel
+          goals={goals}
+          portfolioValue={portfolioValue}
+          preferredCurrency={preferredCurrency}
+          returnSlices={returnSlices ?? []}
+          assumptions={assumptions}
+          monthlyBuys={initialWorkspace?.monthlyBuys ?? 0}
+          monthlyCash={initialWorkspace?.monthlyCash ?? 0}
+          inflowByMonth={initialWorkspace?.inflowByMonth ?? []}
+          contributionBand={contributionBand}
+          horizon={horizon}
+          onChanged={loadGoals}
+        />
       </div>
     </div>
   )

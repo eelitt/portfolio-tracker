@@ -17,7 +17,8 @@ import {
   type InflowMonth,
   type ReturnSlice,
 } from '@/lib/projections'
-import { formatFiDate, formatHitDate } from './goalFormat'
+import { formatFiDate } from './goalFormat'
+import { OnTargetDateValue, reachedLabel } from './goalCopy'
 
 const PANEL_W = 320
 const PAD = 8
@@ -298,38 +299,60 @@ export function GoalProjectionPopover({
       <div className="mt-3 space-y-1 border-t border-subtle pt-2 text-muted-foreground">
         <div className="font-medium text-foreground">Result</div>
         {paths && (
-          <>
+          <div className="space-y-2">
             <div>
-              Without new cash →{' '}
-              <SensitiveValue value={money(paths.growthOnlyAtDate, c)} />
-              {paths.alreadyThere
-                ? ' (already at the target)'
-                : paths.monthsGrowthOnly != null
-                  ? ` · hits ${formatHitDate(paths.monthsGrowthOnly)}`
-                  : ' · never hits target'}
+              <div className="font-medium text-foreground/80">If you add nothing</div>
+              <div>
+                Target reached:{' '}
+                <span className="whitespace-nowrap">
+                  {reachedLabel(paths.monthsGrowthOnly)}
+                </span>
+              </div>
+              {targetDate && (
+                <div>
+                  <OnTargetDateValue
+                    value={money(paths.growthOnlyAtDate, c)}
+                    dateIso={targetDate}
+                  />
+                </div>
+              )}
             </div>
             {projection.plannedMonthly != null && (
               <div>
-                With planned{' '}
-                <SensitiveValue
-                  value={`${money(projection.plannedMonthly, c)}/mo`}
-                />{' '}
-                → <SensitiveValue value={money(paths.withPlannedAtDate, c)} />
-                {paths.monthsWithPlanned != null
-                  ? ` · hits ${formatHitDate(paths.monthsWithPlanned)}`
-                  : ' · never hits target'}
-                {paths.surplusAtDate > 0.009
-                  ? ' · '
-                  : ''}
+                <div className="font-medium text-foreground/80">
+                  If you add{' '}
+                  <SensitiveValue
+                    value={`${money(projection.plannedMonthly, c)}/mo`}
+                    className="whitespace-nowrap tabular-nums"
+                  />
+                  /mo
+                </div>
+                <div>
+                  Target reached:{' '}
+                  <span className="whitespace-nowrap">
+                    {reachedLabel(paths.monthsWithPlanned)}
+                  </span>
+                </div>
+                {targetDate && (
+                  <div>
+                    <OnTargetDateValue
+                      value={money(paths.withPlannedAtDate, c)}
+                      dateIso={targetDate}
+                    />
+                  </div>
+                )}
                 {paths.surplusAtDate > 0.009 && (
-                  <>
-                    <SensitiveValue value={money(paths.surplusAtDate, c)} /> over
-                    target
-                  </>
+                  <div>
+                    <SensitiveValue
+                      value={money(paths.surplusAtDate, c)}
+                      className="whitespace-nowrap tabular-nums"
+                    />{' '}
+                    over the target on that deadline
+                  </div>
                 )}
               </div>
             )}
-          </>
+          </div>
         )}
         {projection.requiredMonthly != null && (
           <div>
