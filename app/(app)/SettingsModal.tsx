@@ -13,11 +13,13 @@ import { useDashboardLayout } from './dashboard/DashboardLayoutProvider'
 import { ChangePasswordForm } from './ChangePasswordModal'
 import type { DashboardLayoutMode } from '@/lib/dashboardLayout'
 import { Button } from '@/components/ui/button'
+import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { getInvestorProfile, updateInvestorProfile } from '@/app/actions/users'
 import type {
   AgeBand,
   Horizon,
+  InvestorProfileFields,
   MonthlyContribution,
   PreferredCurrency,
   RiskTolerance,
@@ -44,22 +46,38 @@ const LAYOUTS: {
   },
 ]
 
+function selectValue<T extends string>(value: T | null | undefined): T | '' {
+  return value ?? ''
+}
+
 export default function SettingsModal({
   open,
   onOpenChange,
   preferredCurrency = 'USD',
+  initialProfile,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   preferredCurrency?: PreferredCurrency
+  initialProfile?: InvestorProfileFields
 }) {
   const { layout, setLayout } = useDashboardLayout()
   const [resetToken, setResetToken] = useState(0)
-  const [ageBand, setAgeBand] = useState<AgeBand | ''>('')
-  const [horizon, setHorizon] = useState<Horizon | ''>('')
-  const [riskTolerance, setRiskTolerance] = useState<RiskTolerance | ''>('')
-  const [monthlyContribution, setMonthlyContribution] = useState<MonthlyContribution | ''>('')
+  const [ageBand, setAgeBand] = useState<AgeBand | ''>(
+    selectValue(initialProfile?.ageBand)
+  )
+  const [horizon, setHorizon] = useState<Horizon | ''>(
+    selectValue(initialProfile?.horizon)
+  )
+  const [riskTolerance, setRiskTolerance] = useState<RiskTolerance | ''>(
+    selectValue(initialProfile?.riskTolerance)
+  )
+  const [monthlyContribution, setMonthlyContribution] = useState<MonthlyContribution | ''>(
+    selectValue(initialProfile?.monthlyContribution)
+  )
   const [savingProfile, setSavingProfile] = useState(false)
+  const [loadingProfile, setLoadingProfile] = useState(false)
+  const profileLocked = loadingProfile || savingProfile
 
   useEffect(() => {
     if (!open) setResetToken((n) => n + 1)
@@ -67,13 +85,29 @@ export default function SettingsModal({
 
   useEffect(() => {
     if (!open) return
-    void getInvestorProfile().then((r) => {
-      if ('error' in r) return
-      setAgeBand(r.data.ageBand ?? '')
-      setHorizon(r.data.horizon ?? '')
-      setRiskTolerance(r.data.riskTolerance ?? '')
-      setMonthlyContribution(r.data.monthlyContribution ?? '')
-    })
+    let cancelled = false
+    setLoadingProfile(true)
+    void (async () => {
+      try {
+        const r = await getInvestorProfile()
+        if (cancelled) return
+        if ('error' in r) {
+          toast.error(r.error)
+          return
+        }
+        setAgeBand(selectValue(r.data.ageBand))
+        setHorizon(selectValue(r.data.horizon))
+        setRiskTolerance(selectValue(r.data.riskTolerance))
+        setMonthlyContribution(selectValue(r.data.monthlyContribution))
+      } catch {
+        if (!cancelled) toast.error('Could not load investor profile')
+      } finally {
+        if (!cancelled) setLoadingProfile(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [open])
 
   return (
@@ -115,7 +149,15 @@ export default function SettingsModal({
           </section>
 
           <section className="space-y-2 border-t border-subtle pt-4">
-            <h3 className="text-sm font-medium">Investor profile</h3>
+            <h3 className="flex items-center gap-2 text-sm font-medium">
+              Investor profile
+              {loadingProfile && (
+                <Loader2
+                  className="h-3.5 w-3.5 animate-spin text-muted-foreground"
+                  aria-label="Loading investor profile"
+                />
+              )}
+            </h3>
             <p className="text-xs text-muted-foreground">
               Optional. Used to suggest a target mix and to ground assistant answers. Not a
               birthdate or income.
@@ -124,8 +166,9 @@ export default function SettingsModal({
               <label className="text-xs">
                 Age band
                 <select
-                  className="mt-1 w-full rounded border bg-background px-2 py-1.5"
+                  className="mt-1 w-full rounded border bg-background px-2 py-1.5 disabled:opacity-50"
                   value={ageBand}
+                  disabled={profileLocked}
                   onChange={(e) => setAgeBand(e.target.value as AgeBand | '')}
                 >
                   <option value="">Not set</option>
@@ -138,8 +181,9 @@ export default function SettingsModal({
               <label className="text-xs">
                 Horizon
                 <select
-                  className="mt-1 w-full rounded border bg-background px-2 py-1.5"
+                  className="mt-1 w-full rounded border bg-background px-2 py-1.5 disabled:opacity-50"
                   value={horizon}
+                  disabled={profileLocked}
                   onChange={(e) => setHorizon(e.target.value as Horizon | '')}
                 >
                   <option value="">Not set</option>
@@ -151,8 +195,9 @@ export default function SettingsModal({
               <label className="text-xs">
                 Risk
                 <select
-                  className="mt-1 w-full rounded border bg-background px-2 py-1.5"
+                  className="mt-1 w-full rounded border bg-background px-2 py-1.5 disabled:opacity-50"
                   value={riskTolerance}
+                  disabled={profileLocked}
                   onChange={(e) => setRiskTolerance(e.target.value as RiskTolerance | '')}
                 >
                   <option value="">Not set</option>
@@ -164,8 +209,9 @@ export default function SettingsModal({
               <label className="text-xs">
                 Monthly contribution
                 <select
-                  className="mt-1 w-full rounded border bg-background px-2 py-1.5"
+                  className="mt-1 w-full rounded border bg-background px-2 py-1.5 disabled:opacity-50"
                   value={monthlyContribution}
+                  disabled={profileLocked}
                   onChange={(e) =>
                     setMonthlyContribution(e.target.value as MonthlyContribution | '')
                   }
@@ -181,7 +227,7 @@ export default function SettingsModal({
             </div>
             <Button
               size="sm"
-              disabled={savingProfile}
+              disabled={profileLocked}
               onClick={async () => {
                 setSavingProfile(true)
                 const r = await updateInvestorProfile({

@@ -22,13 +22,14 @@ import { getTransactionsForExport, getHoldingsForExport } from '@/app/actions/tr
 import { exportTransactionsToCsv, exportHoldingsToCsv } from '@/lib/exportToCsv'
 import { useState, useEffect } from 'react'
 import { updatePreferredCurrency } from '@/app/actions/users'
-import type { PreferredCurrency } from '@/lib/userTypes'
+import type { InvestorProfileFields, PreferredCurrency } from '@/lib/userTypes'
 
 interface NavbarProps {
   user: any
   hasAiKey?: boolean
   preferredCurrency?: PreferredCurrency
   isAdmin?: boolean
+  investorProfile?: InvestorProfileFields
 }
 
 export default function Navbar({
@@ -36,6 +37,7 @@ export default function Navbar({
   hasAiKey = true,
   preferredCurrency = 'USD',
   isAdmin = false,
+  investorProfile,
 }: NavbarProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -330,6 +332,7 @@ export default function Navbar({
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         preferredCurrency={currentCurrency}
+        initialProfile={investorProfile}
       />
       <TaxEstimatorModal
         open={taxEstimatorOpen}

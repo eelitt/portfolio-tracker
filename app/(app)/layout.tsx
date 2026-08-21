@@ -38,6 +38,12 @@ export default async function DashboardLayout({
           hasAiKey={hasAiKey}
           preferredCurrency={profile?.preferredCurrency || 'USD'}
           isAdmin={profile?.admin === true}
+          investorProfile={{
+            ageBand: profile.ageBand ?? null,
+            horizon: profile.horizon ?? null,
+            riskTolerance: profile.riskTolerance ?? null,
+            monthlyContribution: profile.monthlyContribution ?? null,
+          }}
         />
         <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
           {children}
