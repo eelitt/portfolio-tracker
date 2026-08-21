@@ -86,7 +86,7 @@ Full write-up: [architecture.md](./architecture.md).
 - **AI may stage a draft; only confirm writes.** The model does not update Postgres on the same turn as prepare.
 - **Test the money.** Vitest covers cost basis, sells, FX, tax helpers, and the tool registry — not the React tree.
 
-**At scale I’d change:** a shared quote cache and Finnhub quota strategy; snapshot job concurrency; still no persisted chat (session-only is the right default until there is a real product reason).
+**At scale I’d change:** a shared quote cache and Finnhub quota strategy; snapshot job concurrency.
 
 ## License
 

@@ -1,11 +1,15 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useChat } from '@ai-sdk/react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Loader2, Send, MessageSquare } from 'lucide-react'
+import {
+  clearAnalystChatHistory,
+  getAnalystChatHistory,
+} from '@/app/actions/ai/portfolio-analyst/chatHistoryActions'
 
 const CAPABILITIES = [
   'Portfolio analysis (risks & concentration)',
@@ -210,6 +214,8 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
   const processedNewsPackageIds = useRef(new Set<string>())
   const processedAnalysisPackageIds = useRef(new Set<string>())
   const processedWatchlistIds = useRef(new Set<string>())
+  const [historyReady, setHistoryReady] = useState(false)
+  const [clearing, setClearing] = useState(false)
 
   const {
     messages,
@@ -225,9 +231,33 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
   })
 
   const isBusy = status === 'submitted' || status === 'streaming'
+  const composerLocked = !historyReady || isBusy || clearing
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const res = await getAnalystChatHistory()
+      if (cancelled) return
+      if (res.error) {
+        toast.error(res.error)
+      } else if (res.data.length > 0) {
+        setMessages(
+          res.data.map((m) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+          }))
+        )
+      }
+      setHistoryReady(true)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [setMessages])
 
   // Toast + dashboard refresh when confirm_transaction finishes (same UX as modal)
   useEffect(() => {
@@ -286,20 +316,29 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
     }
   }, [messages])
 
-  // Clear chat when this view unmounts (back to menu or sidebar close)
   useEffect(() => {
-    return () => {
-      setMessages([])
-    }
-  }, [setMessages])
-
-  useEffect(() => {
+    if (!historyReady) return
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isBusy])
+  }, [messages, isBusy, historyReady])
 
   const onSuggested = (text: string) => {
-    if (isBusy) return
+    if (composerLocked) return
     void append({ role: 'user', content: text })
+  }
+
+  const onNewChat = () => {
+    if (composerLocked) return
+    setClearing(true)
+    void (async () => {
+      const res = await clearAnalystChatHistory()
+      if (res.error) {
+        toast.error(res.error)
+        setClearing(false)
+        return
+      }
+      setMessages([])
+      setClearing(false)
+    })()
   }
 
   return (
@@ -320,6 +359,17 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
           <MessageSquare className="h-4 w-4" />
           Chat
         </span>
+        {historyReady && messages.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onNewChat}
+            disabled={composerLocked}
+            className="ml-auto h-8 px-3"
+          >
+            New chat
+          </Button>
+        )}
       </div>
 
       {/* Fills panel under header; form stays at bottom */}
@@ -327,7 +377,14 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
         ref={listRef}
         className="panel-scroll min-h-0 flex-1 space-y-3 overflow-y-auto pr-0.5"
       >
-        {messages.length === 0 && (
+        {!historyReady && (
+          <div className="flex items-center gap-2 rounded-lg border border-subtle bg-card px-3 py-2 text-sm text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Loading chat…
+          </div>
+        )}
+
+        {historyReady && messages.length === 0 && (
           <div className="space-y-3 rounded-lg border border-subtle bg-card p-4 transition-colors duration-200 hover:border-gold">
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">
@@ -370,7 +427,7 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
                   key={prompt}
                   type="button"
                   onClick={() => onSuggested(prompt)}
-                  disabled={isBusy}
+                  disabled={composerLocked}
                   className="w-full rounded-md border border-subtle bg-background px-3 py-2 text-left text-xs transition-colors hover:border-gold hover:bg-accent/60 disabled:opacity-50"
                 >
                   {prompt}
@@ -416,7 +473,16 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
         <div ref={bottomRef} />
       </div>
 
-      <form onSubmit={handleSubmit} className="shrink-0 space-y-2">
+      <form
+        onSubmit={(e) => {
+          if (composerLocked) {
+            e.preventDefault()
+            return
+          }
+          handleSubmit(e)
+        }}
+        className="shrink-0 space-y-2"
+      >
         <div className="flex gap-2 items-end">
           <textarea
             value={input}
@@ -424,20 +490,20 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
-                if (!isBusy && input.trim()) {
+                if (!composerLocked && input.trim()) {
                   handleSubmit(e)
                 }
               }
             }}
             placeholder="Ask about your portfolio…"
             rows={2}
-            disabled={isBusy}
+            disabled={composerLocked}
             className="flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
           />
           <Button
             type="submit"
             size="icon"
-            disabled={isBusy || !input.trim()}
+            disabled={composerLocked || !input.trim()}
             className="h-9 w-9 shrink-0"
             aria-label="Send message"
           >
@@ -450,7 +516,7 @@ export function PortfolioAnalystView({ onBack }: PortfolioAnalystViewProps) {
         </div>
         <p className="text-[10px] text-muted-foreground leading-snug">
           Not financial advice. Answers use your transactions and available prices
-          only. Chat is not saved when you leave this panel.
+          only. Last 20 messages are saved on this account; New chat clears them.
         </p>
       </form>
     </div>

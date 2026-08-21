@@ -140,6 +140,7 @@ POST /api/portfolio-analyst
        invoke_portfolio_analyst   -- may receive news handoff from THIS request only
        invoke_tax_agent
        invoke_portfolio_analysis_agent
+  onFinish (not error) persist rolling chat blob
   parent agent_runs + child runs
 ```
 
@@ -150,6 +151,8 @@ The orchestrator **does not** do portfolio math. Specialists call `getPortfolioD
 **Progressive disclosure:** same engines in UI and chat (analysis popover, news popovers, tax modal, Plan sidebar). Chat is another client, not another calculator.
 
 News handoff is a parsed slim payload (`parseNewsContextHandoff`). The analyst may cite those bullets; it may not invent headlines.
+
+Chat history is **one rolling thread per user** in `user_ai_insights` (`feature_type = portfolio_analyst_chat`): last 20 user/assistant text messages (same cap as request sanitizer). Tool payloads are not stored. The sidebar hydrates on open; **New chat** clears the blob. `buildUserContext` does not duplicate this thread.
 
 Admin: `agent_runs` (tokens, cost, confirm flags, parent/child). Eval fixtures inject a portfolio and must not write real txs (`evalMode` / dry-run).
 

@@ -1,6 +1,7 @@
 /**
  * Bounded user context pack for orchestrator/analyst (short-term + light long-term).
- * Prefer existing tables: profiles, goals, user_ai_insights — no chat history DB.
+ * Prefer existing tables: profiles, goals, user_ai_insights.
+ * Chat thread is a separate rolling blob (not injected here; the POST already sends messages).
  */
 
 import 'server-only'

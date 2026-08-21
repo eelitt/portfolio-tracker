@@ -24,6 +24,7 @@ import {
   formatUserContextForPrompt,
 } from '@/lib/aiTools/buildUserContext'
 import { resolveDryRun } from '@/lib/aiTools'
+import { persistAnalystChatTurn } from '@/app/actions/ai/portfolio-analyst/chatHistoryActions'
 
 /** News + analyst can exceed 60s on cold paths. */
 export const maxDuration = 180
@@ -144,7 +145,22 @@ export async function POST(req: Request) {
           )
         }
       },
-      onFinish: async ({ usage, finishReason }) => {
+      onFinish: async ({ usage, finishReason, text }) => {
+        if (finishReason !== 'error') {
+          try {
+            await persistAnalystChatTurn({
+              userId: user.id,
+              requestMessages: sanitized.messages,
+              assistantText: typeof text === 'string' ? text : '',
+            })
+          } catch (e) {
+            console.error(
+              'Analyst chat persist failed:',
+              e instanceof Error ? e.message : 'unknown'
+            )
+          }
+        }
+
         if (!parentRunId) return
         const status =
           finishReason === 'error' || finishReason === 'other'
