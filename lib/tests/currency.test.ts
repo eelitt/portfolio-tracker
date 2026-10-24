@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   convertAmount,
   convertBetweenCurrencies,
+  unitPriceShownInPreferred,
+  unitPriceToStore,
   formatCurrency,
   formatQuantity,
   getAmountInUsd,
@@ -29,6 +31,13 @@ describe('FX helpers', () => {
   it('converts EUR to USD and USD to EUR via the rate', () => {
     expect(convertBetweenCurrencies(87, 'EUR', 'USD', RATE)).toBeCloseTo(100, 8)
     expect(convertBetweenCurrencies(100, 'USD', 'EUR', RATE)).toBeCloseTo(87, 8)
+  })
+
+  it('shows a USD entry price in EUR and stores an edit back in USD', () => {
+    const shown = unitPriceShownInPreferred(100, 'USD', 'EUR', RATE)
+    expect(shown).toBeCloseTo(87, 8)
+    expect(unitPriceToStore(shown, shown, 100, 'USD', 'EUR', RATE)).toBe(100)
+    expect(unitPriceToStore(87 * 1.1, shown, 100, 'USD', 'EUR', RATE)).toBeCloseTo(110, 8)
   })
 })
 

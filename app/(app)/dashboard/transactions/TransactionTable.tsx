@@ -10,7 +10,14 @@
 
 import { deleteTransaction } from '@/app/actions/transactions'
 import { toast } from 'sonner'
-import { useState, useEffect, useMemo } from 'react'
+import { Pencil, Trash2 } from 'lucide-react'
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useTransactionFilters } from './useTransactionFilters'
 import { useTransactionSorting } from './useTransactionSorting'
 import { usePagination } from './usePagination'
@@ -18,6 +25,7 @@ import TransactionModal from './TransactionModal'
 import DeleteTransactionModal from './DeleteTransactionModal'
 import { Transaction } from '@/lib/types'
 import type { PreferredCurrency } from '@/lib/userTypes'
+import { transactionPnl } from '@/lib/transactionPnl'
 import {
   applyFilters,
   applySort,
@@ -27,9 +35,12 @@ import {
 import TransactionFilters from './TransactionFilters'
 import TransactionRow from './TransactionRow'
 
+/** Visible width at which the edit and delete buttons still fit beside the columns. */
+const ACTIONS_FIT_PX = 1080
 
 interface TransactionTableProps {
   transactions: (Transaction & { formattedDate?: string })[]
+  priceData?: Record<string, { price: number; change24h: number | null }>
   preferredCurrency?: PreferredCurrency
   usdToPreferredRate?: number
   usdToEurRate?: number
@@ -37,6 +48,7 @@ interface TransactionTableProps {
 
 export default function TransactionTable({ 
   transactions, 
+  priceData = {},
   preferredCurrency = 'USD', 
   usdToPreferredRate = 1,
   usdToEurRate = 0.92
@@ -44,6 +56,28 @@ export default function TransactionTable({
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [deletingTransaction, setDeletingTransaction] = useState<Transaction | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const tableFrameRef = useRef<HTMLDivElement>(null)
+  const [compact, setCompact] = useState(false)
+  const [rowMenu, setRowMenu] = useState<{
+    tx: Transaction
+    x: number
+    y: number
+  } | null>(null)
+  const [rowMenuOpen, setRowMenuOpen] = useState(false)
+
+  useLayoutEffect(() => {
+    const frame = tableFrameRef.current
+    if (!frame) return
+    const update = () => setCompact(frame.clientWidth < ACTIONS_FIT_PX)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(frame)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (rowMenu) setRowMenuOpen(true)
+  }, [rowMenu])
 
   const pageSize = 25
 
@@ -119,6 +153,28 @@ export default function TransactionTable({
 }
 
   // Derived filtered + sorted + paginated list (client-side)
+  const pnlById = useMemo(
+    () =>
+      transactionPnl({
+        transactions,
+        priceData,
+        preferredCurrency,
+        usdToEurRate,
+      }),
+    [transactions, priceData, preferredCurrency, usdToEurRate]
+  )
+
+  const pnlAmountById = useMemo(() => {
+    const amounts = new Map<string, number | null>()
+    for (const [id, row] of pnlById) {
+      amounts.set(
+        id,
+        row.kind === 'unrealized' || row.kind === 'realized' ? (row.amount ?? null) : null
+      )
+    }
+    return amounts
+  }, [pnlById])
+
   const filteredAndSorted = useMemo(() => {
     const filtered = applyFilters(transactions as AugmentedTransaction[], {
       searchTerm,
@@ -127,8 +183,18 @@ export default function TransactionTable({
       dateFrom,
       dateTo,
     })
-    return applySort(filtered, { sortColumn, sortDirection })
-  }, [transactions, searchTerm, assetFilter, actionFilter, dateFrom, dateTo, sortColumn, sortDirection])
+    return applySort(filtered, { sortColumn, sortDirection, pnlAmountById })
+  }, [
+    transactions,
+    searchTerm,
+    assetFilter,
+    actionFilter,
+    dateFrom,
+    dateTo,
+    sortColumn,
+    sortDirection,
+    pnlAmountById,
+  ])
 
   const totalFiltered = filteredAndSorted.length
   const totalOriginal = transactions.length
@@ -198,10 +264,13 @@ export default function TransactionTable({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-subtle bg-surface-elevated shadow-sm">
-        <table className="min-w-full divide-y divide-subtle">
+      <div
+        ref={tableFrameRef}
+        className="overflow-x-auto rounded-xl border border-subtle bg-surface-elevated shadow-sm"
+      >
+        <table className="min-w-full border-separate border-spacing-0">
           <thead className="bg-muted/50">
-            <tr>
+            <tr className="[&>th]:border-b [&>th]:border-subtle">
               <th
                 onClick={() => handleSort('date')}
                 className="cursor-pointer select-none px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground hover:text-gold"
@@ -235,13 +304,19 @@ export default function TransactionTable({
               >
                 Price {sortColumn === 'price' && (sortDirection === 'desc' ? '↓' : '↑')}
               </th>
+              <th
+                onClick={() => handleSort('pnl')}
+                className="cursor-pointer select-none px-4 py-3 text-right text-xs font-medium uppercase text-muted-foreground hover:text-gold"
+              >
+                P&L {sortColumn === 'pnl' && (sortDirection === 'desc' ? '↓' : '↑')}
+              </th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground">
                 Notes
               </th>
-              <th className="px-4 py-3" />
+              {!compact && <th className="px-4 py-3" />}
             </tr>
           </thead>
-          <tbody className="divide-y divide-subtle">
+          <tbody>
             {paginatedTransactions.map((tx) => (
               <TransactionRow
                 key={tx.id!}
@@ -249,6 +324,9 @@ export default function TransactionTable({
                 preferredCurrency={preferredCurrency}
                 usdToPreferredRate={usdToPreferredRate}
                 usdToEurRate={usdToEurRate}
+                pnl={tx.id ? pnlById.get(tx.id) : undefined}
+                compact={compact}
+                onOpenMenu={(row, point) => setRowMenu({ tx: row, ...point })}
                 onEdit={handleEdit}
                 onDelete={openDeleteModal}
               />
@@ -284,9 +362,53 @@ export default function TransactionTable({
         </div>
       )}
 
-      <TransactionModal 
-        transaction={editingTransaction} 
-        onClose={closeEditModal} 
+      {rowMenu && (
+        <DropdownMenu
+          open={rowMenuOpen}
+          onOpenChange={(open) => {
+            setRowMenuOpen(open)
+            if (!open) setRowMenu(null)
+          }}
+        >
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-hidden
+              className="fixed h-px w-px p-0 opacity-0"
+              style={{ left: rowMenu.x, top: rowMenu.y }}
+            />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="start"
+            className="w-40"
+            onCloseAutoFocus={(event) => event.preventDefault()}
+          >
+            <DropdownMenuItem
+              onSelect={() => {
+                const tx = rowMenu.tx
+                requestAnimationFrame(() => handleEdit(tx))
+              }}
+            >
+              <Pencil />
+              Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              variant="destructive"
+              onSelect={() => openDeleteModal(rowMenu.tx)}
+            >
+              <Trash2 />
+              Remove
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+
+      <TransactionModal
+        transaction={editingTransaction}
+        onClose={closeEditModal}
+        preferredCurrency={preferredCurrency}
+        usdToEurRate={usdToEurRate}
       />
 
       <DeleteTransactionModal

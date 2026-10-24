@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 
-export type SortColumn = 'date' | 'symbol' | 'quantity' | 'price'
+export type SortColumn = 'date' | 'symbol' | 'quantity' | 'price' | 'pnl'
 export type SortDirection = 'asc' | 'desc'
 
 export interface UseTransactionSortingResult {

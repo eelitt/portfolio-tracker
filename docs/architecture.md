@@ -2,7 +2,7 @@
 
 How a request becomes numbers the user is allowed to trust.
 
-The [README](../README.md) is the pitch. [AGENTS.md](./AGENTS.md) is phases, layout, and coding rules. This file is the **control plane**: what is source of truth, which functions are allowed to invent money, and what happens on the paths that matter.
+The [README](../README.md) is the pitch. Coding rules and the agent read order are in the root [CLAUDE.md](../CLAUDE.md). This file is the **control plane**: what is source of truth, which functions are allowed to invent money, and what happens on the paths that matter.
 
 ---
 
@@ -22,7 +22,7 @@ A signed-in user is not enough. Signup creates a `profiles` row with `access_to_
 
 | Layer | What it does |
 |---|---|
-| Middleware (`lib/supabase/middleware.ts`) | Refreshes the auth cookie. Unauthenticated app routes → `/login`. Authenticated but `access_to_app !== true` → sign out, `/login?reason=access`. Fail **closed** if the profile read fails. |
+| Auth gate (`proxy.ts` → `updateSession` in `lib/supabase/middleware.ts`) | Refreshes the auth cookie. Unauthenticated app routes → `/login`. Authenticated but `access_to_app !== true` → sign out, `/login?reason=access`. Fail **closed** if the profile read fails. |
 | Login `ensureAppAccess` | Same flag after password/session; signs out on deny. |
 | `(app)/layout.tsx` | Loads profile; no access → sign out + redirect. |
 | `POST /api/portfolio-analyst` | 401 if no user, 403 if no access. |
@@ -188,7 +188,7 @@ Optional benchmarks (SPY, URTH, BTC) overlay that chart as **price** series from
 
 Unit tests under `lib/tests/` are the architecture’s proof for **money and gates**, not for CSS.
 
-They are supposed to fail if: weighted-average / remaining basis / oversell cap changes; missing quote invents −100% P&L; mixed-currency P&L is scaled; cash nets raw faces; HMO applies to a loss; confirm accepts a jailbreak sentence; type weights do not sum to 100; excess/TE uses fill-forward or a single overlapping point; contribution % is shown when book Δ is 0; a cash deposit is treated as TWR; TWR invents a return when base MV is 0.
+They are supposed to fail if: weighted-average / remaining basis / oversell cap changes; a transaction row's P&L diverges from that holding; missing quote invents −100% P&L; mixed-currency P&L is scaled; cash nets raw faces; HMO applies to a loss; confirm accepts a jailbreak sentence; type weights do not sum to 100; excess/TE uses fill-forward or a single overlapping point; contribution % is shown when book Δ is 0; a cash deposit is treated as TWR; TWR invents a return when base MV is 0.
 
 They are **not** supposed to prove RLS. User A vs user B is a policy + integration concern.
 
@@ -198,19 +198,36 @@ They are **not** supposed to prove RLS. User A vs user B is a policy + integrati
 
 | Concern | Where |
 |---|---|
+| Auth gate | `proxy.ts`, `lib/supabase/middleware.ts` |
 | Dashboard pipeline | `lib/portfolioData.ts` |
+| Dashboard UI | `app/(app)/dashboard/` |
 | Reduce / enrich | `lib/calculatePortfolio.ts` |
 | FX + cash + totals | `lib/convertToPreferred.ts`, `lib/currency.ts` |
 | Live marks | `lib/prices/` |
+| Price history | `lib/priceHistory/` |
+| Symbol catalogs | `lib/symbols/` |
+| Transactions | `app/actions/transactions.ts`, `app/(app)/dashboard/transactions/` |
+| Transaction row P&L | `lib/transactionPnl.ts` |
+| Watchlist | `app/actions/watchlist.ts`, `app/(app)/dashboard/watchlist/` |
+| CSV export | `lib/exportToCsv.ts` |
 | Targets / drift / mix | `lib/allocationTargets/` |
 | Benchmarks / TE / contribution | `lib/benchmarks/` |
 | TWR / vol / drawdown | `lib/performance/` |
+| Snapshots | `app/actions/snapshots.ts`, `supabase/functions/portfolio-snapshots/` |
 | Formula sheet | `calculation_logic.md` |
-| Tax | `lib/tax/` |
+| Tax engine and tax README | `lib/tax/` |
+| Tax UI | `app/(app)/tax/` |
 | Analyst math | `lib/portfolioAnalyst/` |
 | Tool registry / confirm / dry-run / context | `lib/aiTools/` |
+| Orchestrator | `app/actions/ai/orchestrator/` |
+| Analyst, news, analysis, tax, CSV agents | `app/actions/ai/` (`portfolio-analyst`, `holding-news`, `portfolio-insights`, `tax`, `csv-import`) |
+| AI insights UI | `app/(app)/ai-insights/` |
 | Child-agent runs | `lib/agents/` |
-| Server actions | `app/actions/` (`allocation.ts`, `transactions.ts`, `ai/…`) |
+| Run logs | `lib/agentObservability/` |
+| Admin UI (no page route) | `app/(app)/admin/` |
+| Agent eval | `lib/agentEval/`, `app/api/admin/agent-eval/route.ts` |
+| Server actions | `app/actions/` |
 | Chat route | `app/api/portfolio-analyst/route.ts` |
 | Plan UI | `app/(app)/plan/` |
+| Schema (local, gitignored) | `supabase/migrations/` |
 | Tests | `lib/tests/` |

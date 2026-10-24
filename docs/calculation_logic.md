@@ -15,6 +15,15 @@ Change a formula → update this file in the same change. Do not document UI her
 
 ---
 
+## Transaction row P&L
+
+**Inputs:** full ledger, USD marks for open symbols, preferred currency, USD→EUR rate.  
+**Formula:** per symbol, the same walk as weighted average. A buy keeps a slice at its own `unit_price`. A sell of `q = min(sold, owned)` shrinks every open slice by `q / quantity` and books realized P&L `q × unit_price − q × avgCost` on that sell. After the walk, round each slice to 8 decimals; a slice that rounds to 0 is closed. An open slice's unrealized P&L is remaining shares × today's mark, minus the cost those shares still carry. Convert the mark from USD and the cost from the symbol's entry currency, then subtract. Convert a sell's proceeds and its removed cost from the entry currency, then subtract. Percent is that P&L divided by the row's remaining cost (buy) or removed cost (sell). Omit the percent when that cost is 0. A missing or non-positive mark leaves an open buy without a figure. Cash is skipped.  
+**Caveat:** while the symbol is open, row amounts match the holding card within 0.01. Row percents are not the card's percent. A fully sold symbol has no card. Editing an earlier row recomputes later sells. Not FIFO. Not Finnish tax.  
+**Code:** `transactionPnl` in `lib/transactionPnl.ts`
+
+---
+
 ## Missing live quote
 
 **Inputs:** holding + quote.  

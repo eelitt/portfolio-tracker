@@ -17,6 +17,8 @@ import { Button } from '@/components/ui/button'
 import SymbolSelect from './SymbolSelect'
 import type { AssetType } from '@/lib/types'
 import { fieldClassName, labelClassName } from './formStyles'
+import type { PreferredCurrency } from '@/lib/userTypes'
+import { getCurrencySymbol } from '@/lib/currency'
 
 const initialState: ActionState = { error: undefined, success: false }
 interface AddTransactionFormProps {
@@ -26,6 +28,8 @@ interface AddTransactionFormProps {
   initialSymbol?: string
   /** Suggested starting action (e.g. 'sell' when coming from an open holding). Ignored for cash. */
   initialAction?: 'buy' | 'sell' | 'inflow' | 'outflow'
+  /** Currency this price will be stored in. */
+  preferredCurrency?: PreferredCurrency
 }
 
 export default function AddTransactionForm({
@@ -33,6 +37,7 @@ export default function AddTransactionForm({
   initialAssetType,
   initialSymbol,
   initialAction,
+  preferredCurrency = 'USD',
 }: AddTransactionFormProps) {
   const [state, formAction, isPending] = useActionState(createTransaction, initialState)
 
@@ -146,17 +151,22 @@ export default function AddTransactionForm({
       {assetType !== 'cash' ? (
         <div className="space-y-1.5">
           <label htmlFor="add-unit-price" className={labelClassName}>
-            Unit price
+            Unit price ({getCurrencySymbol(preferredCurrency)})
           </label>
-          <input
-            id="add-unit-price"
-            name="unit_price"
-            type="number"
-            step="any"
-            placeholder="0.00"
-            className={fieldClassName}
-            required
-          />
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+              {getCurrencySymbol(preferredCurrency)}
+            </span>
+            <input
+              id="add-unit-price"
+              name="unit_price"
+              type="number"
+              step="any"
+              placeholder="0.00"
+              className={`${fieldClassName} pl-8`}
+              required
+            />
+          </div>
         </div>
       ) : (
         <input type="hidden" name="unit_price" value="1" />

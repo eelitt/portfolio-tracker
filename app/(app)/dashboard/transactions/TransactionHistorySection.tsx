@@ -31,6 +31,7 @@ export default async function TransactionHistorySection() {
       </h2>
       <TransactionTable
         transactions={transactionsWithFormattedDate}
+        priceData={data.priceData}
         preferredCurrency={data.preferredCurrency}
         usdToPreferredRate={data.usdToPreferredRate}
         usdToEurRate={data.usdToEurRate}

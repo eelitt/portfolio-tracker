@@ -59,6 +59,36 @@ export function getAmountInUsd(
   return amount / usdToEurRate
 }
 
+/** Unit price as the edit form should show it: preferred currency, same path as the table. */
+export function unitPriceShownInPreferred(
+  unitPrice: number,
+  entryCurrency: Currency,
+  preferredCurrency: Currency,
+  usdToEurRate: number
+): number {
+  const rate = usdToEurRate > 0 ? usdToEurRate : 0.92
+  const shown = convertBetweenCurrencies(unitPrice, entryCurrency, preferredCurrency, rate)
+  return Number(shown.toFixed(8))
+}
+
+/**
+ * Value to write back on the ledger row.
+ * An unchanged field keeps the original entry-currency price so FX rounding does not drift.
+ */
+export function unitPriceToStore(
+  entered: number,
+  shownBaseline: number,
+  originalUnitPrice: number,
+  entryCurrency: Currency,
+  preferredCurrency: Currency,
+  usdToEurRate: number
+): number {
+  if (!Number.isFinite(entered)) return originalUnitPrice
+  if (Math.abs(entered - shownBaseline) < 1e-8) return originalUnitPrice
+  const rate = usdToEurRate > 0 ? usdToEurRate : 0.92
+  return convertBetweenCurrencies(entered, preferredCurrency, entryCurrency, rate)
+}
+
 /**
  * Convert an amount from one supported currency to another via USD.
  * Identity when from === to.

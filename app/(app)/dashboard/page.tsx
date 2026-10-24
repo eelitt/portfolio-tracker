@@ -1,7 +1,7 @@
 import RefreshButton from './components/RefreshButton'
 import TransactionModal from './transactions/TransactionModal'
 import { redirect } from 'next/navigation'
-import { getCurrentUser } from '@/lib/user'
+import { getCurrentUser, getCurrentUserProfile } from '@/lib/user'
 import { Suspense } from 'react'
 import SummarySkeleton from './components/SummarySkeleton'
 import HoldingsSkeleton from './components/HoldingsSkeleton'
@@ -21,6 +21,8 @@ export default async function DashboardPage() {
     redirect('/login') // extra safety
   }
 
+  const profile = await getCurrentUserProfile()
+
   return (
     <div className="max-w-5xl mx-auto p-8">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -32,7 +34,7 @@ export default async function DashboardPage() {
         {/* One primary (Add) + quiet utility (Refresh); spacing owned here */}
         <div className="flex flex-wrap items-center gap-2">
           <RefreshButton />
-          <TransactionModal />
+          <TransactionModal preferredCurrency={profile?.preferredCurrency || 'USD'} />
         </div>
       </div>
 

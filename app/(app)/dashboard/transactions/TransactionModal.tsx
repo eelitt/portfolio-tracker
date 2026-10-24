@@ -23,17 +23,28 @@ import { toast } from 'sonner'
 import { Transaction } from '@/lib/types'
 import type { AssetType } from '@/lib/types'
 import { fieldClassName, labelClassName } from './formStyles'
+import type { PreferredCurrency } from '@/lib/userTypes'
+import {
+  getCurrencySymbol,
+  unitPriceShownInPreferred,
+  unitPriceToStore,
+} from '@/lib/currency'
 
 interface TransactionModalProps {
   transaction?: Transaction | null
   trigger?: React.ReactNode
   onClose?: () => void
+  /** Currency the unit-price field shows. New rows are stored in this currency. */
+  preferredCurrency?: PreferredCurrency
+  usdToEurRate?: number
 }
 
 export default function TransactionModal({
   transaction,
   trigger,
   onClose,
+  preferredCurrency = 'USD',
+  usdToEurRate = 0.92,
 }: TransactionModalProps) {
   const [open, setOpen] = useState(false)
   const [isPending, setIsPending] = useState(false)
@@ -44,6 +55,7 @@ export default function TransactionModal({
     'buy' | 'sell' | 'inflow' | 'outflow'
   >('buy')
   const [editUnitPrice, setEditUnitPrice] = useState<number>(1)
+  const [editPriceBaseline, setEditPriceBaseline] = useState<number>(1)
 
   type AddPrefill = {
     assetType?: AssetType
@@ -59,9 +71,20 @@ export default function TransactionModal({
       setEditAssetType(transaction.asset_type as AssetType)
       setEditSymbol(transaction.symbol)
       setEditAction(transaction.action as 'buy' | 'sell' | 'inflow' | 'outflow')
-      setEditUnitPrice(transaction.unit_price)
+      const entry = (transaction.currency || 'USD') as PreferredCurrency
+      const shown =
+        transaction.asset_type === 'cash'
+          ? transaction.unit_price
+          : unitPriceShownInPreferred(
+              transaction.unit_price,
+              entry,
+              preferredCurrency,
+              usdToEurRate
+            )
+      setEditUnitPrice(shown)
+      setEditPriceBaseline(shown)
     }
-  }, [transaction])
+  }, [transaction, preferredCurrency, usdToEurRate])
 
   // Holdings cards dispatch add-transaction; only the add instance listens
   useEffect(() => {
@@ -116,6 +139,23 @@ export default function TransactionModal({
 
     setIsPending(true)
     const formData = new FormData(e.currentTarget)
+    if (editAssetType !== 'cash') {
+      const entered = Number(formData.get('unit_price'))
+      const entry = (transaction.currency || 'USD') as PreferredCurrency
+      formData.set(
+        'unit_price',
+        String(
+          unitPriceToStore(
+            entered,
+            editPriceBaseline,
+            transaction.unit_price,
+            entry,
+            preferredCurrency,
+            usdToEurRate
+          )
+        )
+      )
+    }
     const result = await updateTransaction(transaction.id!, formData)
     setIsPending(false)
 
@@ -134,6 +174,7 @@ export default function TransactionModal({
     setOpen(nextOpen)
     if (!nextOpen) {
       setAddPrefill(null)
+      onClose?.()
     }
   }
 
@@ -177,7 +218,7 @@ export default function TransactionModal({
         </DialogHeader>
 
         {isEdit ? (
-          <form onSubmit={handleEditSubmit} className="space-y-4">
+          <form key={transaction.id} onSubmit={handleEditSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label htmlFor="edit-asset-type" className={labelClassName}>
@@ -276,20 +317,25 @@ export default function TransactionModal({
             {editAssetType !== 'cash' ? (
               <div className="space-y-1.5">
                 <label htmlFor="edit-unit-price" className={labelClassName}>
-                  Unit price
+                  Unit price ({getCurrencySymbol(preferredCurrency)})
                 </label>
-                <input
-                  id="edit-unit-price"
-                  name="unit_price"
-                  type="number"
-                  step="any"
-                  value={editUnitPrice}
-                  onChange={(e) =>
-                    setEditUnitPrice(parseFloat(e.target.value) || 1)
-                  }
-                  className={fieldClassName}
-                  required
-                />
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    {getCurrencySymbol(preferredCurrency)}
+                  </span>
+                  <input
+                    id="edit-unit-price"
+                    name="unit_price"
+                    type="number"
+                    step="any"
+                    value={editUnitPrice}
+                    onChange={(e) =>
+                      setEditUnitPrice(parseFloat(e.target.value) || 1)
+                    }
+                    className={`${fieldClassName} pl-8`}
+                    required
+                  />
+                </div>
               </div>
             ) : (
               <input type="hidden" name="unit_price" value={editUnitPrice} />
@@ -350,6 +396,7 @@ export default function TransactionModal({
             initialAssetType={addPrefill?.assetType}
             initialSymbol={addPrefill?.symbol}
             initialAction={addPrefill?.action}
+            preferredCurrency={preferredCurrency}
           />
         )}
       </DialogContent>

@@ -13,8 +13,10 @@ export interface FilterParams {
 }
 
 export interface SortParams {
-  sortColumn: 'date' | 'symbol' | 'quantity' | 'price'
+  sortColumn: 'date' | 'symbol' | 'quantity' | 'price' | 'pnl'
   sortDirection: 'asc' | 'desc'
+  /** Amount in preferred currency. Null and missing ids sort after every number. */
+  pnlAmountById?: ReadonlyMap<string, number | null>
 }
 
 /**
@@ -80,8 +82,20 @@ export function applySort(
     } else if (params.sortColumn === 'quantity') {
       valA = a.quantity
       valB = b.quantity
+    } else if (params.sortColumn === 'pnl') {
+      const rank = (tx: AugmentedTransaction) => {
+        const amount = params.pnlAmountById?.get(tx.id ?? '')
+        if (amount === undefined || amount === null || Number.isNaN(amount)) {
+          return { blank: true as const, amount: 0 }
+        }
+        return { blank: false as const, amount }
+      }
+      const ra = rank(a)
+      const rb = rank(b)
+      if (ra.blank !== rb.blank) return ra.blank ? 1 : -1
+      valA = ra.amount
+      valB = rb.amount
     } else {
-      // price
       valA = a.unit_price
       valB = b.unit_price
     }
