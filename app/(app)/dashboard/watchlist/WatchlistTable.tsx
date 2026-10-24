@@ -46,6 +46,7 @@ function WatchlistItemLogo({
   return (
     // eslint-disable-next-line @next/next/no-img-element -- public svg; try next path on 404
     <img
+      key={svgs[index]}
       src={svgs[index]}
       alt=""
       draggable={false}

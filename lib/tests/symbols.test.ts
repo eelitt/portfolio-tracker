@@ -76,6 +76,24 @@ describe('symbols data (curated lists for transaction forms)', () => {
     }
   })
 
+  it('includes Circle, Bullish, Hyperliquid, Aave, and Bittensor', () => {
+    const stockSymbols = getSymbolsForType('stock').map((s) => s.symbol)
+    expect(stockSymbols).toContain('CRCL')
+    expect(stockSymbols).toContain('BLSH')
+    expect(STOCK_SYMBOLS.find((s) => s.symbol === 'CRCL')?.name).toBe(
+      'Circle Internet Group, Inc.'
+    )
+    expect(STOCK_SYMBOLS.find((s) => s.symbol === 'BLSH')?.name).toBe('Bullish')
+
+    const cryptoSymbols = getSymbolsForType('crypto').map((s) => s.symbol)
+    expect(cryptoSymbols).toEqual(expect.arrayContaining(['HYPE', 'AAVE', 'TAO']))
+    expect(getCryptoPricing('HYPE')).toEqual({ kind: 'binance', pair: 'HYPEUSDT' })
+    expect(getCryptoPricing('AAVE')).toEqual({ kind: 'binance', pair: 'AAVEUSDT' })
+    expect(getCryptoPricing('TAO')).toEqual({ kind: 'binance', pair: 'TAOUSDT' })
+    expect(getSecurityPricing('CRCL')).toEqual({ kind: 'finnhub' })
+    expect(getSecurityPricing('BLSH')).toEqual({ kind: 'finnhub' })
+  })
+
   it('getSymbolsForType returns the right curated list', () => {
     expect(getSymbolsForType('stock').length).toBe(STOCK_SYMBOLS.length)
     expect(getSymbolsForType('etf').length).toBe(ETF_SYMBOLS.length)
@@ -124,18 +142,31 @@ describe('symbols data (curated lists for transaction forms)', () => {
     })
   })
 
+  it('getSymbolOptions lists every asset type A–Z by ticker', () => {
+    const isSorted = (values: string[]) =>
+      values.every((value, i) => i === 0 || values[i - 1].localeCompare(value) <= 0)
+
+    for (const assetType of ['stock', 'etf', 'crypto'] as const) {
+      const values = getSymbolOptions(assetType).map((o) => o.value)
+      expect(values.length).toBeGreaterThan(0)
+      expect(isSorted(values)).toBe(true)
+    }
+  })
+
   it('getSymbolOptions supports preserveValue for edit scenarios', () => {
     const stockOpts = getSymbolOptions('stock')
     expect(stockOpts.length).toBeGreaterThan(0)
 
     const weird = 'WEIRDOLD'
     const withPreserve = getSymbolOptions('stock', weird)
-    expect(withPreserve[0].value).toBe(weird)
-    expect(withPreserve[0].label).toContain('previous')
+    const kept = withPreserve.find((o) => o.value === weird)
+    expect(kept?.label).toContain('previous')
+    const values = withPreserve.map((o) => o.value)
+    expect(values).toEqual([...values].sort((a, b) => a.localeCompare(b)))
 
     const firstSymbol = stockOpts[0].value
     const stillFirst = getSymbolOptions('stock', firstSymbol)
-    expect(stillFirst[0].value).toBe(firstSymbol)
+    expect(stillFirst.map((o) => o.value)).toEqual(stockOpts.map((o) => o.value))
   })
 })
 

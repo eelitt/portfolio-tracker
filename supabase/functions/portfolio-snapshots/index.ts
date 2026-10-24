@@ -54,6 +54,9 @@ const CRYPTO_BINANCE_PAIRS: Record<string, string> = {
   XLM: 'XLMUSDT',
   XMR: 'XMRUSDT',
   LINK: 'LINKUSDT',
+  HYPE: 'HYPEUSDT',
+  AAVE: 'AAVEUSDT',
+  TAO: 'TAOUSDT',
 }
 
 function binancePairForTicker(ticker: string): string | null {

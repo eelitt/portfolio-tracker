@@ -77,8 +77,6 @@ Transactions (Postgres + RLS)
 
 The assistant is an orchestrator over specialist tools with a permission registry and confirmations on writes — not a free-form agent against your balances.
 
-Full write-up: [architecture.md](./architecture.md).
-
 ## Key design decisions
 
 - **Transactions only.** No holdings table to drift out of sync with trades.

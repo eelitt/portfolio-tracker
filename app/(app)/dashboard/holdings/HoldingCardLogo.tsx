@@ -36,6 +36,7 @@ export function HoldingCardLogo({ symbol, assetType, className }: Props) {
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- public path + onError fallback chain */}
       <img
+        key={src}
         src={src}
         alt=""
         draggable={false}

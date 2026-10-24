@@ -144,8 +144,8 @@ export function getCryptoPricing(ticker: string): CryptoPricing {
 /**
  * Builds option objects for a <select>.
  * If preserveValue is supplied and not already present in the list for this type,
- * it is prepended so that editing an old transaction whose symbol was removed
- * from the json still works.
+ * it is included so that editing an old transaction whose symbol was removed
+ * from the json still works. Options are always A–Z by ticker.
  */
 export function getSymbolOptions(
   assetType: 'stock' | 'etf' | 'crypto' | 'cash' | string,
@@ -162,11 +162,12 @@ export function getSymbolOptions(
   }))
 
   if (preserveValue && !options.some((o) => o.value === preserveValue)) {
-    options.unshift({
+    options.push({
       value: preserveValue,
       label: `${preserveValue} — (previous)`,
     })
   }
 
+  options.sort((a, b) => a.value.localeCompare(b.value))
   return options
 }

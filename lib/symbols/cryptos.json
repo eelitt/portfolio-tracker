@@ -88,5 +88,23 @@
     "name": "Chainlink",
     "binance_symbol": "LINKUSDT",
     "market_cap_rank": 15
+  },
+  {
+    "symbol": "HYPE",
+    "name": "Hyperliquid",
+    "binance_symbol": "HYPEUSDT",
+    "market_cap_rank": 16
+  },
+  {
+    "symbol": "AAVE",
+    "name": "Aave",
+    "binance_symbol": "AAVEUSDT",
+    "market_cap_rank": 17
+  },
+  {
+    "symbol": "TAO",
+    "name": "Bittensor",
+    "binance_symbol": "TAOUSDT",
+    "market_cap_rank": 18
   }
 ]

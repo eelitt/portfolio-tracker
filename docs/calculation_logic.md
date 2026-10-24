@@ -1,6 +1,6 @@
 # Calculation logic
 
-Formula sheet for **tested money math**. Pipeline, isolation, and who may invent numbers: [architecture.md](./architecture.md). Finnish tax detail: [lib/tax/README.md](./lib/tax/README.md).
+Formula sheet for **tested money math**. Pipeline, isolation, and who may invent numbers: [architecture.md](./architecture.md). Finnish tax detail: [lib/tax/README.md](../lib/tax/README.md).
 
 Change a formula → update this file in the same change. Do not document UI here.
 

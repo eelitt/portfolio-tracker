@@ -2,7 +2,7 @@
 
 How a request becomes numbers the user is allowed to trust.
 
-The [README](./README.md) is the pitch. [AGENTS.md](./AGENTS.md) is phases, layout, and coding rules. This file is the **control plane**: what is source of truth, which functions are allowed to invent money, and what happens on the paths that matter.
+The [README](../README.md) is the pitch. [AGENTS.md](./AGENTS.md) is phases, layout, and coding rules. This file is the **control plane**: what is source of truth, which functions are allowed to invent money, and what happens on the paths that matter.
 
 ---
 

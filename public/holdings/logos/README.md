@@ -12,6 +12,7 @@ logos/
 ```
 
 - Filename = **lowercase ticker** (`BTC` → `btc.svg`) or catalog name slug (`TSLA` → `tesla.svg`).
+- OP funds (`OP …` or `OP-…`, including OP-Amerikka Indeksi A) use `etf/op.svg`.
 - Prefer **SVG** (mono-friendly); **PNG** with transparency is fine.
 - Missing file → card shows no logo (silent).
 - Cash has no logo folder.

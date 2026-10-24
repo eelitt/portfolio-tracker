@@ -74,7 +74,6 @@ export async function getWatchlist(): Promise<
         'id',
         stale.map((row) => row.id)
       )
-    revalidatePath('/dashboard')
   }
 
   return {

@@ -96,5 +96,7 @@
   { "symbol": "TFC", "name": "Truist Financial Corporation" },
   { "symbol": "SO", "name": "The Southern Company" },
   { "symbol": "DUK", "name": "Duke Energy Corporation" },
-  { "symbol": "NEE", "name": "NextEra Energy, Inc." }
+  { "symbol": "NEE", "name": "NextEra Energy, Inc." },
+  { "symbol": "CRCL", "name": "Circle Internet Group, Inc." },
+  { "symbol": "BLSH", "name": "Bullish" }
 ]
