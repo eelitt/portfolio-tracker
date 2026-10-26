@@ -40,6 +40,7 @@ export function markersFromTransactions(
     if (!/^\d{4}-\d{2}-\d{2}$/.test(timeKey)) continue
 
     markers.push({
+      id: tx.id,
       time: executed,
       timeKey,
       side: tx.action,

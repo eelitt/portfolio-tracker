@@ -10,6 +10,13 @@ export type AllocationHolding = {
   priceAvailable?: boolean
 }
 
+export type AllocationPart = {
+  id: string
+  name: string
+  value: number
+  percent: number
+}
+
 export type AllocationSlice = {
   id: string
   name: string
@@ -17,6 +24,8 @@ export type AllocationSlice = {
   value: number
   percent: number
   color: string
+  /** Holdings rolled into the Other slice, largest first. */
+  parts?: AllocationPart[]
 }
 
 const OTHER_COLOR = '#94a3b8'
@@ -48,14 +57,14 @@ export function buildHoldingSlices(
   if (total <= 0) return []
 
   const named: typeof positive = []
-  let otherValue = 0
+  const otherHoldings: typeof positive = []
 
   for (const h of positive) {
     const pct = h.marketValue / total
     if (named.length < MAX_NAMED_SLICES && pct >= MIN_SLICE_PCT) {
       named.push(h)
     } else {
-      otherValue += h.marketValue
+      otherHoldings.push(h)
     }
   }
 
@@ -71,13 +80,20 @@ export function buildHoldingSlices(
     }
   })
 
-  if (otherValue > 0) {
+  if (otherHoldings.length > 0) {
+    const otherValue = otherHoldings.reduce((s, h) => s + h.marketValue, 0)
     slices.push({
       id: 'other',
       name: 'Other',
       value: otherValue,
       percent: otherValue / total,
       color: OTHER_COLOR,
+      parts: otherHoldings.map((h) => ({
+        id: `${h.asset_type ?? 'x'}:${h.symbol}`,
+        name: holdingLabel(h).name,
+        value: h.marketValue,
+        percent: h.marketValue / total,
+      })),
     })
   }
 

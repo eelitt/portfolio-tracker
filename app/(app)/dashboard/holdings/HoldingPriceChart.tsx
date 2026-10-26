@@ -26,6 +26,7 @@ import {
 } from '@/lib/priceHistory'
 import { formatCurrency, formatQuantity } from '@/lib/currency'
 import type { PreferredCurrency } from '@/lib/userTypes'
+import type { TransactionPnlRow } from '@/lib/transactionPnl'
 import SensitiveValue from '@/components/SensitiveValue'
 import { cn } from '@/lib/utils'
 
@@ -82,6 +83,35 @@ function buildLibraryMarkers(
     })
   }
   return out
+}
+
+function MarkerBuyPnl({
+  pnl,
+  preferredCurrency,
+}: {
+  pnl?: TransactionPnlRow
+  preferredCurrency: PreferredCurrency
+}) {
+  if (!pnl || pnl.kind === 'none') {
+    return <span className="text-muted-foreground">—</span>
+  }
+  if (pnl.kind === 'closed') {
+    return <span className="text-muted-foreground">Closed</span>
+  }
+  const amount = pnl.amount ?? 0
+  const color = amount >= 0 ? 'text-pnl-positive' : 'text-pnl-negative'
+  return (
+    <span className={`inline-flex flex-col items-end ${color}`}>
+      <SensitiveValue value={formatCurrency(amount, preferredCurrency, 1)} />
+      {pnl.percent !== undefined && (
+        <span className="text-[10px]">
+          (
+          <SensitiveValue value={`${pnl.percent.toFixed(1)}%`} />
+          )
+        </span>
+      )}
+    </span>
+  )
 }
 
 function formatTradeWhen(iso: string): string {
@@ -188,8 +218,8 @@ export default function HoldingPriceChart({
       let x = point?.x ?? w / 2
       let y = point?.y ?? 40
       // Prefer above-left of cursor; clamp inside container
-      const tipW = 220
-      const tipH = 120
+      const tipW = 240
+      const tipH = 150 + trades.length * 28
       x = Math.min(Math.max(8, x + 12), w - tipW - 8)
       y = Math.min(Math.max(8, y - tipH - 8), h - tipH - 8)
 
@@ -375,6 +405,15 @@ export default function HoldingPriceChart({
                       )}
                     />
                   </div>
+                  {t.side === 'buy' ? (
+                    <div className="flex justify-between gap-3 tabular-nums">
+                      <span className="text-muted-foreground">P&L</span>
+                      <MarkerBuyPnl
+                        pnl={t.pnl}
+                        preferredCurrency={preferredCurrency}
+                      />
+                    </div>
+                  ) : null}
                   {t.notes ? (
                     <div className="text-muted-foreground line-clamp-2">
                       {t.notes}

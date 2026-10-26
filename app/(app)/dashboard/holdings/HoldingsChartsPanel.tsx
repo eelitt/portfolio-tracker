@@ -15,7 +15,7 @@ import {
   type SnapshotRangeMode,
 } from '@/lib/aggregateSnapshots'
 import type { PreferredCurrency } from '@/lib/userTypes'
-import type { EnrichedHolding } from '@/lib/types'
+import type { EnrichedHolding, Transaction } from '@/lib/types'
 import type { CashFlow } from '@/lib/performance'
 import {
   readChartTab,
@@ -46,6 +46,9 @@ interface HoldingsChartsPanelProps {
   enrichedHoldings: EnrichedHolding[]
   preferredCurrency: PreferredCurrency
   usdToPreferredRate: number
+  transactions: Transaction[]
+  priceData: Record<string, { price: number; change24h: number | null }>
+  usdToEurRate: number
   snapshots: SnapshotPoint[]
   snapshotsError?: string | null
   cashFlows?: CashFlow[]
@@ -55,6 +58,9 @@ export default function HoldingsChartsPanel({
   enrichedHoldings,
   preferredCurrency,
   usdToPreferredRate,
+  transactions,
+  priceData,
+  usdToEurRate,
   snapshots,
   snapshotsError,
   cashFlows = [],
@@ -154,6 +160,9 @@ export default function HoldingsChartsPanel({
             <PriceChartTab
               holdings={enrichedHoldings}
               preferredCurrency={preferredCurrency}
+              transactions={transactions}
+              priceData={priceData}
+              usdToEurRate={usdToEurRate}
             />
           </div>
         ) : null}

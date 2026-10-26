@@ -4,6 +4,7 @@
  * AllocationPie
  *
  * Donut of priced market value. Tiny holdings roll into Other.
+ * Hover Other to see which holdings it contains.
  * Holding | Type toggle; hover/pin drives the center label.
  */
 
@@ -20,6 +21,7 @@ import {
   buildTypeSlices,
   unpricedHoldingCount,
   type AllocationHolding,
+  type AllocationPart,
   type AllocationSlice,
 } from './allocationSlices'
 import {
@@ -39,6 +41,35 @@ const MODE_OPTIONS: { value: AllocPieMode; label: string }[] = [
   { value: 'type', label: 'Type' },
 ]
 
+function OtherPartList({
+  parts,
+  currency,
+  hideMoney,
+}: {
+  parts: AllocationPart[]
+  currency: PreferredCurrency
+  hideMoney: boolean
+}) {
+  return (
+    <ul className="mt-1.5 grid max-h-40 w-max grid-cols-[fit-content(14rem)_3.25rem_4.75rem] gap-x-2 gap-y-1 overflow-y-auto border-t border-border pt-1.5">
+      {parts.map((part) => (
+        <li
+          key={part.id}
+          className="col-span-3 grid grid-cols-subgrid items-baseline text-xs"
+        >
+          <span className="truncate">{part.name}</span>
+          <span className="text-right tabular-nums text-muted-foreground">
+            {(part.percent * 100).toFixed(1)}%
+          </span>
+          <span className="text-right tabular-nums">
+            {hideMoney ? MONEY_MASK : formatCurrency(part.value, currency, 1)}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export default function AllocationPie({
   enrichedHoldings,
   preferredCurrency,
@@ -47,7 +78,10 @@ export default function AllocationPie({
   const hideMoney = useHideMoney()
   const rootRef = useRef<HTMLDivElement>(null)
   const [mode, setMode] = useState<AllocPieMode>('holding')
-  const [hoverIndex, setHoverIndex] = useState<number | undefined>(undefined)
+  const [pieHoverIndex, setPieHoverIndex] = useState<number | undefined>(undefined)
+  const [legendHoverIndex, setLegendHoverIndex] = useState<number | undefined>(
+    undefined
+  )
   const [pinnedIndex, setPinnedIndex] = useState<number | null>(null)
 
   useEffect(() => {
@@ -67,7 +101,8 @@ export default function AllocationPie({
   const onModeChange = (next: AllocPieMode) => {
     setMode(next)
     setPinnedIndex(null)
-    setHoverIndex(undefined)
+    setPieHoverIndex(undefined)
+    setLegendHoverIndex(undefined)
     writeAllocPieMode(next)
   }
 
@@ -89,7 +124,8 @@ export default function AllocationPie({
     [enrichedHoldings]
   )
 
-  const activeIndex = hoverIndex ?? pinnedIndex ?? undefined
+  const activeIndex =
+    pieHoverIndex ?? legendHoverIndex ?? pinnedIndex ?? undefined
   const active = activeIndex != null ? slices[activeIndex] : undefined
 
   const pin = (i: number) => {
@@ -143,8 +179,8 @@ export default function AllocationPie({
                 paddingAngle={2}
                 stroke="hsl(var(--card))"
                 strokeWidth={2}
-                onMouseEnter={(_, index) => setHoverIndex(index)}
-                onMouseLeave={() => setHoverIndex(undefined)}
+                onMouseEnter={(_, index) => setPieHoverIndex(index)}
+                onMouseLeave={() => setPieHoverIndex(undefined)}
                 onClick={(_, index) => pin(index)}
                 isAnimationActive={false}
               >
@@ -182,6 +218,13 @@ export default function AllocationPie({
                       <div className="text-muted-foreground">
                         {(p.percent * 100).toFixed(1)}% of portfolio
                       </div>
+                      {p.parts && p.parts.length > 0 ? (
+                        <OtherPartList
+                          parts={p.parts}
+                          currency={currency}
+                          hideMoney={hideMoney}
+                        />
+                      ) : null}
                     </div>
                   )
                 }}
@@ -214,16 +257,18 @@ export default function AllocationPie({
 
         <ul className="z-0 flex max-h-72 flex-col gap-1 overflow-y-auto pr-1">
           {slices.map((s, i) => (
-            <li key={s.id}>
+            <li
+              key={s.id}
+              onMouseEnter={() => setLegendHoverIndex(i)}
+              onMouseLeave={() => setLegendHoverIndex(undefined)}
+            >
               <button
                 type="button"
                 className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm transition-colors hover:bg-muted/60"
                 title={s.subtitle ? `${s.name} · ${s.subtitle}` : s.name}
                 aria-pressed={pinnedIndex === i}
-                onMouseEnter={() => setHoverIndex(i)}
-                onMouseLeave={() => setHoverIndex(undefined)}
-                onFocus={() => setHoverIndex(i)}
-                onBlur={() => setHoverIndex(undefined)}
+                onFocus={() => setLegendHoverIndex(i)}
+                onBlur={() => setLegendHoverIndex(undefined)}
                 onClick={() => pin(i)}
               >
                 <span
@@ -248,6 +293,15 @@ export default function AllocationPie({
                   <SensitiveValue value={formatCurrency(s.value, currency, 1)} />
                 </span>
               </button>
+              {s.parts && s.parts.length > 0 && legendHoverIndex === i ? (
+                <div className="px-1.5 pb-1">
+                  <OtherPartList
+                    parts={s.parts}
+                    currency={currency}
+                    hideMoney={hideMoney}
+                  />
+                </div>
+              ) : null}
             </li>
           ))}
         </ul>

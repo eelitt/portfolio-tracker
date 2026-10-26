@@ -72,6 +72,9 @@ export default async function HoldingsSection() {
         enrichedHoldings={data.enrichedHoldings}
         preferredCurrency={data.preferredCurrency}
         usdToPreferredRate={data.usdToPreferredRate}
+        transactions={data.transactions}
+        priceData={data.priceData}
+        usdToEurRate={data.usdToEurRate}
         snapshots={snapshotsResult.data ?? []}
         snapshotsError={snapshotsResult.error ?? null}
         cashFlows={cashFlowsFromTransactions(

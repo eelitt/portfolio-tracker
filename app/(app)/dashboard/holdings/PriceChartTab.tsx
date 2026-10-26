@@ -26,8 +26,9 @@ import type {
   SyncMode,
   TradeMarker,
 } from '@/lib/priceHistory'
-import type { EnrichedHolding } from '@/lib/types'
+import type { EnrichedHolding, Transaction } from '@/lib/types'
 import type { PreferredCurrency } from '@/lib/userTypes'
+import { transactionPnl } from '@/lib/transactionPnl'
 import { getSecurityPricing } from '@/lib/symbols'
 import HoldingPriceChart from './HoldingPriceChart'
 import { SegmentedControl } from './SegmentedControl'
@@ -38,6 +39,9 @@ type LoadPhase = 'idle' | 'loading' | 'backfilling' | 'ready' | 'error'
 type Props = {
   holdings: EnrichedHolding[]
   preferredCurrency: PreferredCurrency
+  transactions: Transaction[]
+  priceData: Record<string, { price: number; change24h: number | null }>
+  usdToEurRate: number
 }
 
 const RANGE_OPTIONS: { value: ChartRange; label: string }[] = [
@@ -69,10 +73,23 @@ function statusLabel(
   }
 }
 
-export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
-  // Cash has no market OHLC — only stock / etf / crypto
+export default function PriceChartTab({
+  holdings,
+  preferredCurrency,
+  transactions,
+  priceData,
+  usdToEurRate,
+}: Props) {
+  // Cash has no market OHLC — only stock / etf / crypto, A–Z by symbol
   const assetHoldings = useMemo(
-    () => holdings.filter((h) => h.asset_type !== 'cash'),
+    () =>
+      holdings
+        .filter((h) => h.asset_type !== 'cash')
+        .sort(
+          (a, b) =>
+            a.symbol.localeCompare(b.symbol) ||
+            a.asset_type.localeCompare(b.asset_type)
+        ),
     [holdings]
   )
 
@@ -93,6 +110,21 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
 
   const selected =
     assetHoldings.find((h) => h.symbol === symbol) ?? assetHoldings[0]
+
+  const markersWithPnl = useMemo(() => {
+    if (markers.length === 0) return markers
+    const pnlById = transactionPnl({
+      transactions,
+      priceData,
+      preferredCurrency,
+      usdToEurRate,
+    })
+    return markers.map((marker) => {
+      if (marker.side !== 'buy' || !marker.id) return marker
+      const pnl = pnlById.get(marker.id)
+      return pnl ? { ...marker, pnl } : marker
+    })
+  }, [markers, transactions, priceData, preferredCurrency, usdToEurRate])
 
   // If holdings list changes (tx delete, etc.), keep selected symbol valid
   useEffect(() => {
@@ -252,7 +284,7 @@ export default function PriceChartTab({ holdings, preferredCurrency }: Props) {
       {showChart ? (
         <HoldingPriceChart
           bars={bars}
-          markers={markers}
+          markers={markersWithPnl}
           preferredCurrency={preferredCurrency}
           symbol={selected?.symbol}
         />

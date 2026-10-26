@@ -225,21 +225,18 @@ export default function PerformanceTab({
 
   const onToggleBench = useCallback(
     (id: BenchmarkId) => {
+      const enableFirst =
+        !benchOn.has(id) && benchOn.size === 0 && scaleMode === 'absolute'
       setBenchOn((prev) => {
         const next = new Set(prev)
-        if (next.has(id)) {
-          next.delete(id)
-        } else {
-          next.add(id)
-          if (prev.size === 0 && scaleMode === 'absolute') {
-            onScaleChange('indexed')
-          }
-        }
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
         writeBenchIds(next)
         return next
       })
+      if (enableFirst) onScaleChange('indexed')
     },
-    [scaleMode, onScaleChange]
+    [benchOn, scaleMode, onScaleChange]
   )
 
   const performanceWarning =

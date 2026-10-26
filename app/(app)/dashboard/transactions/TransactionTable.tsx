@@ -268,6 +268,7 @@ export default function TransactionTable({
         ref={tableFrameRef}
         className="overflow-x-auto rounded-xl border border-subtle bg-surface-elevated shadow-sm"
       >
+        <div className="overflow-clip">
         <table className="min-w-full border-separate border-spacing-0">
           <thead className="bg-muted/50">
             <tr className="[&>th]:border-b [&>th]:border-subtle">
@@ -333,6 +334,7 @@ export default function TransactionTable({
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Pagination */}

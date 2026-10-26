@@ -1,4 +1,5 @@
 import type { AssetType } from '@/lib/types'
+import type { TransactionPnlRow } from '@/lib/transactionPnl'
 
 export type ChartAssetType = Exclude<AssetType, 'cash'>
 
@@ -20,6 +21,8 @@ export type PriceBar = {
 }
 
 export type TradeMarker = {
+  /** Ledger row id, used to join transaction P&L. */
+  id?: string
   time: string // ISO date or datetime for tooltip
   timeKey: string // YYYY-MM-DD for chart alignment
   side: 'buy' | 'sell'
@@ -27,6 +30,8 @@ export type TradeMarker = {
   quantity: number
   currency: 'USD' | 'EUR'
   notes?: string | null
+  /** Set on buy markers from transactionPnl. Sells stay unset. */
+  pnl?: TransactionPnlRow
 }
 
 export type PriceBarSyncMeta = {
