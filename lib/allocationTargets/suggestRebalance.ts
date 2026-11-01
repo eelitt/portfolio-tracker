@@ -1,6 +1,13 @@
 import { allocationBreakdown } from '@/lib/portfolioAnalyst'
 import type { AssetType, EnrichedHolding } from '@/lib/types'
-import { ALLOC_ASSET_TYPES, type AllocationPolicySpec, type RebalanceMode, type RebalanceSuggestion } from './types'
+import { futuresEquity } from './drift'
+import {
+  ALLOC_ASSET_TYPES,
+  type AllocationPolicySpec,
+  type PlanPerp,
+  type RebalanceMode,
+  type RebalanceSuggestion,
+} from './types'
 
 function round2(n: number) {
   return Number(n.toFixed(2))
@@ -47,10 +54,33 @@ function underSymbolInType(
   return unders[0].symbol
 }
 
+/** Reduce futures that sit above a 0% target. Never names the underlying coin. */
+function futuresSell(
+  perps: PlanPerp[],
+  spotTotal: number,
+  tolerancePp: number
+): RebalanceSuggestion | null {
+  const equity = futuresEquity(perps)
+  if (!(equity > 0)) return null
+  const combined = spotTotal + equity
+  const actualPct = (equity / combined) * 100
+  if (!(actualPct > tolerancePp)) return null
+  const notional = round2(equity - (tolerancePp / 100) * combined)
+  if (!(notional > 0)) return null
+  return {
+    side: 'sell',
+    key: 'future',
+    keyKind: 'asset_type',
+    notional,
+    reason: 'Futures equity is above the 0% target.',
+  }
+}
+
 export function suggestRebalance(
   holdings: EnrichedHolding[],
   spec: AllocationPolicySpec,
-  opts: { mode: RebalanceMode; cashIn?: number }
+  opts: { mode: RebalanceMode; cashIn?: number },
+  perps: PlanPerp[] = []
 ): { suggestions: RebalanceSuggestion[]; notes: string[] } {
   const alloc = allocationBreakdown(holdings)
   const notes: string[] = []
@@ -113,6 +143,8 @@ export function suggestRebalance(
 
   const total = alloc.totalMarketValue
   if (!(total > 0)) {
+    const sell = futuresSell(perps, 0, spec.tolerancePp)
+    if (sell) return { suggestions: [sell], notes }
     return { suggestions: [], notes: [...notes, 'No priced holdings or cash to rebalance.'] }
   }
 
@@ -175,6 +207,9 @@ export function suggestRebalance(
       if (need <= band) break
     }
   }
+
+  const sell = futuresSell(perps, total, spec.tolerancePp)
+  if (sell) suggestions.push(sell)
 
   return { suggestions, notes }
 }

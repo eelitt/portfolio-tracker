@@ -30,6 +30,13 @@ export type DriftRow = {
 
 export type RebalanceMode = 'inplace' | 'new_cash'
 
+/** One open side, already in the preferred currency. Equity, not notional. */
+export type PlanPerp = {
+  symbol: string
+  positionSide: 'long' | 'short'
+  equity: number
+}
+
 export type RebalanceSuggestion = {
   side: 'buy' | 'sell'
   key: string

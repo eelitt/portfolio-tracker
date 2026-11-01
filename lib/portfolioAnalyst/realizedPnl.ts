@@ -14,14 +14,17 @@ export function realizedPnlFromTransactions(
   transactions: Transaction[],
   filters: RealizedPnlFilters = {}
 ): RealizedPnlResult {
-  const normalized = (transactions || []).map((tx) => ({
-    ...tx,
-    quantity: Number(tx.quantity),
-    unit_price: Number(tx.unit_price),
-  }))
+  const normalized = (transactions || [])
+    .filter((tx) => tx.asset_type !== 'future')
+    .map((tx) => ({
+      ...tx,
+      asset_type: tx.asset_type as AssetType,
+      quantity: Number(tx.quantity),
+      unit_price: Number(tx.unit_price),
+    }))
 
   // Full history per symbol for cost basis; year filter applies only to which sells count.
-  const fullBySymbol = new Map<string, Transaction[]>()
+  const fullBySymbol = new Map<string, (typeof normalized)[number][]>()
   for (const tx of normalized) {
     if (filters.symbol && tx.symbol.toUpperCase() !== filters.symbol.toUpperCase()) continue
     if (filters.assetType && tx.asset_type !== filters.assetType) continue

@@ -448,7 +448,7 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
                             <input
                               type="number"
                               step="any"
-                              value={tx.quantity}
+                              value={tx.quantity ?? ''}
                               onChange={(e) => updatePreviewRow(index, 'quantity', e.target.value)}
                               className="border p-1 rounded w-20 text-xs text-right font-mono"
                             />
@@ -461,7 +461,7 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
                               <input
                                 type="number"
                                 step="any"
-                                value={tx.unit_price}
+                                value={tx.unit_price ?? ''}
                                 onChange={(e) => updatePreviewRow(index, 'unit_price', e.target.value)}
                                 className="border p-1 rounded w-20 text-xs text-right font-mono"
                               />

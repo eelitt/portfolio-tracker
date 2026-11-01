@@ -3,7 +3,7 @@
  * No I/O. Tools call this before any DB write.
  */
 
-import type { AssetType, TransactionAction } from '../types'
+import type { AssetType, SpotAction } from '../types'
 import { STOCK_SYMBOLS, ETF_SYMBOLS, CRYPTO_SYMBOLS } from '../symbols'
 import type {
   ChatAddTransactionInput,
@@ -149,7 +149,7 @@ export function validateTransactionDraft(
   }
 
   let assetType: AssetType | null = input.asset_type ?? null
-  const action: TransactionAction | null = input.action ?? null
+  const action: SpotAction | null = input.action ?? null
   let symbolRaw = input.symbol?.trim() || ''
 
   // --- Currency (text is authoritative) ---

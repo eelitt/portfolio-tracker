@@ -16,6 +16,16 @@ import { transactionSchema, type TransactionFormData } from '@/lib/schemas'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser, getCurrentUserProfile } from '@/lib/user'
 import { getPortfolioData } from '@/lib/portfolioData'
+import { getUsdToEurRate } from '@/lib/currency'
+import { getUsdMMarks } from '@/lib/prices/binanceUsdM'
+import { ledgerPerpRows, validatePerps } from '@/lib/perps'
+import {
+  cashEventsInUsd,
+  ledgerAfterSave,
+  type SaveChange,
+  type SaveRow,
+} from '@/lib/perpSave'
+import { getSymbolsForType } from '@/lib/symbols'
 
 /** Shape returned by mutation actions to the client (used with useActionState). */
 export type ActionState = {
@@ -26,6 +36,90 @@ export type ActionState = {
 export type CreateTransactionResult =
   | { ok: true; data: TransactionFormData & { currency: 'USD' | 'EUR' } }
   | { ok: false; error: string }
+
+const SAVE_ROW_COLUMNS =
+  'id, symbol, asset_type, action, position_side, quantity, unit_price, amount, executed_at, created_at, currency'
+
+function futureSymbolAllowed(symbol: string): boolean {
+  const upper = symbol.trim().toUpperCase()
+  return getSymbolsForType('crypto').some((entry) => entry.symbol.toUpperCase() === upper)
+}
+
+function saveRowFromForm(
+  data: TransactionFormData,
+  currency: 'USD' | 'EUR',
+  id?: string,
+  createdAt?: string | null
+): SaveRow {
+  const future = data.asset_type === 'future'
+  const wallet =
+    data.action === 'funding' ||
+    data.action === 'fee' ||
+    data.action === 'margin_add' ||
+    data.action === 'margin_remove'
+  return {
+    id,
+    symbol: data.symbol,
+    asset_type: data.asset_type,
+    action: data.action,
+    position_side: future ? data.position_side : null,
+    quantity: future && wallet ? null : data.quantity,
+    unit_price: future && wallet ? null : data.unit_price,
+    amount: future ? data.amount : null,
+    executed_at: data.executed_at,
+    created_at: createdAt,
+    currency: future ? 'USD' : currency,
+  }
+}
+
+/** Replay the book that would remain. A reject writes nothing. */
+async function perpSaveError(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  change: SaveChange
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('transactions')
+    .select(SAVE_ROW_COLUMNS)
+    .eq('user_id', userId)
+  if (error) return error.message
+
+  const nowIso = new Date().toISOString()
+  const ledger = ledgerAfterSave((data || []) as SaveRow[], change, nowIso)
+  const rows = ledgerPerpRows(ledger)
+  if (rows.length === 0) return null
+
+  const symbols = [...new Set(rows.map((row) => row.symbol))]
+  const [usdToEurRate, marks] = await Promise.all([
+    getUsdToEurRate(),
+    getUsdMMarks(symbols),
+  ])
+  const saved = validatePerps({
+    rows,
+    cash: cashEventsInUsd(ledger, usdToEurRate),
+    marks,
+  })
+  if (!saved.ok) return saved.reason
+  return null
+}
+
+function creditsSpotProceeds(data: { action: string; asset_type: string }): boolean {
+  return data.action === 'sell' && data.asset_type !== 'cash' && data.asset_type !== 'future'
+}
+
+function formRaw(formData: FormData) {
+  return {
+    symbol: formData.get('symbol'),
+    asset_type: formData.get('asset_type'),
+    action: formData.get('action'),
+    quantity: formData.get('quantity'),
+    unit_price: formData.get('unit_price'),
+    amount: formData.get('amount'),
+    position_side: formData.get('position_side'),
+    executed_at: formData.get('executed_at'),
+    notes: formData.get('notes'),
+  }
+}
 
 /**
  * Programmatic create (manual form, NL confirm, imports share this path after Zod).
@@ -53,7 +147,12 @@ export async function createTransactionRecord(
   }
 
   let currency: 'USD' | 'EUR' | undefined = result.data.currency
-  if (!currency) {
+  if (result.data.asset_type === 'future') {
+    currency = 'USD'
+    if (!futureSymbolAllowed(result.data.symbol)) {
+      return { ok: false, error: 'Symbol is not in the crypto catalog' }
+    }
+  } else if (!currency) {
     if (options.requireCurrency) {
       return {
         ok: false,
@@ -66,18 +165,23 @@ export async function createTransactionRecord(
   }
 
   let quantity = result.data.quantity
-  if (result.data.asset_type === 'cash') {
+  if (result.data.asset_type === 'cash' && quantity != null) {
     quantity = Number(Number(quantity).toFixed(2))
   }
 
-  const insertData = {
-    ...result.data,
-    quantity,
-    currency,
-  }
+  const row = saveRowFromForm(
+    { ...result.data, quantity },
+    currency as 'USD' | 'EUR'
+  )
+  const bookError = await perpSaveError(supabase, user.id, { kind: 'create', row })
+  if (bookError) return { ok: false, error: bookError }
 
+  const insertRow = { ...row }
+  delete insertRow.id
+  delete insertRow.created_at
   const { error } = await supabase.from('transactions').insert({
-    ...insertData,
+    ...insertRow,
+    notes: result.data.notes ?? null,
     user_id: user.id,
   })
 
@@ -85,11 +189,11 @@ export async function createTransactionRecord(
     return { ok: false, error: error.message }
   }
 
-  // Auto credit sale proceeds to Available Cash (best-effort)
-  if (result.data.action === 'sell' && result.data.asset_type !== 'cash') {
+  // Auto credit sale proceeds to Available Cash. A future sell does not.
+  if (creditsSpotProceeds(result.data) && result.data.quantity != null && result.data.unit_price != null) {
     const proceeds = Number(result.data.quantity) * Number(result.data.unit_price)
     if (proceeds > 0) {
-      const sellCurrency = insertData.currency || 'USD'
+      const sellCurrency = row.currency || 'USD'
       const cashInsert = {
         symbol: 'Available Cash',
         asset_type: 'cash' as const,
@@ -113,7 +217,7 @@ export async function createTransactionRecord(
     ok: true,
     data: {
       ...result.data,
-      currency: insertData.currency as 'USD' | 'EUR',
+      currency: row.currency as 'USD' | 'EUR',
     },
   }
 }
@@ -126,15 +230,7 @@ export async function createTransaction(
   prevState: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const rawData = {
-    symbol: formData.get('symbol'),
-    asset_type: formData.get('asset_type'),
-    action: formData.get('action'),
-    quantity: formData.get('quantity'),
-    unit_price: formData.get('unit_price'),
-    executed_at: formData.get('executed_at'),
-    notes: formData.get('notes'),
-  }
+  const rawData = formRaw(formData)
 
   const result = transactionSchema.safeParse(rawData)
   if (!result.success) {
@@ -170,6 +266,12 @@ export async function deleteTransaction(transactionId: string) {
     return { error: 'Unauthorized' }
   }
 
+  const bookError = await perpSaveError(supabase, user.id, {
+    kind: 'delete',
+    id: transactionId,
+  })
+  if (bookError) return { error: bookError }
+
   const { error } = await supabase
     .from('transactions')
     .delete()
@@ -202,7 +304,7 @@ export async function updateTransaction(
   // verify ownership (defense-in-depth in addition to Supabase RLS)
   const { data: transaction } = await supabase
     .from('transactions')
-    .select('user_id, asset_type, currency')
+    .select('user_id, asset_type, currency, created_at')
     .eq('id', transactionId)
     .single()
 
@@ -210,15 +312,7 @@ export async function updateTransaction(
     return { error: 'Unauthorized' }
   }
 
-  const rawData = {
-    symbol: formData.get('symbol'),
-    asset_type: formData.get('asset_type'),
-    action: formData.get('action'),
-    quantity: formData.get('quantity'),
-    unit_price: formData.get('unit_price'),
-    executed_at: formData.get('executed_at'),
-    notes: formData.get('notes'),
-  }
+  const rawData = formRaw(formData)
 
   // Reuse zod schema
   const result = transactionSchema.safeParse(rawData)
@@ -227,26 +321,47 @@ export async function updateTransaction(
     return { error: result.error.flatten().fieldErrors }
   }
 
-  let updateData: any = { ...result.data }
-
-  // Preserve the original entry currency if this transaction already had one recorded
-  // (so historical prices stay denominated in the currency they were entered in).
-  // If no previous currency (legacy non-cash tx or type change), record current preferred.
-  if (transaction.currency) {
-    updateData.currency = transaction.currency
-  } else if (!updateData.currency) {
+  let currency: 'USD' | 'EUR'
+  if (result.data.asset_type === 'future') {
+    currency = 'USD'
+    if (!futureSymbolAllowed(result.data.symbol)) {
+      return { error: 'Symbol is not in the crypto catalog' }
+    }
+  } else if (transaction.currency === 'USD' || transaction.currency === 'EUR') {
+    // Keep the entry currency so a price stays in the currency it was entered in.
+    currency = transaction.currency
+  } else {
     const profile = await getCurrentUserProfile()
-    updateData.currency = profile?.preferredCurrency || 'USD'
+    currency = profile?.preferredCurrency || 'USD'
   }
 
-  // Cash quantities are always in 2 decimal places (fiat)
-  if ((updateData.asset_type || transaction.asset_type) === 'cash' && updateData.quantity != null) {
-    updateData.quantity = Number(Number(updateData.quantity).toFixed(2))
+  let quantity = result.data.quantity
+  if (result.data.asset_type === 'cash' && quantity != null) {
+    quantity = Number(Number(quantity).toFixed(2))
   }
 
+  const row = saveRowFromForm(
+    { ...result.data, quantity },
+    currency,
+    transactionId,
+    transaction.created_at ?? null
+  )
+  const bookError = await perpSaveError(supabase, user.id, {
+    kind: 'update',
+    id: transactionId,
+    row,
+  })
+  if (bookError) return { error: bookError }
+
+  const patch = { ...row }
+  delete patch.id
+  delete patch.created_at
   const { error } = await supabase
     .from('transactions')
-    .update(updateData)
+    .update({
+      ...patch,
+      notes: result.data.notes ?? null,
+    })
     .eq('id', transactionId)
 
   if (error) {
@@ -347,14 +462,35 @@ export async function importTransactions(
 
     const validated = result.data
 
-    let insertData: any = { ...validated }
-
-    if (!insertData.currency) {
-      insertData.currency = defaultCurrency
+    const insertData: TransactionFormData & { currency: 'USD' | 'EUR' } = {
+      ...validated,
+      currency: validated.currency || defaultCurrency,
     }
 
-    if (insertData.asset_type === 'cash') {
+    if (insertData.asset_type === 'cash' && insertData.quantity != null) {
       insertData.quantity = Number(Number(insertData.quantity).toFixed(2))
+    }
+    if (insertData.asset_type === 'future') {
+      insertData.currency = 'USD'
+      if (!futureSymbolAllowed(insertData.symbol)) {
+        errors.push(`Failed to import ${validated.symbol}: Symbol is not in the crypto catalog`)
+        continue
+      }
+    }
+
+    if (
+      validated.asset_type === 'future' ||
+      validated.asset_type === 'cash' ||
+      creditsSpotProceeds(validated)
+    ) {
+      const bookError = await perpSaveError(supabase, user.id, {
+        kind: 'create',
+        row: saveRowFromForm(validated, insertData.currency),
+      })
+      if (bookError) {
+        errors.push(`Failed to import ${validated.symbol}: ${bookError}`)
+        continue
+      }
     }
 
     const { error } = await supabase.from('transactions').insert({
@@ -370,7 +506,7 @@ export async function importTransactions(
     imported++
 
     // Auto credit sale proceeds to Available Cash (best-effort, same as manual create)
-    if (validated.action === 'sell' && validated.asset_type !== 'cash') {
+    if (creditsSpotProceeds(validated)) {
       const proceeds = Number(validated.quantity) * Number(validated.unit_price)
       if (proceeds > 0) {
         const sellCurrency = insertData.currency || 'USD'

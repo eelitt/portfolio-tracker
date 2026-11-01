@@ -15,7 +15,8 @@ import {
   type SnapshotRangeMode,
 } from '@/lib/aggregateSnapshots'
 import type { PreferredCurrency } from '@/lib/userTypes'
-import type { EnrichedHolding, Transaction } from '@/lib/types'
+import type { EnrichedHolding, PositionSide, Transaction } from '@/lib/types'
+import type { AllocationHolding } from './allocationSlices'
 import type { CashFlow } from '@/lib/performance'
 import {
   readChartTab,
@@ -44,6 +45,9 @@ const PERF_SCALE: { value: PerformanceScaleMode; label: string }[] = [
 
 interface HoldingsChartsPanelProps {
   enrichedHoldings: EnrichedHolding[]
+  openPerps?: { symbol: string; positionSide: PositionSide }[]
+  /** Pie input. Spot holdings when futures are left out of the pie. */
+  allocationHoldings?: AllocationHolding[]
   preferredCurrency: PreferredCurrency
   usdToPreferredRate: number
   transactions: Transaction[]
@@ -56,6 +60,8 @@ interface HoldingsChartsPanelProps {
 
 export default function HoldingsChartsPanel({
   enrichedHoldings,
+  openPerps = [],
+  allocationHoldings,
   preferredCurrency,
   usdToPreferredRate,
   transactions,
@@ -135,7 +141,7 @@ export default function HoldingsChartsPanel({
       <div className="rounded-xl border border-subtle bg-surface-elevated p-4 shadow-sm sm:p-5">
         <div hidden={tab !== 'allocation'}>
           <AllocationPie
-            enrichedHoldings={enrichedHoldings}
+            enrichedHoldings={allocationHoldings ?? enrichedHoldings}
             preferredCurrency={preferredCurrency}
             usdToPreferredRate={usdToPreferredRate}
           />
@@ -144,6 +150,7 @@ export default function HoldingsChartsPanel({
           <div hidden={tab !== 'performance'}>
             <PerformanceTab
               enrichedHoldings={enrichedHoldings}
+              openPerps={openPerps}
               preferredCurrency={preferredCurrency}
               snapshots={snapshots}
               snapshotsError={snapshotsError}

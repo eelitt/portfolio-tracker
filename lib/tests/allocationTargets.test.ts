@@ -113,6 +113,48 @@ describe('computeDrift', () => {
     expect(drift.unpricedSymbols).toContain('DEAD')
     expect(drift.totalMarketValue).toBe(100)
   })
+
+  it('adds a futures bucket at target 0 and leaves the spot book alone', () => {
+    const holdings = [
+      eh({ symbol: 'AAPL', asset_type: 'stock', marketValue: 50, currentPrice: 50 }),
+      eh({ symbol: 'BTC', asset_type: 'crypto', marketValue: 30, currentPrice: 30 }),
+      eh({
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        marketValue: 20,
+        currentPrice: 1,
+        quantity: 20,
+      }),
+    ]
+    const spot = computeDrift(holdings, spec.spec)
+    const withPerp = computeDrift(holdings, spec.spec, [
+      { symbol: 'BTC', positionSide: 'long', equity: 800 },
+      { symbol: 'BTC', positionSide: 'short', equity: 200 },
+    ])
+    expect(withPerp.totalMarketValue).toBe(spot.totalMarketValue)
+    expect(withPerp.byType.find((r) => r.key === 'stock')).toEqual(
+      spot.byType.find((r) => r.key === 'stock')
+    )
+    expect(withPerp.bySymbol.find((r) => r.key === 'BTC')?.actualPercent).toBe(
+      spot.bySymbol.find((r) => r.key === 'BTC')?.actualPercent
+    )
+    const futures = withPerp.byType.find((r) => r.key === 'future')
+    expect(futures?.targetPercent).toBe(0)
+    expect(futures?.actualPercent).toBeCloseTo((1000 / 1100) * 100, 1)
+    expect(futures?.status).toBe('over')
+  })
+
+  it('omits the futures bucket when net equity is not positive', () => {
+    const drift = computeDrift(
+      [eh({ symbol: 'AAPL', asset_type: 'stock', marketValue: 100, currentPrice: 100 })],
+      spec.spec,
+      [
+        { symbol: 'BTC', positionSide: 'long', equity: 100 },
+        { symbol: 'BTC', positionSide: 'short', equity: -150 },
+      ]
+    )
+    expect(drift.byType.some((r) => r.key === 'future')).toBe(false)
+  })
 })
 
 describe('suggestRebalance', () => {
@@ -172,6 +214,39 @@ describe('suggestRebalance', () => {
       { mode: 'inplace' }
     )
     expect(r.suggestions).toEqual([])
+  })
+
+  it('reduces futures and does not trade the coin because of that bucket', () => {
+    const balanced = validatePolicySpec({
+      typeWeights: { stock: 40, etf: 0, crypto: 40, cash: 20 },
+      symbolOverrides: [{ symbol: 'BTC', assetType: 'crypto', weightPercent: 40 }],
+      tolerancePp: 5,
+    })
+    if (!balanced.ok) throw new Error(balanced.error)
+    const holdings = [
+      eh({ symbol: 'AAPL', asset_type: 'stock', marketValue: 40, currentPrice: 40 }),
+      eh({ symbol: 'BTC', asset_type: 'crypto', marketValue: 40, currentPrice: 40 }),
+      eh({
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        quantity: 20,
+        currentPrice: 1,
+        marketValue: 20,
+      }),
+    ]
+    const alone = suggestRebalance(holdings, balanced.spec, { mode: 'inplace' })
+    const withPerp = suggestRebalance(holdings, balanced.spec, { mode: 'inplace' }, [
+      { symbol: 'BTC', positionSide: 'long', equity: 50 },
+    ])
+    expect(alone.suggestions).toEqual([])
+    expect(withPerp.suggestions.map((s) => s.key)).toEqual(['future'])
+    expect(withPerp.suggestions[0].reason).not.toMatch(/BTC/)
+    expect(withPerp.suggestions[0].notional).toBeCloseTo(50 - 0.05 * 150, 2)
+
+    const cash = suggestRebalance(holdings, balanced.spec, { mode: 'new_cash', cashIn: 50 }, [
+      { symbol: 'BTC', positionSide: 'long', equity: 50 },
+    ])
+    expect(cash.suggestions.some((s) => s.key === 'future' || s.key === 'BTC')).toBe(false)
   })
 })
 

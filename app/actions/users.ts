@@ -8,9 +8,10 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser, getCurrentUserProfile } from '@/lib/user'
-import { changePasswordSchema, investorProfileSchema } from '@/lib/schemas'
+import { changePasswordSchema, futuresSettingsSchema, investorProfileSchema } from '@/lib/schemas'
 import {
   APP_ACCESS_DENIED_MESSAGE,
+  type FuturesSettings,
   type PreferredCurrency,
 } from '@/lib/userTypes'
 
@@ -69,8 +70,40 @@ export async function getInvestorProfile() {
       horizon: profile.horizon,
       riskTolerance: profile.riskTolerance,
       monthlyContribution: profile.monthlyContribution,
+      futuresInPie: profile.futuresInPie,
+      futuresInPlan: profile.futuresInPlan,
+      summaryLabel: profile.summaryLabel,
     },
   }
+}
+
+export async function updateFuturesSettings(
+  input: Partial<FuturesSettings>
+): Promise<{ success: true } | { error: string }> {
+  const parsed = futuresSettingsSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid futures settings' }
+  }
+
+  const user = await getCurrentUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const patch: {
+    futures_in_pie?: boolean
+    futures_in_plan?: boolean
+    summary_label?: FuturesSettings['summaryLabel']
+    updated_at: string
+  } = { updated_at: new Date().toISOString() }
+  if (parsed.data.futuresInPie !== undefined) patch.futures_in_pie = parsed.data.futuresInPie
+  if (parsed.data.futuresInPlan !== undefined) patch.futures_in_plan = parsed.data.futuresInPlan
+  if (parsed.data.summaryLabel !== undefined) patch.summary_label = parsed.data.summaryLabel
+
+  const supabase = await createClient()
+  const { error } = await supabase.from('profiles').update(patch).eq('id', user.id)
+  if (error) return { error: error.message }
+
+  revalidatePath('/dashboard')
+  return { success: true }
 }
 
 export async function updateInvestorProfile(input: {

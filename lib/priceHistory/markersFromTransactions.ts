@@ -18,7 +18,7 @@ export function markersFromTransactions(
 
   for (const tx of transactions || []) {
     if ((tx.symbol || '').toUpperCase() !== upper) continue
-    if (tx.asset_type === 'cash') continue
+    if (tx.asset_type === 'cash' || tx.asset_type === 'future') continue
     if (tx.action !== 'buy' && tx.action !== 'sell') continue
 
     const qty = Number(tx.quantity)

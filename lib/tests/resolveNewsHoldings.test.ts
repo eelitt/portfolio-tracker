@@ -43,6 +43,7 @@ function mockData(symbols: Array<{ symbol: string; mv: number; type?: string }>)
     preferredCurrency: 'USD',
     usdToPreferredRate: 1,
     usdToEurRate: 0.92,
+    openPerps: [],
     error: null,
   }
 }

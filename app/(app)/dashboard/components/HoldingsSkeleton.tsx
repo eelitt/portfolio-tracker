@@ -28,16 +28,20 @@ export default function HoldingsSkeleton() {
           ))}
         </div>
       </section>
-
-      <section className="mb-8">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="skeleton-block h-7 w-24" />
-          <div className="skeleton-block h-8 w-48 rounded-lg" />
-        </div>
-        <div className="rounded-xl border border-subtle bg-surface-elevated p-4">
-          <div className="skeleton-block h-64 w-full rounded-lg" />
-        </div>
-      </section>
     </div>
+  )
+}
+
+export function ChartsSkeleton() {
+  return (
+    <section className="mb-8">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="skeleton-block h-7 w-24" />
+        <div className="skeleton-block h-8 w-48 rounded-lg" />
+      </div>
+      <div className="rounded-xl border border-subtle bg-surface-elevated p-4">
+        <div className="skeleton-block h-64 w-full rounded-lg" />
+      </div>
+    </section>
   )
 }

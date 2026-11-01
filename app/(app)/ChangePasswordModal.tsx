@@ -5,7 +5,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -128,18 +127,16 @@ export function ChangePasswordForm({
             />
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button type="submit" disabled={pending}>
-              {pending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Updating…
-                </>
-              ) : (
-                'Change password'
-              )}
-            </Button>
-          </DialogFooter>
+          <Button type="submit" size="sm" disabled={pending}>
+            {pending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Updating…
+              </>
+            ) : (
+              'Change password'
+            )}
+          </Button>
         </form>
   )
 }

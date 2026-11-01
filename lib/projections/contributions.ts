@@ -25,7 +25,11 @@ export function isUserCashInflow(tx: Transaction): boolean {
 }
 
 export function isAssetBuy(tx: Transaction): boolean {
-  return tx.action === 'buy' && tx.asset_type !== 'cash'
+  return (
+    tx.action === 'buy' &&
+    tx.asset_type !== 'cash' &&
+    tx.asset_type !== 'future'
+  )
 }
 
 export function isCapitalIn(

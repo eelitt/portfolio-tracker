@@ -28,7 +28,7 @@ Change a formula → update this file in the same change. Do not document UI her
 
 **Inputs:** holding + quote.  
 **Formula:** if price missing or `≤ 0`, `priceAvailable = false`; market value / 24h / unrealized P&L treated as 0 for **marks**, not as a total loss. Cost still counts. Aggregates: MV and 24h = priced assets + cash; uPnL = priced assets only.  
-**Caveat:** do not treat an unpriced name as marked at $0.  
+**Caveat:** do not treat an unpriced name as marked at $0. An unpriced perp still adds margin + funding + fees. See Perp equity.  
 **Code:** `enrichHoldings`, `aggregatePreferredPortfolio`
 
 ---
@@ -37,17 +37,32 @@ Change a formula → update this file in the same change. Do not document UI her
 
 **Inputs:** USD live marks; cost / realized in entry currency; USD→EUR rate.  
 **Formula:** convert each side, then recompute unrealized P&L. Never scale a mixed-unit P&L by the FX rate.  
-**Cash:** convert **each** cash tx (`qty × unit_price`) then net. Do not sum mixed EUR+USD faces.  
+**Cash:** convert **each** cash tx (`qty × unit_price`) then net. Do not sum mixed EUR+USD faces. Then add the future cash effect below.  
 **Code:** `toPreferredHolding`, `calculateCashHoldingsInPreferred` in `lib/convertToPreferred.ts`
+
+---
+
+## Perp equity
+
+**Inputs:** open future sides from `reducePerps`, the USD-M mark, that mark 24 hours earlier, preferred currency, USD→EUR rate.  
+**Formula:** `unrealized = (mark − entry) × quantity × side`. `equity = margin + fundingNet + feeNet + unrealized`. Value adds equity. Unrealized P&L adds unrealized. 24h adds `(mark − previousMark) × quantity × side`. Cost does not add margin. Notional is not in the total. Convert margin, funding, fees, unrealized, and both marks from USD, then recompute equity and the 24h term.  
+**Missing mark:** add `margin + fundingNet + feeNet` to value. Add nothing to unrealized or 24h. A missing or non-positive `previousMark` adds nothing to 24h. A contract that prices 1,000 catalog units as one unit is a missing mark.  
+**Card:** equity is that value add. Unrealized percent is unrealized / margin, omitted when margin is 0 or negative. Leverage is `quantity × entry / assignedMargin`, blank when assigned margin is 0. Available margin is equity − required margin. Notional is `quantity × mark` and is not in the total. Funding and fees show only when they are not zero. A missing mark blanks unrealized P&L, the mark, notional, and 24h on the card.  
+**Pie:** when the pie setting is on, each open side with equity above 0 is its own slice. The slice value is this equity. Its id is separate from the spot symbol and from the other side. The name includes the side. Notional is not the slice. The setting off leaves the pie on spot plus cash.  
+**Cash:** net the cash rows, then add `futureCashDelta` (USD, converted) to Available Cash. An open or margin add lowers it. A reduce, close, or margin removal raises it. Funding and fees do not move it. No second Available Cash transaction.  
+**Snapshot:** a new day's `portfolio_snapshots` total is spot market value plus this cash total plus open perp equity. `total_unrealized_pnl` is spot unrealized plus perp unrealized. Spot unrealized is spot market value minus spot cost, so margin inside equity is not booked as unrealized. `holding_snapshots` stores one row per open side: `market_value` is equity, `cost_basis` is 0, `position_side` is `long` or `short`, and the symbol is the catalog ticker. Spot and cash rows store `position_side` as `''`. A missing mark stores margin + funding + fees as that side's market value, sets that row and the portfolio partial, and adds nothing to unrealized. A flat side writes no row. Older days are not rewritten. The future price is the USD-M mark.  
+**Caveat:** goals, tax, contribution counts, external cash flows, and the watchlist stay on spot plus this cash total. They do not add equity.  
+**Code:** `lib/perps.ts`, `perpQuoteInPreferred`, `aggregatePreferredPortfolio`, `getUsdMMarks` in `lib/prices/binanceUsdM.ts`. The daily job copies the same equity in `supabase/functions/portfolio-snapshots/book.ts`.
 
 ---
 
 ## Allocation drift
 
-**Inputs:** priced holdings + cash, saved type weights (sum 100%), optional symbol % of total MV.  
-**Formula:** `deltaPp = actual% − target%`. Status vs tolerance band.  
-**Caveat:** unpriced names excluded from weights and notionals.  
-**Code:** `computeDrift` in `lib/allocationTargets/drift.ts`
+**Inputs:** priced holdings + cash, saved type weights (sum 100%), optional symbol % of that book. When the futures plan setting is on, open perp equity is an extra input.  
+**Formula:** `deltaPp = actual% − target%`. Status vs tolerance band. Stock, ETF, crypto, cash, and symbol percents stay on priced holdings plus cash. The futures bucket's actual percent is net equity divided by that book plus the equity, and its target is 0. Net equity at or below 0 adds no bucket.  
+**Rebalance:** suggestions for stocks, ETFs, crypto, and cash ignore the futures bucket. An inplace plan can suggest reducing futures by the equity above the tolerance band. That suggestion does not buy or sell the coin. New cash does not trade futures.  
+**Caveat:** unpriced names excluded from weights and notionals. Notional is not the futures weight. Goal starting value stays priced holdings plus cash, so the returned book total does not add equity.  
+**Code:** `computeDrift` and `suggestRebalance` in `lib/allocationTargets/`
 
 ---
 

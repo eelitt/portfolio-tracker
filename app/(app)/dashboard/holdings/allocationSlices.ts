@@ -1,12 +1,14 @@
-import type { AssetType } from '@/lib/types'
+import type { AssetType, PositionSide } from '@/lib/types'
 import { colorForHoldingSymbol } from '@/lib/aggregateSnapshots'
 import { catalogNameFor } from '@/lib/portfolioAnalyst'
 import { getAssetTypeLabel } from '@/lib/utils'
+import { historySymbolLabel } from '@/app/(app)/dashboard/transactions/transactionUtils'
 
 export type AllocationHolding = {
   symbol: string
   marketValue: number
-  asset_type?: AssetType
+  asset_type?: AssetType | 'future'
+  positionSide?: PositionSide | null
   priceAvailable?: boolean
 }
 
@@ -32,10 +34,27 @@ const OTHER_COLOR = '#94a3b8'
 const MAX_NAMED_SLICES = 7
 const MIN_SLICE_PCT = 0.025
 
-function holdingLabel(h: {
-  symbol: string
-  asset_type?: AssetType
-}): { name: string; subtitle?: string } {
+function holdingId(h: AllocationHolding): string {
+  if (h.asset_type === 'future' && (h.positionSide === 'long' || h.positionSide === 'short')) {
+    return `future:${h.symbol}:${h.positionSide}`
+  }
+  return `${h.asset_type ?? 'x'}:${h.symbol}`
+}
+
+function holdingLabel(h: AllocationHolding): { name: string; subtitle?: string } {
+  if (h.asset_type === 'future') {
+    if (h.positionSide === 'long' || h.positionSide === 'short') {
+      return {
+        name: historySymbolLabel({
+          symbol: h.symbol,
+          asset_type: 'future',
+          position_side: h.positionSide,
+        }),
+        subtitle: 'Perp',
+      }
+    }
+    return { name: h.symbol, subtitle: 'Perp' }
+  }
   if (!h.asset_type || h.asset_type === 'cash') {
     return { name: h.symbol, subtitle: 'Cash' }
   }
@@ -71,12 +90,16 @@ export function buildHoldingSlices(
   const slices: AllocationSlice[] = named.map((h) => {
     const label = holdingLabel(h)
     return {
-      id: `${h.asset_type ?? 'x'}:${h.symbol}`,
+      id: holdingId(h),
       name: label.name,
       subtitle: label.subtitle,
       value: h.marketValue,
       percent: h.marketValue / total,
-      color: colorForHoldingSymbol(h.symbol),
+      color: colorForHoldingSymbol(
+        h.asset_type === 'future' && h.positionSide
+          ? `${h.symbol} ${h.positionSide}`
+          : h.symbol
+      ),
     }
   })
 
@@ -89,7 +112,7 @@ export function buildHoldingSlices(
       percent: otherValue / total,
       color: OTHER_COLOR,
       parts: otherHoldings.map((h) => ({
-        id: `${h.asset_type ?? 'x'}:${h.symbol}`,
+        id: holdingId(h),
         name: holdingLabel(h).name,
         value: h.marketValue,
         percent: h.marketValue / total,

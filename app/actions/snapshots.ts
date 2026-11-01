@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUserProfile } from '@/lib/user'
 import { convertAmount, getUsdToEurRate } from '@/lib/currency'
-import type { SnapshotPoint } from '@/lib/aggregateSnapshots'
+import { holdingSeriesId, type SnapshotPoint } from '@/lib/aggregateSnapshots'
 import type { PreferredCurrency } from '@/lib/userTypes'
 
 export type GetPortfolioSnapshotsResult = {
@@ -13,7 +13,8 @@ export type GetPortfolioSnapshotsResult = {
 
 export type HoldingSnapshotQuery = {
   symbol: string
-  assetType: 'stock' | 'etf' | 'crypto' | 'cash'
+  assetType: 'stock' | 'etf' | 'crypto' | 'cash' | 'future'
+  positionSide?: 'long' | 'short' | '' | null
 }
 
 function normalizeSnapshotDate(dateRaw: unknown): string {
@@ -144,10 +145,12 @@ export async function getHoldingSnapshotsBatch(
       .map((h) => ({
         symbol: h.symbol?.trim(),
         assetType: h.assetType,
+        positionSide: h.positionSide,
       }))
       .filter((h) => h.symbol && h.assetType) as {
       symbol: string
       assetType: HoldingSnapshotQuery['assetType']
+      positionSide?: HoldingSnapshotQuery['positionSide']
     }[]
 
     if (cleaned.length === 0) {
@@ -171,7 +174,7 @@ export async function getHoldingSnapshotsBatch(
     const { data: rows, error } = await supabase
       .from('holding_snapshots')
       .select(
-        'snapshot_date, symbol, asset_type, market_value, cost_basis, is_partial, currency'
+        'snapshot_date, symbol, asset_type, position_side, market_value, cost_basis, is_partial, currency'
       )
       .eq('user_id', user.id)
       .in('symbol', symbols)
@@ -183,13 +186,14 @@ export async function getHoldingSnapshotsBatch(
     }
 
     const wanted = new Set(
-      cleaned.map((h) => `${h.assetType}:${h.symbol}`)
+      cleaned.map((h) => holdingSeriesId(h.assetType, h.symbol, h.positionSide))
     )
     const grouped: Record<string, typeof rows> = {}
     for (const row of rows ?? []) {
       const sym = typeof row.symbol === 'string' ? row.symbol : ''
       const at = typeof row.asset_type === 'string' ? row.asset_type : ''
-      const key = `${at}:${sym}`
+      const side = typeof row.position_side === 'string' ? row.position_side : ''
+      const key = holdingSeriesId(at, sym, side)
       if (!wanted.has(key)) continue
       if (!grouped[key]) grouped[key] = []
       grouped[key]!.push(row)

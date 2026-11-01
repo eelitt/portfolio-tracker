@@ -2,7 +2,7 @@
  * Types for Portfolio Analyst pure helpers (tools, scenarios, chat add-transaction).
  */
 
-import type { AssetType, TransactionAction } from '../types'
+import type { AssetType, SpotAction } from '../types'
 
 export type HoldingSortBy =
   | 'marketValue'
@@ -108,7 +108,7 @@ export type ChatAddTransactionInput = {
   sourceText: string
   symbol?: string | null
   asset_type?: AssetType | null
-  action?: TransactionAction | null
+  action?: SpotAction | null
   quantity?: number | null
   unit_price?: number | null
   executed_at?: string | null
@@ -120,7 +120,7 @@ export type ChatAddTransactionInput = {
 export type ValidatedTxDraft = {
   symbol: string
   asset_type: AssetType
-  action: TransactionAction
+  action: SpotAction
   quantity: number
   unit_price: number
   executed_at: string

@@ -1,15 +1,18 @@
 import { cache } from 'react'
 import { getUserTransactions } from '@/app/actions/transactions'
 import { calculateHoldings, enrichHoldings } from './calculatePortfolio'
-import { getPricesForHoldings } from '@/lib/prices'
+import { getPricesForHoldings, getUsdMMarks } from '@/lib/prices'
 import { getCurrentUserProfile } from '@/lib/user'
 import type { PreferredCurrency } from '@/lib/userTypes'
 import { getUsdToEurRate } from './currency'
 import {
   aggregatePreferredPortfolio,
   calculateCashHoldingsInPreferred,
+  perpQuoteInPreferred,
   toPreferredHolding,
+  type PerpHeadlineTerm,
 } from './convertToPreferred'
+import { ledgerPerpRows, reducePerps } from './perps'
 
 /**
  * Shape returned to all dashboard sections.
@@ -36,15 +39,18 @@ export type PortfolioData = {
   preferredCurrency: PreferredCurrency
   usdToPreferredRate: number
   usdToEurRate: number
+  /** One entry per open side. Money is already in preferredCurrency. */
+  openPerps: PerpHeadlineTerm[]
   error: string | null
 }
 
 /**
  * Single source of truth for all dashboard data.
  *
- * Market value and 24h change only include holdings with valid live prices
- * (plus cash). Cost basis includes all open positions. Unrealized P&L is
- * summed only for priced assets so a missing quote is not treated as $0.
+ * Market value and 24h include priced spot, cash, and open perp equity.
+ * Cost is spot plus cash and does not add margin. Unrealized P&L is priced
+ * spot plus priced perp unrealized. A missing perp mark keeps margin,
+ * funding, and fees in value.
  */
 export const getPortfolioData = cache(async (): Promise<PortfolioData> => {
   try {
@@ -69,17 +75,40 @@ export const getPortfolioData = cache(async (): Promise<PortfolioData> => {
     const preferredAssets = enrichedAssets.map((h) =>
       toPreferredHolding(h, preferredCurrency, usdToEurRate)
     )
+    const perpRows = ledgerPerpRows(transactions || [])
+    const perpSymbols = reducePerps({ rows: perpRows }).positions.map(
+      (position) => position.symbol
+    )
+    const perpMarks =
+      perpSymbols.length > 0
+        ? await getUsdMMarks(perpSymbols, { forceFresh: false })
+        : {}
     const preferredCash = calculateCashHoldingsInPreferred(
       transactions || [],
       preferredCurrency,
-      usdToEurRate
+      usdToEurRate,
+      perpMarks
     )
 
     for (const cash of preferredCash) {
       priceData[cash.symbol] = { price: 1, change24h: 0 }
     }
 
-    const totals = aggregatePreferredPortfolio(preferredAssets, preferredCash)
+    const perpBook = reducePerps({ rows: perpRows, marks: perpMarks })
+    const perpTerms = perpBook.positions.map((position) =>
+      perpQuoteInPreferred(
+        position,
+        perpMarks[position.symbol],
+        preferredCurrency,
+        usdToEurRate
+      )
+    )
+
+    const totals = aggregatePreferredPortfolio(
+      preferredAssets,
+      preferredCash,
+      perpTerms
+    )
 
     return {
       transactions: transactions || [],
@@ -88,6 +117,7 @@ export const getPortfolioData = cache(async (): Promise<PortfolioData> => {
       preferredCurrency,
       usdToPreferredRate,
       usdToEurRate,
+      openPerps: perpTerms,
       error: null,
     }
   } catch (error) {
@@ -108,6 +138,7 @@ export const getPortfolioData = cache(async (): Promise<PortfolioData> => {
       preferredCurrency: 'USD',
       usdToPreferredRate: 1,
       usdToEurRate: 0.92,
+      openPerps: [],
       error: 'Failed to load your portfolio data. Please try refreshing the page.',
     }
   }

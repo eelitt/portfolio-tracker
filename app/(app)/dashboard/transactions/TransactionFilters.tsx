@@ -79,6 +79,7 @@ export default function TransactionFilters({
             <option value="stock">Stock</option>
             <option value="etf">ETF</option>
             <option value="crypto">Crypto</option>
+            <option value="future">Future</option>
             <option value="cash">Cash</option>
           </select>
         </div>
@@ -99,6 +100,10 @@ export default function TransactionFilters({
             <option value="sell">Sell</option>
             <option value="inflow">Inflow</option>
             <option value="outflow">Outflow</option>
+            <option value="funding">Funding</option>
+            <option value="fee">Fee</option>
+            <option value="margin_add">Add margin</option>
+            <option value="margin_remove">Remove margin</option>
           </select>
         </div>
 

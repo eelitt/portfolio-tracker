@@ -13,16 +13,23 @@ import { useDashboardLayout } from './dashboard/DashboardLayoutProvider'
 import { ChangePasswordForm } from './ChangePasswordModal'
 import type { DashboardLayoutMode } from '@/lib/dashboardLayout'
 import { Button } from '@/components/ui/button'
-import { Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { getInvestorProfile, updateInvestorProfile } from '@/app/actions/users'
-import type {
-  AgeBand,
-  Horizon,
-  InvestorProfileFields,
-  MonthlyContribution,
-  PreferredCurrency,
-  RiskTolerance,
+import {
+  getInvestorProfile,
+  updateFuturesSettings,
+  updateInvestorProfile,
+} from '@/app/actions/users'
+import {
+  DEFAULT_FUTURES_SETTINGS,
+  type AgeBand,
+  type FuturesSettings,
+  type Horizon,
+  type InvestorProfileFields,
+  type MonthlyContribution,
+  type PreferredCurrency,
+  type RiskTolerance,
+  type SummaryLabel,
 } from '@/lib/userTypes'
 import {
   CONTRIBUTION_BANDS,
@@ -48,6 +55,39 @@ const LAYOUTS: {
 
 function selectValue<T extends string>(value: T | null | undefined): T | '' {
   return value ?? ''
+}
+
+function SectionHeader({
+  title,
+  open,
+  onToggle,
+  busy,
+}: {
+  title: string
+  open: boolean
+  onToggle: () => void
+  busy?: boolean
+}) {
+  const Icon = open ? ChevronDown : ChevronRight
+  return (
+    <h3 className="text-sm font-medium">
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 text-left"
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+        <span>{title}</span>
+        {busy ? (
+          <Loader2
+            className="h-3.5 w-3.5 animate-spin text-muted-foreground"
+            aria-label={`Loading ${title}`}
+          />
+        ) : null}
+      </button>
+    </h3>
+  )
 }
 
 export default function SettingsModal({
@@ -77,7 +117,18 @@ export default function SettingsModal({
   )
   const [savingProfile, setSavingProfile] = useState(false)
   const [loadingProfile, setLoadingProfile] = useState(false)
+  const [openLayout, setOpenLayout] = useState(false)
+  const [openProfile, setOpenProfile] = useState(false)
+  const [openPassword, setOpenPassword] = useState(false)
+  const [openFutures, setOpenFutures] = useState(false)
+  const [futuresInPie, setFuturesInPie] = useState(DEFAULT_FUTURES_SETTINGS.futuresInPie)
+  const [futuresInPlan, setFuturesInPlan] = useState(DEFAULT_FUTURES_SETTINGS.futuresInPlan)
+  const [summaryLabel, setSummaryLabel] = useState<SummaryLabel>(
+    DEFAULT_FUTURES_SETTINGS.summaryLabel
+  )
+  const [savingFutures, setSavingFutures] = useState(false)
   const profileLocked = loadingProfile || savingProfile
+  const futuresLocked = loadingProfile || savingFutures
 
   useEffect(() => {
     if (!open) setResetToken((n) => n + 1)
@@ -99,6 +150,9 @@ export default function SettingsModal({
         setHorizon(selectValue(r.data.horizon))
         setRiskTolerance(selectValue(r.data.riskTolerance))
         setMonthlyContribution(selectValue(r.data.monthlyContribution))
+        setFuturesInPie(r.data.futuresInPie)
+        setFuturesInPlan(r.data.futuresInPlan)
+        setSummaryLabel(r.data.summaryLabel)
       } catch {
         if (!cancelled) toast.error('Could not load investor profile')
       } finally {
@@ -110,19 +164,40 @@ export default function SettingsModal({
     }
   }, [open])
 
+  async function saveFutures(patch: Partial<FuturesSettings>) {
+    const previous = { futuresInPie, futuresInPlan, summaryLabel }
+    if (patch.futuresInPie !== undefined) setFuturesInPie(patch.futuresInPie)
+    if (patch.futuresInPlan !== undefined) setFuturesInPlan(patch.futuresInPlan)
+    if (patch.summaryLabel !== undefined) setSummaryLabel(patch.summaryLabel)
+    setSavingFutures(true)
+    const result = await updateFuturesSettings(patch)
+    setSavingFutures(false)
+    if ('error' in result) {
+      setFuturesInPie(previous.futuresInPie)
+      setFuturesInPlan(previous.futuresInPlan)
+      setSummaryLabel(previous.summaryLabel)
+      toast.error(result.error)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px] shadow-xl rounded-xl border ring-0">
+      <DialogContent className="max-h-[min(40rem,calc(100vh-2rem))] overflow-y-auto sm:max-w-[480px] shadow-xl rounded-xl border ring-0">
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
           <DialogDescription>
-            Dashboard layout, investor profile, and password.
+            Dashboard layout, investor profile, password, and futures.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5">
+        <div className="space-y-4">
           <section className="space-y-2">
-            <h3 className="text-sm font-medium">Dashboard layout</h3>
+            <SectionHeader
+              title="Dashboard layout"
+              open={openLayout}
+              onToggle={() => setOpenLayout((open) => !open)}
+            />
+            {openLayout ? (
             <div className="grid gap-2 sm:grid-cols-2">
               {LAYOUTS.map((opt) => {
                 const selected = layout === opt.id
@@ -146,18 +221,18 @@ export default function SettingsModal({
                 )
               })}
             </div>
+            ) : null}
           </section>
 
           <section className="space-y-2 border-t border-subtle pt-4">
-            <h3 className="flex items-center gap-2 text-sm font-medium">
-              Investor profile
-              {loadingProfile && (
-                <Loader2
-                  className="h-3.5 w-3.5 animate-spin text-muted-foreground"
-                  aria-label="Loading investor profile"
-                />
-              )}
-            </h3>
+            <SectionHeader
+              title="Investor profile"
+              open={openProfile}
+              onToggle={() => setOpenProfile((open) => !open)}
+              busy={loadingProfile}
+            />
+            {openProfile ? (
+            <>
             <p className="text-xs text-muted-foreground">
               Optional. Used to suggest a target mix and to ground assistant answers. Not a
               birthdate or income.
@@ -243,14 +318,76 @@ export default function SettingsModal({
             >
               Save profile
             </Button>
+            </>
+            ) : null}
           </section>
 
           <section className="space-y-2 border-t border-subtle pt-4">
-            <h3 className="text-sm font-medium">Change password</h3>
-            <p className="text-xs text-muted-foreground">
-              At least 8 characters. You will stay signed in.
-            </p>
-            <ChangePasswordForm resetToken={resetToken} />
+            <SectionHeader
+              title="Change password"
+              open={openPassword}
+              onToggle={() => setOpenPassword((open) => !open)}
+            />
+            {openPassword ? (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  At least 8 characters. You will stay signed in.
+                </p>
+                <ChangePasswordForm resetToken={resetToken} />
+              </>
+            ) : null}
+          </section>
+
+          <section className="space-y-2 border-t border-subtle pt-4">
+            <SectionHeader
+              title="Futures"
+              open={openFutures}
+              onToggle={() => setOpenFutures((open) => !open)}
+              busy={loadingProfile}
+            />
+            {openFutures ? (
+              <div className="space-y-3">
+                <label className="block text-xs">
+                  Summary name
+                  <select
+                    className="mt-1 w-full rounded border bg-background px-2 py-1.5 disabled:opacity-50"
+                    value={summaryLabel}
+                    disabled={futuresLocked}
+                    onChange={(e) => {
+                      const next = e.target.value as SummaryLabel
+                      if (next === summaryLabel) return
+                      void saveFutures({ summaryLabel: next })
+                    }}
+                  >
+                    <option value="total_market_value">Total Market Value</option>
+                    <option value="total_value">Total value</option>
+                  </select>
+                </label>
+                <label className="flex items-start gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={futuresInPie}
+                    disabled={futuresLocked}
+                    onChange={(e) => void saveFutures({ futuresInPie: e.target.checked })}
+                  />
+                  <span>Pie includes each open side, sized by equity.</span>
+                </label>
+                <label className="flex items-start gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={futuresInPlan}
+                    disabled={futuresLocked}
+                    onChange={(e) => void saveFutures({ futuresInPlan: e.target.checked })}
+                  />
+                  <span>
+                    Plan counts futures as their own bucket. The target starts at 0, and suggestions
+                    do not buy or sell the coin because of that bucket.
+                  </span>
+                </label>
+              </div>
+            ) : null}
           </section>
         </div>
       </DialogContent>

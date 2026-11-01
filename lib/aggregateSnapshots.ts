@@ -123,8 +123,12 @@ export const PORTFOLIO_SERIES_ID = 'portfolio'
 
 export function holdingSeriesId(
   assetType: string,
-  symbol: string
+  symbol: string,
+  positionSide?: string | null
 ): string {
+  if (positionSide === 'long' || positionSide === 'short') {
+    return `${assetType}:${symbol}:${positionSide}`
+  }
   return `${assetType}:${symbol}`
 }
 

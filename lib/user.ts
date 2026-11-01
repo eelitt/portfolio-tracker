@@ -7,7 +7,11 @@
 import 'server-only'
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
-import type { PreferredCurrency, UserProfile } from '@/lib/userTypes'
+import {
+  futuresSettingsFromRow,
+  type PreferredCurrency,
+  type UserProfile,
+} from '@/lib/userTypes'
 
 export type { PreferredCurrency, UserProfile } from '@/lib/userTypes'
 
@@ -29,10 +33,12 @@ export const getCurrentUserProfile = cache(async (): Promise<UserProfile | null>
   const { data: profile } = await supabase
     .from('profiles')
     .select(
-      'preferred_currency, admin, access_to_app, age_band, horizon, risk_tolerance, monthly_contribution'
+      'preferred_currency, admin, access_to_app, age_band, horizon, risk_tolerance, monthly_contribution, futures_in_pie, futures_in_plan, summary_label'
     )
     .eq('id', user.id)
     .maybeSingle()
+
+  const futures = futuresSettingsFromRow(profile)
 
   return {
     id: user.id,
@@ -45,6 +51,9 @@ export const getCurrentUserProfile = cache(async (): Promise<UserProfile | null>
     riskTolerance: (profile?.risk_tolerance as UserProfile['riskTolerance']) ?? null,
     monthlyContribution:
       (profile?.monthly_contribution as UserProfile['monthlyContribution']) ?? null,
+    futuresInPie: futures.futuresInPie,
+    futuresInPlan: futures.futuresInPlan,
+    summaryLabel: futures.summaryLabel,
   }
 })
 

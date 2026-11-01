@@ -46,6 +46,74 @@ describe('transactionSchema', () => {
     )
   })
 
+  it('rejects amount and position side on a stock', () => {
+    expect(transactionSchema.safeParse(validTx({ amount: '5' })).success).toBe(false)
+    expect(
+      transactionSchema.safeParse(validTx({ position_side: 'long' })).success
+    ).toBe(false)
+  })
+
+  it('accepts a future open and a funding row with empty quantity and price', () => {
+    const open = transactionSchema.safeParse({
+      symbol: 'btc',
+      asset_type: 'future',
+      action: 'buy',
+      position_side: 'long',
+      quantity: '0.2',
+      unit_price: '100000',
+      amount: '1000',
+      executed_at: '2026-01-02T00:00:00Z',
+      currency: 'EUR',
+    })
+    expect(open.success).toBe(true)
+    if (!open.success) return
+    expect(open.data.symbol).toBe('BTC')
+    expect(open.data.currency).toBe('USD')
+    expect(open.data.amount).toBe(1000)
+
+    const funding = transactionSchema.safeParse({
+      symbol: 'BTC',
+      asset_type: 'future',
+      action: 'funding',
+      position_side: 'long',
+      quantity: '',
+      unit_price: '',
+      amount: '12.5',
+      executed_at: '2026-01-03T00:00:00Z',
+    })
+    expect(funding.success).toBe(true)
+    if (!funding.success) return
+    expect(funding.data.quantity).toBeNull()
+    expect(funding.data.unit_price).toBeNull()
+    expect(funding.data.amount).toBe(12.5)
+  })
+
+  it('rejects a future fee that is not negative and a future open without a side', () => {
+    expect(
+      transactionSchema.safeParse({
+        symbol: 'BTC',
+        asset_type: 'future',
+        action: 'fee',
+        position_side: 'long',
+        quantity: '',
+        unit_price: '',
+        amount: '3',
+        executed_at: '2026-01-03T00:00:00Z',
+      }).success
+    ).toBe(false)
+    expect(
+      transactionSchema.safeParse({
+        symbol: 'BTC',
+        asset_type: 'future',
+        action: 'buy',
+        quantity: '0.1',
+        unit_price: '100',
+        amount: '10',
+        executed_at: '2026-01-02T00:00:00Z',
+      }).success
+    ).toBe(false)
+  })
+
   it('currently allows cash + buy (chat layer rejects; schema does not)', () => {
     const r = transactionSchema.safeParse(
       validTx({

@@ -79,6 +79,7 @@ export function getSymbolsForType(
     case 'etf':
       return ETF_SYMBOLS
     case 'crypto':
+    case 'future':
       return CRYPTO_SYMBOLS.map((c) => ({ symbol: c.symbol, name: c.name }))
     default:
       return []

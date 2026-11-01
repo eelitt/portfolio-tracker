@@ -20,7 +20,7 @@ import {
   type BenchmarkId,
 } from '@/lib/benchmarks'
 import type { PreferredCurrency } from '@/lib/userTypes'
-import type { EnrichedHolding } from '@/lib/types'
+import type { EnrichedHolding, PositionSide } from '@/lib/types'
 import type { CashFlow } from '@/lib/performance'
 import { getHoldingSnapshotsBatch } from '@/app/actions/snapshots'
 import { getBenchmarkSeries } from '@/app/actions/benchmarks'
@@ -36,6 +36,7 @@ import {
 
 export default function PerformanceTab({
   enrichedHoldings,
+  openPerps = [],
   preferredCurrency,
   snapshots,
   snapshotsError,
@@ -46,6 +47,7 @@ export default function PerformanceTab({
   active,
 }: {
   enrichedHoldings: EnrichedHolding[]
+  openPerps?: { symbol: string; positionSide: PositionSide }[]
   preferredCurrency: PreferredCurrency
   snapshots: SnapshotPoint[]
   snapshotsError?: string | null
@@ -74,16 +76,36 @@ export default function PerformanceTab({
     const assets = enrichedHoldings
       .filter((h) => h.asset_type !== 'cash')
       .sort((a, b) => a.symbol.localeCompare(b.symbol))
+      .map((h) => ({
+        id: holdingSeriesId(h.asset_type, h.symbol),
+        label: h.symbol,
+        assetType: h.asset_type,
+        symbol: h.symbol,
+        positionSide: undefined as PositionSide | undefined,
+      }))
+    const perps = [...openPerps]
+      .sort((a, b) =>
+        `${a.symbol}:${a.positionSide}`.localeCompare(`${b.symbol}:${b.positionSide}`)
+      )
+      .map((p) => ({
+        id: holdingSeriesId('future', p.symbol, p.positionSide),
+        label: `${p.symbol} ${p.positionSide}`,
+        assetType: 'future' as const,
+        symbol: p.symbol,
+        positionSide: p.positionSide,
+      }))
     const cash = enrichedHoldings
       .filter((h) => h.asset_type === 'cash')
       .sort((a, b) => a.symbol.localeCompare(b.symbol))
-    return [...assets, ...cash].map((h) => ({
-      id: holdingSeriesId(h.asset_type, h.symbol),
-      label: h.asset_type === 'cash' ? `${h.symbol}` : h.symbol,
-      assetType: h.asset_type,
-      symbol: h.symbol,
-    }))
-  }, [enrichedHoldings])
+      .map((h) => ({
+        id: holdingSeriesId(h.asset_type, h.symbol),
+        label: h.symbol,
+        assetType: h.asset_type,
+        symbol: h.symbol,
+        positionSide: undefined as PositionSide | undefined,
+      }))
+    return [...assets, ...perps, ...cash]
+  }, [enrichedHoldings, openPerps])
 
   const seriesMeta = useMemo(() => {
     const holdings = buildSeriesMeta(
@@ -119,7 +141,8 @@ export default function PerformanceTab({
     void getHoldingSnapshotsBatch(
       legendHoldings.map((h) => ({
         symbol: h.symbol,
-        assetType: h.assetType as 'stock' | 'etf' | 'crypto' | 'cash',
+        assetType: h.assetType,
+        positionSide: h.positionSide,
       }))
     ).then((result) => {
       if (cancelled) return

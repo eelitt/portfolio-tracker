@@ -1,6 +1,50 @@
 import type { Currency } from './currency'
 import { convertAmount, convertBetweenCurrencies } from './currency'
-import type { EnrichedHolding, Transaction } from './types'
+import {
+  ledgerPerpRows,
+  quotePerp,
+  reducePerps,
+  type OpenPerp,
+  type PerpMark,
+} from './perps'
+import type { EnrichedHolding, PositionSide, Transaction } from './types'
+
+/** Open perp, already in the preferred currency, for the portfolio total and the card. */
+export type PerpHeadlineTerm = {
+  symbol: string
+  positionSide: PositionSide
+  valueAdd: number
+  unrealizedAdd: number
+  dayAdd: number
+  priced: boolean
+  margin: number
+  fundingNet: number
+  feeNet: number
+  /** Null when the mark is missing. The headline adds nothing in that case. */
+  unrealized: number | null
+  equity: number
+  /** Null when assigned margin is 0. Dimensionless. */
+  leverage: number | null
+  /** Null when the mark is missing or leverage cannot be computed. */
+  availableMargin: number | null
+  quantity: number
+  entry: number
+  mark: number | null
+  notional: number | null
+  /** Null when the mark or the mark 24 hours earlier is missing. */
+  dayChange: number | null
+}
+
+/** Unrealized divided by the margin balance. Omitted when that balance is not positive. */
+export function perpUnrealizedPercent(
+  unrealized: number | null,
+  margin: number
+): number | undefined {
+  if (unrealized == null || !(margin > 0)) return undefined
+  return (unrealized / margin) * 100
+}
+
+const AVAILABLE_CASH = 'Available Cash'
 
 /** Totals computed from preferred-currency assets + cash (no I/O). */
 export type PreferredPortfolioAggregates = {
@@ -23,7 +67,8 @@ export type PreferredPortfolioAggregates = {
  */
 export function aggregatePreferredPortfolio(
   preferredAssets: EnrichedHolding[],
-  preferredCash: EnrichedHolding[]
+  preferredCash: EnrichedHolding[],
+  perps: PerpHeadlineTerm[] = []
 ): PreferredPortfolioAggregates {
   const enrichedHoldings = [...preferredAssets, ...preferredCash]
   const unpricedSymbols = preferredAssets
@@ -31,13 +76,28 @@ export function aggregatePreferredPortfolio(
     .map((h) => h.symbol)
   const pricedAssets = preferredAssets.filter((h) => h.priceAvailable)
 
+  let perpValue = 0
+  let perpUnrealized = 0
+  let perpDay = 0
+  let pricedPerps = 0
+  for (const perp of perps) {
+    perpValue += perp.valueAdd
+    perpUnrealized += perp.unrealizedAdd
+    perpDay += perp.dayAdd
+    if (perp.priced) pricedPerps += 1
+    else unpricedSymbols.push(`${perp.symbol} ${perp.positionSide}`)
+  }
+
   const totalMarketValue =
     pricedAssets.reduce((sum, h) => sum + h.marketValue, 0) +
-    preferredCash.reduce((sum, h) => sum + h.marketValue, 0)
+    preferredCash.reduce((sum, h) => sum + h.marketValue, 0) +
+    perpValue
 
   const totalCost = enrichedHoldings.reduce((sum, h) => sum + h.totalCost, 0)
-  const totalUnrealizedPnl = pricedAssets.reduce((sum, h) => sum + h.unrealizedPnl, 0)
-  const total24hChange = pricedAssets.reduce((sum, h) => sum + h.position24hChange, 0)
+  const totalUnrealizedPnl =
+    pricedAssets.reduce((sum, h) => sum + h.unrealizedPnl, 0) + perpUnrealized
+  const total24hChange =
+    pricedAssets.reduce((sum, h) => sum + h.position24hChange, 0) + perpDay
   const previousTotalValue = totalMarketValue - total24hChange
   const total24hChangePercent =
     previousTotalValue > 0 ? (total24hChange / previousTotalValue) * 100 : 0
@@ -45,14 +105,93 @@ export function aggregatePreferredPortfolio(
   return {
     enrichedHoldings,
     unpricedSymbols,
-    pricedAssetCount: pricedAssets.length,
-    assetCount: preferredAssets.length,
+    pricedAssetCount: pricedAssets.length + pricedPerps,
+    assetCount: preferredAssets.length + perps.length,
     holdingsCount: enrichedHoldings.length,
     totalMarketValue,
     totalCost,
     totalUnrealizedPnl,
     total24hChange,
     total24hChangePercent,
+  }
+}
+
+function positiveMark(mark: number | null | undefined): number | null {
+  return typeof mark === 'number' && Number.isFinite(mark) && mark > 0 ? mark : null
+}
+
+/**
+ * Convert a USD perp quote into preferred currency.
+ * Margin, funding, fees, unrealized P&L, and both marks convert first.
+ * Equity and the 24h term are recomputed from those parts.
+ */
+export function perpQuoteInPreferred(
+  position: OpenPerp,
+  mark: PerpMark | undefined,
+  preferredCurrency: Currency,
+  usdToEurRate: number
+): PerpHeadlineTerm {
+  const quote = quotePerp(position, mark)
+  const toPref = (amount: number) =>
+    convertAmount(amount, preferredCurrency, usdToEurRate)
+  const margin = toPref(position.margin)
+  const funding = toPref(position.fundingNet)
+  const fees = toPref(position.feeNet)
+  const live = positiveMark(mark?.mark)
+  const previous = positiveMark(mark?.previousMark)
+  const side = position.positionSide === 'long' ? 1 : -1
+
+  const entry = toPref(position.entry)
+  const shared = {
+    symbol: position.symbol,
+    positionSide: position.positionSide,
+    margin,
+    fundingNet: funding,
+    feeNet: fees,
+    leverage: quote.leverage,
+    quantity: position.quantity,
+    entry,
+  }
+
+  if (live == null) {
+    const equity = margin + funding + fees
+    return {
+      ...shared,
+      valueAdd: equity,
+      unrealizedAdd: 0,
+      dayAdd: 0,
+      priced: false,
+      unrealized: null,
+      equity,
+      availableMargin: null,
+      mark: null,
+      notional: null,
+      dayChange: null,
+    }
+  }
+
+  const unrealized = toPref(quote.unrealized ?? 0)
+  const markPref = toPref(live)
+  const dayChange =
+    previous == null
+      ? null
+      : (markPref - toPref(previous)) * position.quantity * side
+  const equity = margin + funding + fees + unrealized
+  const required =
+    quote.requiredMargin == null ? null : toPref(quote.requiredMargin)
+
+  return {
+    ...shared,
+    valueAdd: equity,
+    unrealizedAdd: unrealized,
+    dayAdd: dayChange ?? 0,
+    priced: true,
+    unrealized,
+    equity,
+    availableMargin: required == null ? null : equity - required,
+    mark: markPref,
+    notional: position.quantity * markPref,
+    dayChange,
   }
 }
 
@@ -135,14 +274,29 @@ export function toPreferredHolding(
  *
  * calculateHoldings cannot do this correctly: it sums face amounts across
  * currencies and stamps currency from the first chronological tx only.
+ *
+ * Future rows are not cash transactions. Their net USD cash effect is converted
+ * and applied to Available Cash. This does not insert an Available Cash row.
  */
 export function calculateCashHoldingsInPreferred(
   transactions: Transaction[],
   preferredCurrency: Currency,
-  usdToEurRate: number
+  usdToEurRate: number,
+  marks?: Record<string, PerpMark>
 ): EnrichedHolding[] {
   const cashTxs = (transactions || []).filter((tx) => tx.asset_type === 'cash')
-  if (cashTxs.length === 0) return []
+  const futureCashDelta = reducePerps({
+    rows: ledgerPerpRows(transactions || []),
+    marks,
+  }).futureCashDelta
+  const deltaPreferred = convertAmount(
+    futureCashDelta,
+    preferredCurrency,
+    usdToEurRate
+  )
+  if (cashTxs.length === 0) {
+    return applyFutureCash([], deltaPreferred, preferredCurrency)
+  }
 
   const grouped = new Map<string, Transaction[]>()
   for (const tx of cashTxs) {
@@ -210,5 +364,51 @@ export function calculateCashHoldingsInPreferred(
     }
   }
 
-  return holdings
+  return applyFutureCash(holdings, deltaPreferred, preferredCurrency)
+}
+
+function cashHolding(
+  symbol: string,
+  quantity: number,
+  currency: Currency,
+  realizedPnl = 0
+): EnrichedHolding {
+  return {
+    symbol,
+    asset_type: 'cash',
+    quantity,
+    avgCost: 1,
+    totalCost: quantity,
+    realizedPnl,
+    currency,
+    currentPrice: 1,
+    marketValue: quantity,
+    unrealizedPnl: 0,
+    unrealizedPnlPercent: 0,
+    change24h: 0,
+    position24hChange: 0,
+    priceAvailable: true,
+  }
+}
+
+function applyFutureCash(
+  holdings: EnrichedHolding[],
+  deltaPreferred: number,
+  preferredCurrency: Currency
+): EnrichedHolding[] {
+  const delta = Number(deltaPreferred.toFixed(2))
+  if (delta === 0) return holdings
+
+  const idx = holdings.findIndex((h) => h.symbol === AVAILABLE_CASH)
+  if (idx === -1) {
+    if (!(delta > 0)) return holdings
+    return [...holdings, cashHolding(AVAILABLE_CASH, delta, preferredCurrency)]
+  }
+
+  const current = holdings[idx]
+  const next = Number((current.quantity + delta).toFixed(2))
+  if (!(next > 0)) return holdings.filter((_, i) => i !== idx)
+  const copy = [...holdings]
+  copy[idx] = cashHolding(AVAILABLE_CASH, next, preferredCurrency, current.realizedPnl)
+  return copy
 }

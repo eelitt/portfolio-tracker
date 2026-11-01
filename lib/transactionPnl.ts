@@ -1,6 +1,7 @@
 import type { Transaction } from './types'
 import type { Currency } from './currency'
 import { convertAmount, convertBetweenCurrencies } from './currency'
+import { ledgerPerpRows, reducePerps } from './perps'
 
 export type TransactionPnlKind = 'unrealized' | 'realized' | 'closed' | 'none'
 
@@ -47,7 +48,15 @@ export function transactionPnl(input: {
   const result = new Map<string, TransactionPnlRow>()
   const grouped = new Map<string, Transaction[]>()
 
+  const perpRows = ledgerPerpRows(input.transactions || [])
+  const acceptedPerpIds = new Set(
+    perpRows.map((row) => row.id).filter((id): id is string => !!id)
+  )
   for (const tx of input.transactions || []) {
+    if (tx.asset_type === 'future') {
+      if (tx.id && !acceptedPerpIds.has(tx.id)) result.set(tx.id, { kind: 'none' })
+      continue
+    }
     if (isCash(tx)) {
       if (tx.id) result.set(tx.id, { kind: 'none' })
       continue
@@ -150,6 +159,31 @@ export function transactionPnl(input: {
         percent: percentOf(amount, costPref),
       })
     }
+  }
+
+  const book = reducePerps({ rows: perpRows })
+  for (const [id, pnl] of book.rowPnl) {
+    if (pnl.kind === 'none') {
+      result.set(id, { kind: 'none' })
+      continue
+    }
+    const amount = convertBetweenCurrencies(
+      pnl.realized,
+      'USD',
+      input.preferredCurrency,
+      input.usdToEurRate
+    )
+    const released = convertBetweenCurrencies(
+      pnl.releasedMargin,
+      'USD',
+      input.preferredCurrency,
+      input.usdToEurRate
+    )
+    result.set(id, {
+      kind: 'realized',
+      amount,
+      percent: pnl.releasedMargin > 0 ? percentOf(amount, released) : undefined,
+    })
   }
 
   return result

@@ -1,6 +1,20 @@
 import { allocationBreakdown } from '@/lib/portfolioAnalyst'
 import type { EnrichedHolding } from '@/lib/types'
-import { ALLOC_ASSET_TYPES, type AllocationPolicySpec, type DriftRow } from './types'
+import {
+  ALLOC_ASSET_TYPES,
+  type AllocationPolicySpec,
+  type DriftRow,
+  type PlanPerp,
+} from './types'
+
+/** Net equity of the open sides. A loss or a flat book is 0. */
+export function futuresEquity(perps: PlanPerp[]): number {
+  const net = perps.reduce((sum, perp) => {
+    const equity = Number(perp.equity)
+    return sum + (Number.isFinite(equity) ? equity : 0)
+  }, 0)
+  return net > 0 ? net : 0
+}
 
 function statusOf(deltaPp: number, tolerancePp: number): DriftRow['status'] {
   if (deltaPp > tolerancePp) return 'over'
@@ -30,7 +44,8 @@ function row(
 
 export function computeDrift(
   holdings: EnrichedHolding[],
-  spec: AllocationPolicySpec
+  spec: AllocationPolicySpec,
+  perps: PlanPerp[] = []
 ): {
   totalMarketValue: number
   unpricedSymbols: string[]
@@ -53,6 +68,13 @@ export function computeDrift(
   const byType = ALLOC_ASSET_TYPES.map((t) =>
     row(t, 'asset_type', typeActual[t] ?? 0, spec.typeWeights[t], total, spec.tolerancePp)
   )
+
+  const equity = futuresEquity(perps)
+  if (equity > 0) {
+    const combined = total + equity
+    const actual = (equity / combined) * 100
+    byType.push(row('future', 'asset_type', actual, 0, combined, spec.tolerancePp))
+  }
 
   const bySymbol = spec.symbolOverrides.map((o) =>
     row(

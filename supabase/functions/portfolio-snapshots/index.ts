@@ -5,8 +5,9 @@
  * One upsert pass per user per UTC date (same price fetch for both).
  *
  * Mirror of weighted-average holdings in lib/calculatePortfolio.ts — keep in sync.
- * Crypto: Binance USDT spot (same feed as app lib/prices); pairs ↔ cryptos.json.
+ * Crypto spot: Binance USDT last price. An open future uses the USD-M mark, not that ticker.
  * Stocks/ETFs: Finnhub.
+ * Book math: ./book.ts. Older snapshot rows are not rewritten.
  *
  * Invoke with:
  *   Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>
@@ -16,12 +17,20 @@
  */
 
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1'
+import {
+  buildUserSnapshot,
+  snapshotFetchPlan,
+  type SnapshotTx,
+} from './book.ts'
 
 const CONCURRENCY = Number(Deno.env.get('SNAPSHOT_CONCURRENCY') ?? '5')
 const ACTIVE_DAYS = Number(Deno.env.get('ACTIVE_DAYS') ?? '90')
 
 const BINANCE_API_BASE = (
   Deno.env.get('BINANCE_API_BASE') ?? 'https://api.binance.com'
+).replace(/\/$/, '')
+const BINANCE_FAPI_BASE = (
+  Deno.env.get('BINANCE_FAPI_BASE') ?? 'https://fapi.binance.com'
 ).replace(/\/$/, '')
 
 /** Face-value stables — keep in sync with lib/symbols/cryptos.json + getCryptoPricing */
@@ -67,29 +76,12 @@ function binancePairForTicker(ticker: string): string | null {
   return `${upper}USDT`
 }
 
-type Tx = {
-  symbol: string
-  asset_type: 'stock' | 'etf' | 'crypto' | 'cash'
-  action: 'buy' | 'sell' | 'inflow' | 'outflow'
-  quantity: number
-  unit_price: number
-  executed_at: string
-  currency?: string | null
-}
-
-type Holding = {
-  symbol: string
-  asset_type: Tx['asset_type']
-  quantity: number
-  totalCost: number
-  currency: 'USD' | 'EUR'
-}
-
 type SnapshotResult = {
   userId: string
   ok: boolean
   error?: string
   partial?: boolean
+  preview?: unknown
 }
 
 function json(data: unknown, status = 200) {
@@ -101,68 +93,6 @@ function json(data: unknown, status = 200) {
 
 function utcToday(): string {
   return new Date().toISOString().slice(0, 10)
-}
-
-/** Weighted average holdings — mirror of lib/calculatePortfolio.ts (simplified). */
-function calculateHoldings(transactions: Tx[]): Holding[] {
-  const normalized = transactions.map((tx) => ({
-    ...tx,
-    quantity: Number(tx.quantity),
-    unit_price: Number(tx.unit_price),
-  }))
-
-  const grouped = new Map<string, Tx[]>()
-  for (const tx of normalized) {
-    if (!grouped.has(tx.symbol)) grouped.set(tx.symbol, [])
-    grouped.get(tx.symbol)!.push(tx)
-  }
-
-  const holdings: Holding[] = []
-  for (const [, txs] of grouped) {
-    const sorted = [...txs].sort(
-      (a, b) =>
-        new Date(a.executed_at).getTime() - new Date(b.executed_at).getTime(),
-    )
-    let quantity = 0
-    let totalCost = 0
-
-    for (const tx of sorted) {
-      if (tx.action === 'buy' || tx.action === 'inflow') {
-        totalCost += tx.quantity * tx.unit_price
-        quantity += tx.quantity
-      } else if (tx.action === 'sell' || tx.action === 'outflow') {
-        if (quantity > 0) {
-          const sellQ = Math.min(tx.quantity, quantity)
-          const avgCost = totalCost / quantity
-          quantity -= sellQ
-          totalCost -= sellQ * avgCost
-          if (quantity < 0) quantity = 0
-          if (totalCost < 0) totalCost = 0
-        }
-      }
-    }
-
-    if (quantity > 0) {
-      const first = sorted[0]
-      const isCash = first.asset_type === 'cash'
-      const finalQty = isCash
-        ? Number(quantity.toFixed(2))
-        : Number(quantity.toFixed(8))
-      if (finalQty > 0) {
-        const finalCost = isCash
-          ? Number(totalCost.toFixed(2))
-          : Number(totalCost.toFixed(8))
-        holdings.push({
-          symbol: first.symbol,
-          asset_type: first.asset_type,
-          quantity: finalQty,
-          totalCost: finalCost,
-          currency: first.currency === 'EUR' ? 'EUR' : 'USD',
-        })
-      }
-    }
-  }
-  return holdings
 }
 
 async function getUsdToEurRate(): Promise<number> {
@@ -177,9 +107,25 @@ async function getUsdToEurRate(): Promise<number> {
   }
 }
 
-function toUsd(amount: number, currency: 'USD' | 'EUR', usdToEur: number): number {
-  if (currency === 'USD') return amount
-  return amount / usdToEur
+/** Catalog pair, rejecting a 1000-unit contract. Spot last price is not a future mark. */
+function usdMPair(ticker: string): string | null {
+  const pair = binancePairForTicker(ticker)
+  if (!pair) return null
+  const upper = pair.toUpperCase()
+  if (!upper.endsWith('USDT') || upper.startsWith('1000')) return null
+  return upper
+}
+
+async function fetchUsdMMark(symbol: string): Promise<number | null> {
+  const pair = usdMPair(symbol)
+  if (!pair) return null
+  const res = await fetch(
+    `${BINANCE_FAPI_BASE}/fapi/v1/premiumIndex?symbol=${encodeURIComponent(pair)}`,
+  )
+  if (!res.ok) return null
+  const data = await res.json()
+  const mark = Number(data?.markPrice)
+  return Number.isFinite(mark) && mark > 0 ? mark : null
 }
 
 async function fetchStockPrice(
@@ -271,11 +217,12 @@ async function snapshotUser(
   snapshotDate: string,
   finnhubKey: string | undefined,
   usdToEur: number,
+  dryRun: boolean,
 ): Promise<SnapshotResult> {
   const { data: txs, error: txErr } = await supabase
     .from('transactions')
     .select(
-      'symbol, asset_type, action, quantity, unit_price, executed_at, currency',
+      'id, symbol, asset_type, action, position_side, quantity, unit_price, amount, executed_at, created_at, currency',
     )
     .eq('user_id', userId)
 
@@ -284,8 +231,41 @@ async function snapshotUser(
     return { userId, ok: true, error: 'skipped_no_txs' }
   }
 
-  const holdings = calculateHoldings(txs as Tx[])
-  if (holdings.length === 0) {
+  const rows = txs as SnapshotTx[]
+  const plan = snapshotFetchPlan(rows)
+  const cryptoPrices = await fetchCryptoPrices(plan.cryptos)
+  const stockSymbols: string[] = plan.stocks
+  const perpSymbols: string[] = plan.perpSymbols
+  const stockPrices: Record<string, number> = {}
+  if (finnhubKey) {
+    await mapPool<string, void>(stockSymbols, 3, async (symbol) => {
+      const p = await fetchStockPrice(symbol, finnhubKey)
+      if (p != null) stockPrices[symbol] = p
+    })
+  }
+  const marks: Record<string, number | null> = {}
+  await mapPool<string, void>(perpSymbols, 3, async (symbol) => {
+    marks[symbol] = await fetchUsdMMark(symbol)
+  })
+
+  const built = buildUserSnapshot({
+    userId,
+    snapshotDate,
+    txs: rows,
+    cryptoPrices,
+    stockPrices,
+    usdToEur,
+    marks,
+  })
+
+  if (built.empty) {
+    if (dryRun) {
+      return {
+        userId,
+        ok: true,
+        preview: { empty: true, total_market_value: 0, holding_rows: [] },
+      }
+    }
     const { error: upErr } = await supabase.from('portfolio_snapshots').upsert(
       {
         user_id: userId,
@@ -305,112 +285,53 @@ async function snapshotUser(
     return { userId, ok: true }
   }
 
-  const assets = holdings.filter((h) => h.asset_type !== 'cash')
-  const cryptos = assets
-    .filter((h) => h.asset_type === 'crypto')
-    .map((h) => h.symbol)
-  const stocks = assets.filter(
-    (h) => h.asset_type === 'stock' || h.asset_type === 'etf',
-  )
-
-  const cryptoPrices = await fetchCryptoPrices(cryptos)
-  const stockPrices: Record<string, number> = {}
-  if (finnhubKey) {
-    await mapPool(stocks, 3, async (h) => {
-      const p = await fetchStockPrice(h.symbol, finnhubKey)
-      if (p != null) stockPrices[h.symbol] = p
-    })
+  if (dryRun) {
+    return {
+      userId,
+      ok: true,
+      partial: built.isPartial,
+      preview: {
+        total_market_value: built.totalMarketValue,
+        total_cost_basis: built.totalCostBasis,
+        total_unrealized_pnl: built.totalUnrealizedPnl,
+        is_partial: built.isPartial,
+        holding_rows: built.holdingRows,
+      },
+    }
   }
 
-  let totalMvUsd = 0
-  let totalCostUsd = 0
-  let pricedAssets = 0
-  const assetCount = assets.length
-  const holdingRows: Record<string, unknown>[] = []
-
-  for (const h of holdings) {
-    const costUsd = toUsd(h.totalCost, h.currency, usdToEur)
-    totalCostUsd += costUsd
-
-    if (h.asset_type === 'cash') {
-      const faceUsd = toUsd(h.quantity, h.currency, usdToEur)
-      totalMvUsd += faceUsd
-      holdingRows.push({
-        user_id: userId,
-        snapshot_date: snapshotDate,
-        symbol: h.symbol,
-        asset_type: h.asset_type,
-        quantity: h.quantity,
-        unit_price: 1,
-        market_value: Number(faceUsd.toFixed(4)),
-        cost_basis: Number(costUsd.toFixed(4)),
-        unrealized_pnl: Number((faceUsd - costUsd).toFixed(4)),
-        is_partial: false,
-        currency: 'USD',
-      })
-      continue
-    }
-
-    let priceUsd: number | undefined
-    if (h.asset_type === 'crypto') priceUsd = cryptoPrices[h.symbol]
-    else priceUsd = stockPrices[h.symbol]
-
-    const priced = priceUsd != null && priceUsd > 0
-    if (priced) {
-      totalMvUsd += h.quantity * priceUsd!
-      pricedAssets++
-    }
-
-    const mvUsd = priced ? h.quantity * priceUsd! : 0
-    holdingRows.push({
-      user_id: userId,
-      snapshot_date: snapshotDate,
-      symbol: h.symbol,
-      asset_type: h.asset_type,
-      quantity: h.quantity,
-      unit_price: priced ? Number(priceUsd!.toFixed(8)) : null,
-      market_value: Number(mvUsd.toFixed(4)),
-      cost_basis: Number(costUsd.toFixed(4)),
-      unrealized_pnl: Number((mvUsd - costUsd).toFixed(4)),
-      is_partial: !priced,
-      currency: 'USD',
-    })
-  }
-
-  if (holdingRows.length > 0) {
+  if (built.holdingRows.length > 0) {
     const { error: holdErr } = await supabase
       .from('holding_snapshots')
-      .upsert(holdingRows, {
-        onConflict: 'user_id,snapshot_date,symbol,asset_type',
+      .upsert(built.holdingRows, {
+        onConflict: 'user_id,snapshot_date,symbol,asset_type,position_side',
       })
     if (holdErr) return { userId, ok: false, error: holdErr.message }
   }
-
-  const isPartial = pricedAssets < assetCount
-  const totalUnrealized = totalMvUsd - totalCostUsd
 
   const { error: upErr } = await supabase.from('portfolio_snapshots').upsert(
     {
       user_id: userId,
       snapshot_date: snapshotDate,
-      total_market_value: Number(totalMvUsd.toFixed(4)),
-      total_cost_basis: Number(totalCostUsd.toFixed(4)),
-      total_unrealized_pnl: Number(totalUnrealized.toFixed(4)),
+      total_market_value: built.totalMarketValue,
+      total_cost_basis: built.totalCostBasis,
+      total_unrealized_pnl: built.totalUnrealizedPnl,
       currency: 'USD',
-      holdings_count: holdings.length,
-      priced_asset_count: pricedAssets,
-      is_partial: isPartial,
+      holdings_count: built.holdingsCount,
+      priced_asset_count: built.pricedAssetCount,
+      is_partial: built.isPartial,
       meta: {
-        asset_count: assetCount,
-        holding_rows: holdingRows.length,
+        asset_count: built.assetCount,
+        holding_rows: built.holdingRows.length,
         source: 'edge_portfolio_snapshots',
+        ...(built.perpRows > 0 ? { perp_rows: built.perpRows } : {}),
       },
     },
     { onConflict: 'user_id,snapshot_date' },
   )
 
   if (upErr) return { userId, ok: false, error: upErr.message }
-  return { userId, ok: true, partial: isPartial }
+  return { userId, ok: true, partial: built.isPartial }
 }
 
 Deno.serve(async (req) => {
@@ -426,6 +347,20 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
   if (!supabaseUrl) return json({ error: 'Missing SUPABASE_URL' }, 500)
+
+  let dryRun = new URL(req.url).searchParams.get('dry_run') === '1'
+  let onlyUser: string | null = null
+  if (req.method === 'POST') {
+    try {
+      const body = await req.json()
+      if (body?.dryRun === true) dryRun = true
+      if (typeof body?.userId === 'string' && body.userId.length > 0) {
+        onlyUser = body.userId
+      }
+    } catch {
+      // GET, or a POST with no JSON body.
+    }
+  }
 
   const supabase = createClient(supabaseUrl, serviceKey)
   const finnhubKey = Deno.env.get('FINNHUB_API_KEY')
@@ -449,10 +384,10 @@ Deno.serve(async (req) => {
     const id = row.user_id
     if (typeof id === 'string' && id.length > 0) userIdSet.add(id)
   }
-  const userIds: string[] = [...userIdSet]
+  const userIds: string[] = onlyUser ? [onlyUser] : [...userIdSet]
 
   const results = await mapPool(userIds, CONCURRENCY, (userId) =>
-    snapshotUser(supabase, userId, snapshotDate, finnhubKey, usdToEur),
+    snapshotUser(supabase, userId, snapshotDate, finnhubKey, usdToEur, dryRun),
   )
 
   const ok = results.filter((r) => r.ok).length
@@ -460,11 +395,13 @@ Deno.serve(async (req) => {
 
   return json({
     snapshot_date: snapshotDate,
+    dry_run: dryRun,
     active_users: userIds.length,
     concurrency: CONCURRENCY,
     active_days: ACTIVE_DAYS,
     ok,
     failed_count: failed.length,
     failed: failed.slice(0, 20),
+    ...(dryRun ? { results } : {}),
   })
 })

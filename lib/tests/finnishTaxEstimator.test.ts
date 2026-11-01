@@ -746,4 +746,25 @@ describe('appTransactionsToTaxableEvents', () => {
     expect(events[0].assetClass).toBe('security')
     expect(events[0].assetKey).toBe('VOO')
   })
+
+  it('skips a future fill', () => {
+    const events = appTransactionsToTaxableEvents(
+      [
+        {
+          id: 'fut',
+          symbol: 'BTC',
+          asset_type: 'future',
+          action: 'buy',
+          position_side: 'long',
+          quantity: 0.2,
+          unit_price: 100000,
+          amount: 1000,
+          executed_at: '2024-01-01T00:00:00.000Z',
+          currency: 'USD',
+        },
+      ],
+      { usdToEurRate: 0.9 }
+    )
+    expect(events).toEqual([])
+  })
 })

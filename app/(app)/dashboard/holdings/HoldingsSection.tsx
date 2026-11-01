@@ -12,12 +12,11 @@ import HoldingsNewsPopover from './HoldingsNewsPopover'
 import { cashFlowsFromTransactions } from '@/lib/performance'
 
 /**
- * Open Holdings title + grid; Charts is a sibling elevated panel.
+ * Open Holdings title + grid. Charts render under the perp section.
  * Holding news batch: title icon popover (cards keep per-symbol tooltips).
  */
 export default async function HoldingsSection() {
   const data = await getPortfolioData()
-  const snapshotsResult = await getPortfolioSnapshots()
   const profile = await getCurrentUserProfile()
 
   const holdingNewsResult = await getLatestAIInsightForCurrentUser(
@@ -68,21 +67,48 @@ export default async function HoldingsSection() {
         </div>
       </section>
 
-      <HoldingsChartsPanel
-        enrichedHoldings={data.enrichedHoldings}
-        preferredCurrency={data.preferredCurrency}
-        usdToPreferredRate={data.usdToPreferredRate}
-        transactions={data.transactions}
-        priceData={data.priceData}
-        usdToEurRate={data.usdToEurRate}
-        snapshots={snapshotsResult.data ?? []}
-        snapshotsError={snapshotsResult.error ?? null}
-        cashFlows={cashFlowsFromTransactions(
-          data.transactions,
-          data.preferredCurrency,
-          data.usdToEurRate
-        )}
-      />
     </div>
+  )
+}
+
+export async function HoldingsChartsSection() {
+  const data = await getPortfolioData()
+  if (data.error) return null
+  const profile = await getCurrentUserProfile()
+  const snapshotsResult = await getPortfolioSnapshots()
+  const pieHoldings =
+    profile?.futuresInPie === false
+      ? data.enrichedHoldings
+      : [
+          ...data.enrichedHoldings,
+          ...data.openPerps
+            .filter((perp) => perp.equity > 0)
+            .map((perp) => ({
+              symbol: perp.symbol,
+              marketValue: perp.equity,
+              asset_type: 'future' as const,
+              positionSide: perp.positionSide,
+              priceAvailable: true,
+            })),
+        ]
+
+  return (
+    <HoldingsChartsPanel
+      enrichedHoldings={data.enrichedHoldings}
+      openPerps={data.openPerps}
+      allocationHoldings={pieHoldings}
+      preferredCurrency={data.preferredCurrency}
+      usdToPreferredRate={data.usdToPreferredRate}
+      transactions={data.transactions}
+      priceData={data.priceData}
+      usdToEurRate={data.usdToEurRate}
+      snapshots={snapshotsResult.data ?? []}
+      snapshotsError={snapshotsResult.error ?? null}
+      cashFlows={cashFlowsFromTransactions(
+        data.transactions,
+        data.preferredCurrency,
+        data.usdToEurRate
+      )}
+    />
   )
 }

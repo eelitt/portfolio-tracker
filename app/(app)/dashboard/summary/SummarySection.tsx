@@ -1,5 +1,7 @@
 import { getPortfolioData } from '@/lib/portfolioData'
 import { formatCurrency } from '@/lib/currency'
+import { getCurrentUserProfile } from '@/lib/user'
+import { summaryLabelText } from '@/lib/userTypes'
 import SensitiveValue from '@/components/SensitiveValue'
 import PortfolioValueSync from './PortfolioValueSync'
 import SummaryAnalysisPopover from './SummaryAnalysisPopover'
@@ -10,6 +12,8 @@ import SummaryAnalysisPopover from './SummaryAnalysisPopover'
  */
 export default async function SummarySection() {
   const data = await getPortfolioData()
+  const profile = await getCurrentUserProfile()
+  const valueLabel = summaryLabelText(profile?.summaryLabel)
 
   if (data.error) {
     return <div className="alert-error mb-6">{data.error}</div>
@@ -42,15 +46,17 @@ export default async function SummarySection() {
             data.unpricedSymbols.length <= 8 && (
               <> (missing: {data.unpricedSymbols.join(', ')})</>
             )}
-          . Total Market Value and 24h Change exclude missing quotes; cost basis
-          still includes all positions. Use Refresh and try again.
+          . {valueLabel} and 24h Change leave out a missing spot quote.
+          An unpriced perp still counts its margin, funding, and fees, and adds
+          nothing to unrealized P&L or 24h. Cost basis still includes every
+          spot position. Use Refresh and try again.
         </div>
       )}
 
       {/* Soft strip — neutral edges, no gold frames per KPI */}
       <div className="grid grid-cols-1 overflow-hidden rounded-xl border border-subtle bg-surface-elevated md:grid-cols-2 lg:grid-cols-4">
         <div className="border-b border-subtle p-4 md:border-r lg:border-b-0">
-          <div className="text-sm text-muted-foreground">Total Market Value</div>
+          <div className="text-sm text-muted-foreground">{valueLabel}</div>
           <div className="text-2xl font-semibold tabular-nums">
             <SensitiveValue
               value={formatCurrency(

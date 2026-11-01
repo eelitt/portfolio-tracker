@@ -12,9 +12,14 @@ import { Button } from '@/components/ui/button'
 import { Transaction } from '@/lib/types'
 import { Loader2 } from 'lucide-react'
 import { getAssetTypeLabel } from '@/lib/utils'
-import { formatCurrency, getAmountInUsd } from '@/lib/currency'
 import type { PreferredCurrency } from '@/lib/userTypes'
 import SensitiveValue from '@/components/SensitiveValue'
+import {
+  formatPriceCell,
+  formatQuantityCell,
+  historyActionLabel,
+  historySymbolLabel,
+} from './transactionUtils'
 
 interface DeleteTransactionModalProps {
   transaction: Transaction | null
@@ -44,6 +49,16 @@ export default function DeleteTransactionModal({
     month: 'short',
     day: 'numeric',
   })
+  const preferred = preferredCurrency || 'USD'
+  const qtyLabel = String(
+    formatQuantityCell(transaction, preferred, usdToPreferredRate || 1, usdToEurRate || 0.92)
+  )
+  const priceLabel = formatPriceCell(
+    transaction,
+    preferred,
+    usdToPreferredRate || 1,
+    usdToEurRate || 0.92
+  )
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -59,7 +74,7 @@ export default function DeleteTransactionModal({
         <div className="rounded-lg border border-border/70 bg-muted/40 p-4 text-sm">
           <div className="flex justify-between">
             <span className="font-medium text-foreground">Symbol</span>
-            <span className="font-semibold">{transaction.symbol}</span>
+            <span className="font-semibold">{historySymbolLabel(transaction)}</span>
           </div>
           <div className="flex justify-between mt-1">
             <span className="text-muted-foreground">Type</span>
@@ -68,60 +83,27 @@ export default function DeleteTransactionModal({
           <div className="flex justify-between mt-1">
             <span className="text-muted-foreground">Action</span>
             <span className={(transaction.action === 'buy' || transaction.action === 'inflow') ? 'text-green-600' : 'text-red-600'}>
-              {transaction.action.toUpperCase()}
+              {historyActionLabel(transaction.action)}
             </span>
           </div>
           <div className="flex justify-between mt-1">
             <span className="text-muted-foreground">Quantity</span>
             <span>
-              {transaction.asset_type === 'cash' ? (
-                <SensitiveValue
-                  value={(() => {
-                    const txCurr = (transaction.currency as any) || 'USD'
-                    const trueEurRate = usdToEurRate || 0.92
-                    const usdEq = getAmountInUsd(
-                      transaction.quantity,
-                      txCurr,
-                      trueEurRate
-                    )
-                    return formatCurrency(
-                      usdEq,
-                      preferredCurrency || 'USD',
-                      usdToPreferredRate || 1
-                    )
-                  })()}
-                />
+              {qtyLabel === '' ? (
+                <span className="text-muted-foreground">—</span>
               ) : (
-                <SensitiveValue value={String(transaction.quantity)} />
+                <SensitiveValue value={qtyLabel} />
               )}
             </span>
           </div>
           <div className="flex justify-between mt-1">
             <span className="text-muted-foreground">Price</span>
             <span>
-              <SensitiveValue
-                value={(() => {
-                  if (transaction.asset_type === 'cash') {
-                    return formatCurrency(
-                      transaction.unit_price,
-                      preferredCurrency || 'USD',
-                      1
-                    )
-                  }
-                  const txCurr = (transaction.currency as any) || 'USD'
-                  const trueEurRate = usdToEurRate || 0.92
-                  const usdEq = getAmountInUsd(
-                    transaction.unit_price,
-                    txCurr,
-                    trueEurRate
-                  )
-                  return formatCurrency(
-                    usdEq,
-                    preferredCurrency || 'USD',
-                    usdToPreferredRate || 1
-                  )
-                })()}
-              />
+              {priceLabel === '' ? (
+                <span className="text-muted-foreground">—</span>
+              ) : (
+                <SensitiveValue value={priceLabel} />
+              )}
             </span>
           </div>
           <div className="flex justify-between mt-1">

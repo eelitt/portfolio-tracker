@@ -1,5 +1,5 @@
 import { createHash } from 'crypto'
-import { Transaction, Holding, EnrichedHolding } from './types'
+import { Transaction, Holding, EnrichedHolding, type AssetType } from './types'
 
 
 /**
@@ -31,14 +31,17 @@ import { Transaction, Holding, EnrichedHolding } from './types'
  */
 export function calculateHoldings(transactions: Transaction[]): Holding[] {
   // Normalize to numbers in case DB returns numeric columns as strings.
-  const normalizedTxs = (transactions || []).map(tx => ({
+  const normalizedTxs = (transactions || [])
+    .filter((tx) => tx.asset_type !== 'future')
+    .map(tx => ({
     ...tx,
+    asset_type: tx.asset_type as AssetType,
     quantity: Number(tx.quantity),
     unit_price: Number(tx.unit_price),
   }))
 
   // Group all transactions by symbol so we can calculate each position independently.
-  const grouped = new Map<string, Transaction[]>()
+  const grouped = new Map<string, (typeof normalizedTxs)[number][]>()
 
   for (const tx of normalizedTxs) {
     if (!grouped.has(tx.symbol)) {
@@ -199,7 +202,7 @@ export function computePortfolioHash(transactions: Transaction[]): string {
   })
 
   const repr = sorted
-    .map(t => `${t.id || ''}|${t.symbol}|${t.action}|${t.quantity.toFixed(8)}|${t.unit_price.toFixed(2)}|${t.executed_at}|${t.currency || ''}`)
+    .map(t => `${t.id || ''}|${t.symbol}|${t.action}|${Number(t.quantity).toFixed(8)}|${Number(t.unit_price).toFixed(2)}|${t.executed_at}|${t.currency || ''}`)
     .join(';')
 
   return createHash('sha256').update(repr).digest('hex').slice(0, 16)

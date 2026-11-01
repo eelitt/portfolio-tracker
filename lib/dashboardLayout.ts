@@ -4,16 +4,20 @@ export const DASHBOARD_LAYOUT_KEY = 'dashboardLayout'
 export const DASHBOARD_TAB_KEY = 'dashboardTab'
 
 export type DashboardLayoutMode = 'all' | 'focus'
-export type DashboardTab = 'holdings' | 'watchlist' | 'transactions'
+export type DashboardTab = 'holdings' | 'perps' | 'watchlist' | 'transactions'
 
-export const DASHBOARD_TAB_OPTIONS: {
+/** Perps sits between Holdings and Watchlist only while that section is on the page. */
+export function dashboardTabOptions(includePerps: boolean): {
   value: DashboardTab
   label: string
-}[] = [
-  { value: 'holdings', label: 'Holdings' },
-  { value: 'watchlist', label: 'Watchlist' },
-  { value: 'transactions', label: 'Transactions' },
-]
+}[] {
+  return [
+    { value: 'holdings', label: 'Holdings' },
+    ...(includePerps ? [{ value: 'perps' as const, label: 'Perps' }] : []),
+    { value: 'watchlist', label: 'Watchlist' },
+    { value: 'transactions', label: 'Transactions' },
+  ]
+}
 
 export function parseDashboardLayout(
   raw: string | null | undefined
@@ -24,7 +28,12 @@ export function parseDashboardLayout(
 export function parseDashboardTab(
   raw: string | null | undefined
 ): DashboardTab {
-  if (raw === 'watchlist' || raw === 'transactions' || raw === 'holdings') {
+  if (
+    raw === 'watchlist' ||
+    raw === 'transactions' ||
+    raw === 'holdings' ||
+    raw === 'perps'
+  ) {
     return raw
   }
   return 'holdings'
@@ -32,7 +41,12 @@ export function parseDashboardTab(
 
 export function tabFromHash(hash: string): DashboardTab | null {
   const id = hash.replace(/^#/, '')
-  if (id === 'holdings' || id === 'watchlist' || id === 'transactions') {
+  if (
+    id === 'holdings' ||
+    id === 'perps' ||
+    id === 'watchlist' ||
+    id === 'transactions'
+  ) {
     return id
   }
   return null

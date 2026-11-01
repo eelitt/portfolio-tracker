@@ -5,7 +5,13 @@ import { Button } from '@/components/ui/button'
 import { getAssetTypeLabel } from '@/lib/utils'
 import type { Transaction } from '@/lib/types'
 import type { PreferredCurrency } from '@/lib/userTypes'
-import { formatQuantityCell, formatPriceCell, type AugmentedTransaction } from './transactionUtils'
+import {
+  formatQuantityCell,
+  formatPriceCell,
+  historyActionLabel,
+  historySymbolLabel,
+  type AugmentedTransaction,
+} from './transactionUtils'
 import { formatCurrency } from '@/lib/currency'
 import type { TransactionPnlRow } from '@/lib/transactionPnl'
 import SensitiveValue from '@/components/SensitiveValue'
@@ -73,6 +79,7 @@ export default function TransactionRow({
 
   const isInflow = tx.action === 'buy' || tx.action === 'inflow'
 
+  const symbolLabel = historySymbolLabel(tx)
   const qtyLabel = String(
     formatQuantityCell(tx, preferredCurrency, usdToPreferredRate, usdToEurRate)
   )
@@ -82,6 +89,8 @@ export default function TransactionRow({
     usdToPreferredRate,
     usdToEurRate
   )
+  const qtyBlank = qtyLabel === ''
+  const priceBlank = priceLabel === ''
   // Long crypto prices (e.g. €1 676,99) use slightly smaller type so they stay one line
   const priceTextClass =
     priceLabel.replace(/\s/g, '').length >= 8 ? 'text-xs' : 'text-sm'
@@ -111,12 +120,12 @@ export default function TransactionRow({
       tabIndex={compact ? 0 : undefined}
       role={compact ? 'button' : undefined}
       aria-haspopup={compact ? 'menu' : undefined}
-      aria-label={compact ? `Edit or remove ${tx.symbol}` : undefined}
+      aria-label={compact ? `Edit or remove ${symbolLabel}` : undefined}
     >
       <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
         {displayDate}
       </td>
-      <td className="px-4 py-3 font-medium">{tx.symbol}</td>
+      <td className="px-4 py-3 font-medium">{symbolLabel}</td>
       <td className="px-4 py-3 text-sm">{getAssetTypeLabel(tx.asset_type)}</td>
       <td className="px-4 py-3">
         <span
@@ -127,16 +136,24 @@ export default function TransactionRow({
           }`}
         >
           {isInflow ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-          {tx.action.toUpperCase()}
+          {historyActionLabel(tx.action)}
         </span>
       </td>
       <td className="px-4 py-3 text-right font-mono text-sm tabular-nums whitespace-nowrap">
-        <SensitiveValue value={qtyLabel} />
+        {qtyBlank ? (
+          <span className="text-muted-foreground">—</span>
+        ) : (
+          <SensitiveValue value={qtyLabel} />
+        )}
       </td>
       <td
         className={`px-4 py-3 text-right font-mono tabular-nums whitespace-nowrap ${priceTextClass}`}
       >
-        <SensitiveValue value={priceLabel} />
+        {priceBlank ? (
+          <span className="text-muted-foreground">—</span>
+        ) : (
+          <SensitiveValue value={priceLabel} />
+        )}
       </td>
       <td className="px-4 py-3 text-right font-mono text-sm tabular-nums">
         <PnlCell pnl={pnl} preferredCurrency={preferredCurrency} />

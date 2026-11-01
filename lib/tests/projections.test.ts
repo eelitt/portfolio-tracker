@@ -296,6 +296,25 @@ describe('averageMonthlyUserInflows', () => {
     expect(r.monthly).toBeCloseTo(100, 8)
     expect(r.months.find((m) => m.key === '2026-07')?.buys).toBe(300)
   })
+
+  it('does not count a future buy as a deposit', () => {
+    const txs = [
+      {
+        symbol: 'BTC',
+        asset_type: 'future' as const,
+        action: 'buy' as const,
+        position_side: 'long' as const,
+        quantity: 0.2,
+        unit_price: 100000,
+        amount: 1000,
+        currency: 'USD' as const,
+        executed_at: '2026-07-01',
+      },
+    ]
+    const r = averageMonthlyUserInflows(txs, 'USD', 1, now)
+    expect(r.monthlyBuys).toBe(0)
+    expect(r.inflowCount).toBe(0)
+  })
 })
 
 describe('weightsFromMarketValues', () => {

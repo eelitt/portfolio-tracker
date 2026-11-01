@@ -187,7 +187,11 @@ export default function AllocationPanel({
           panelClassName="right-0 left-auto w-[min(18.5rem,calc(100vw-2rem))] sm:w-[min(18.5rem,calc(100vw-2rem))]"
         >
           <ul className="list-disc space-y-2 pl-4 text-xs leading-relaxed text-muted-foreground">
-            <li>Type targets must sum to 100%. Drift uses priced holdings and cash only.</li>
+            <li>
+              Type targets must sum to 100%. Drift for stocks, ETFs, crypto, and cash uses priced
+              holdings and cash. When the futures plan setting is on, open futures are a separate
+              bucket at a 0% target. That bucket does not buy or sell the coin.
+            </li>
             <li>Tolerance (pp) hides drift smaller than that band.</li>
             <li>Symbol overrides are % of the whole book and cannot exceed that type’s bucket.</li>
             <li>In place spends extra cash first, then suggests sells. New cash only allocates an inflow.</li>
@@ -226,6 +230,17 @@ export default function AllocationPanel({
         <p className={`text-[11px] ${Math.abs(typeSum - 100) < 0.05 ? 'text-muted-foreground' : 'text-destructive'}`}>
           Type weights: {typeSum.toFixed(0)}% (need 100%)
         </p>
+        {byType
+          .filter((d) => d.key === 'future')
+          .map((drift) => (
+            <div key={drift.key} className="grid grid-cols-[4.5rem_1fr_auto] items-center gap-2">
+              <span className="text-xs text-muted-foreground">Futures</span>
+              <span className="text-xs text-muted-foreground">Target 0%</span>
+              <span className="w-24 text-right text-[11px] text-muted-foreground">
+                {`${drift.actualPercent.toFixed(0)}% · ${drift.status === 'ok' ? 'ok' : drift.deltaPp > 0 ? '+' : ''}${drift.deltaPp.toFixed(0)}pp`}
+              </span>
+            </div>
+          ))}
       </div>
 
       <div className="rounded-lg border border-subtle bg-card p-3">

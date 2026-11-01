@@ -336,7 +336,9 @@ export function createWriteTools(ctx: AnalystToolCtx) {
           },
           warnings: [...new Set(warnings)],
           note:
-            created.data.action === 'sell' && created.data.asset_type !== 'cash'
+            created.data.action === 'sell' &&
+            created.data.asset_type !== 'cash' &&
+            created.data.asset_type !== 'future'
               ? 'Sale proceeds were credited to Available Cash (same as manual sells). Refresh the dashboard if totals look stale.'
               : 'Transaction saved. Refresh the dashboard if totals look stale.',
         }

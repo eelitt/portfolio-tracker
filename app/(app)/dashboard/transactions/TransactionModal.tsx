@@ -5,7 +5,7 @@
  * Trigger is the sole primary CTA in the dashboard toolbar; form fields share formStyles.
  */
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -15,13 +15,14 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import AddTransactionForm from './AddTransactionForm'
+import FutureOrderFields, { fromLocalInput, toLocalInput } from './FutureOrderFields'
 import SymbolSelect from './SymbolSelect'
 import { Button } from '@/components/ui/button'
 import { Plus, Loader2 } from 'lucide-react'
 import { updateTransaction } from '@/app/actions/transactions'
 import { toast } from 'sonner'
 import { Transaction } from '@/lib/types'
-import type { AssetType } from '@/lib/types'
+import type { LedgerAssetType, PositionSide, TransactionAction } from '@/lib/types'
 import { fieldClassName, labelClassName } from './formStyles'
 import type { PreferredCurrency } from '@/lib/userTypes'
 import {
@@ -49,18 +50,23 @@ export default function TransactionModal({
   const [open, setOpen] = useState(false)
   const [isPending, setIsPending] = useState(false)
 
-  const [editAssetType, setEditAssetType] = useState<AssetType>('stock')
+  const [editAssetType, setEditAssetType] = useState<LedgerAssetType>('stock')
   const [editSymbol, setEditSymbol] = useState('')
-  const [editAction, setEditAction] = useState<
-    'buy' | 'sell' | 'inflow' | 'outflow'
-  >('buy')
+  const [editAction, setEditAction] = useState<TransactionAction>('buy')
+  const [editSide, setEditSide] = useState<PositionSide>('long')
   const [editUnitPrice, setEditUnitPrice] = useState<number>(1)
   const [editPriceBaseline, setEditPriceBaseline] = useState<number>(1)
+  const [editExecutedAt, setEditExecutedAt] = useState('')
+  const [fillBlocked, setFillBlocked] = useState(false)
+  const onBlockedChange = useCallback((blocked: boolean) => {
+    setFillBlocked((prev) => (prev === blocked ? prev : blocked))
+  }, [])
 
   type AddPrefill = {
-    assetType?: AssetType
+    assetType?: LedgerAssetType
     symbol?: string
-    action?: 'buy' | 'sell' | 'inflow' | 'outflow'
+    action?: TransactionAction
+    positionSide?: PositionSide
   }
   const [addPrefill, setAddPrefill] = useState<AddPrefill | null>(null)
   const [addFormKey, setAddFormKey] = useState(0)
@@ -68,21 +74,27 @@ export default function TransactionModal({
   useEffect(() => {
     if (transaction) {
       setOpen(true)
-      setEditAssetType(transaction.asset_type as AssetType)
+      setEditAssetType(transaction.asset_type)
       setEditSymbol(transaction.symbol)
-      setEditAction(transaction.action as 'buy' | 'sell' | 'inflow' | 'outflow')
+      setEditAction(transaction.action)
+      setEditSide(transaction.position_side === 'short' ? 'short' : 'long')
+      setFillBlocked(false)
       const entry = (transaction.currency || 'USD') as PreferredCurrency
+      const unitPrice = transaction.unit_price ?? 0
       const shown =
-        transaction.asset_type === 'cash'
-          ? transaction.unit_price
+        transaction.asset_type === 'cash' || transaction.asset_type === 'future'
+          ? unitPrice
           : unitPriceShownInPreferred(
-              transaction.unit_price,
+              unitPrice,
               entry,
               preferredCurrency,
               usdToEurRate
             )
       setEditUnitPrice(shown)
       setEditPriceBaseline(shown)
+      setEditExecutedAt(
+        toLocalInput(transaction.executed_at, transaction.asset_type === 'future')
+      )
     }
   }, [transaction, preferredCurrency, usdToEurRate])
 
@@ -92,9 +104,10 @@ export default function TransactionModal({
 
     const handleAddForHolding = (
       e: CustomEvent<{
-        asset_type?: AssetType
+        asset_type?: LedgerAssetType
         symbol?: string
-        action?: 'buy' | 'sell' | 'inflow' | 'outflow'
+        action?: TransactionAction
+        position_side?: PositionSide
       }>
     ) => {
       const d = e.detail || {}
@@ -104,6 +117,7 @@ export default function TransactionModal({
         assetType: d.asset_type,
         symbol: d.symbol,
         action: d.action ?? (isCash ? 'inflow' : 'sell'),
+        positionSide: d.position_side,
       })
       setAddFormKey((k) => k + 1)
       setOpen(true)
@@ -139,7 +153,12 @@ export default function TransactionModal({
 
     setIsPending(true)
     const formData = new FormData(e.currentTarget)
-    if (editAssetType !== 'cash') {
+    if (editAssetType === 'future') {
+      formData.set(
+        'executed_at',
+        fromLocalInput(String(formData.get('executed_at') || ''))
+      )
+    } else if (editAssetType !== 'cash') {
       const entered = Number(formData.get('unit_price'))
       const entry = (transaction.currency || 'USD') as PreferredCurrency
       formData.set(
@@ -148,7 +167,7 @@ export default function TransactionModal({
           unitPriceToStore(
             entered,
             editPriceBaseline,
-            transaction.unit_price,
+            transaction.unit_price ?? 0,
             entry,
             preferredCurrency,
             usdToEurRate
@@ -213,7 +232,7 @@ export default function TransactionModal({
           <DialogDescription className="text-muted-foreground">
             {isEdit
               ? 'Update the details of this transaction.'
-              : 'Record a buy, sell, or cash movement.'}
+              : 'Record a buy, sell, cash movement, or a future.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -229,12 +248,34 @@ export default function TransactionModal({
                   name="asset_type"
                   value={editAssetType}
                   onChange={(e) => {
-                    const newType = e.target.value as AssetType
+                    const newType = e.target.value as LedgerAssetType
+                    const prev = editAssetType
                     setEditAssetType(newType)
-                    setEditSymbol('')
+                    const keepSymbol =
+                      (prev === 'crypto' && newType === 'future') ||
+                      (prev === 'future' && newType === 'crypto')
+                    if (!keepSymbol) setEditSymbol('')
                     if (newType === 'cash') {
                       setEditAction('inflow')
                       setEditUnitPrice(1)
+                    } else if (
+                      newType === 'future' &&
+                      (editAction === 'inflow' || editAction === 'outflow')
+                    ) {
+                      setEditAction('buy')
+                    } else if (
+                      newType !== 'future' &&
+                      editAction !== 'buy' &&
+                      editAction !== 'sell' &&
+                      editAction !== 'inflow' &&
+                      editAction !== 'outflow'
+                    ) {
+                      setEditAction('buy')
+                    }
+                    if (newType === 'future') {
+                      setEditExecutedAt(toLocalInput(editExecutedAt || transaction.executed_at, true))
+                    } else if (editExecutedAt.includes('T')) {
+                      setEditExecutedAt(editExecutedAt.slice(0, 10))
                     }
                   }}
                   className={fieldClassName}
@@ -243,6 +284,7 @@ export default function TransactionModal({
                   <option value="stock">Stock</option>
                   <option value="etf">ETF / Index Fund</option>
                   <option value="crypto">Crypto</option>
+                  <option value="future">Future</option>
                   <option value="cash">Cash / Savings</option>
                 </select>
               </div>
@@ -277,11 +319,7 @@ export default function TransactionModal({
                         : 'outflow'
                       : editAction
                   }
-                  onChange={(e) =>
-                    setEditAction(
-                      e.target.value as 'buy' | 'sell' | 'inflow' | 'outflow'
-                    )
-                  }
+                  onChange={(e) => setEditAction(e.target.value as TransactionAction)}
                   className={fieldClassName}
                   required
                 >
@@ -289,6 +327,15 @@ export default function TransactionModal({
                     <>
                       <option value="inflow">Inflow</option>
                       <option value="outflow">Outflow</option>
+                    </>
+                  ) : editAssetType === 'future' ? (
+                    <>
+                      <option value="buy">Buy</option>
+                      <option value="sell">Sell</option>
+                      <option value="funding">Funding</option>
+                      <option value="fee">Fee</option>
+                      <option value="margin_add">Add margin</option>
+                      <option value="margin_remove">Remove margin</option>
                     </>
                   ) : (
                     <>
@@ -298,6 +345,7 @@ export default function TransactionModal({
                   )}
                 </select>
               </div>
+              {editAssetType === 'future' ? null : (
               <div className="space-y-1.5">
                 <label htmlFor="edit-quantity" className={labelClassName}>
                   Quantity
@@ -307,14 +355,33 @@ export default function TransactionModal({
                   name="quantity"
                   type="number"
                   step="any"
-                  defaultValue={transaction.quantity}
+                  defaultValue={transaction.quantity ?? undefined}
                   className={fieldClassName}
                   required
                 />
               </div>
+              )}
             </div>
 
-            {editAssetType !== 'cash' ? (
+            {editAssetType === 'future' ? (
+              <FutureOrderFields
+                idPrefix="edit"
+                symbol={editSymbol}
+                action={editAction}
+                executedAt={editExecutedAt}
+                excludeId={transaction.id}
+                createdAt={transaction.created_at}
+                initialSide={editSide}
+                initialQuantity={transaction.quantity}
+                initialPrice={transaction.asset_type === 'future' ? transaction.unit_price : editUnitPrice}
+                initialAmount={transaction.amount}
+                onBlockedChange={onBlockedChange}
+              />
+            ) : null}
+
+            {editAssetType === 'cash' ? (
+              <input type="hidden" name="unit_price" value={editUnitPrice} />
+            ) : editAssetType !== 'future' ? (
               <div className="space-y-1.5">
                 <label htmlFor="edit-unit-price" className={labelClassName}>
                   Unit price ({getCurrencySymbol(preferredCurrency)})
@@ -337,9 +404,7 @@ export default function TransactionModal({
                   />
                 </div>
               </div>
-            ) : (
-              <input type="hidden" name="unit_price" value={editUnitPrice} />
-            )}
+            ) : null}
 
             <div className="space-y-1.5">
               <label htmlFor="edit-executed-at" className={labelClassName}>
@@ -348,8 +413,9 @@ export default function TransactionModal({
               <input
                 id="edit-executed-at"
                 name="executed_at"
-                type="date"
-                defaultValue={transaction.executed_at.split('T')[0]}
+                type={editAssetType === 'future' ? 'datetime-local' : 'date'}
+                value={editExecutedAt}
+                onChange={(e) => setEditExecutedAt(e.target.value)}
                 className={fieldClassName}
                 required
               />
@@ -377,7 +443,11 @@ export default function TransactionModal({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isPending} size="sm">
+              <Button
+                type="submit"
+                disabled={isPending || (editAssetType === 'future' && fillBlocked)}
+                size="sm"
+              >
                 {isPending ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -396,6 +466,7 @@ export default function TransactionModal({
             initialAssetType={addPrefill?.assetType}
             initialSymbol={addPrefill?.symbol}
             initialAction={addPrefill?.action}
+            initialSide={addPrefill?.positionSide}
             preferredCurrency={preferredCurrency}
           />
         )}

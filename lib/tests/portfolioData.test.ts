@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { aggregatePreferredPortfolio } from '../convertToPreferred'
+import {
+  aggregatePreferredPortfolio,
+  type PerpHeadlineTerm,
+} from '../convertToPreferred'
 import type { EnrichedHolding } from '../types'
 
 function eh(
@@ -99,6 +102,104 @@ describe('aggregatePreferredPortfolio', () => {
     expect(r.total24hChange).toBe(0)
     expect(r.total24hChangePercent).toBe(0)
     expect(r.totalCost).toBe(500)
+    expect(r.pricedAssetCount).toBe(0)
+  })
+
+  it('adds perp equity and the mark move, and does not add margin to cost', () => {
+    const cash = eh({
+      symbol: 'Available Cash',
+      asset_type: 'cash',
+      quantity: 9000,
+      avgCost: 1,
+      totalCost: 9000,
+      currentPrice: 1,
+      marketValue: 9000,
+      unrealizedPnl: 0,
+      position24hChange: 0,
+    })
+    const spot = eh({
+      symbol: 'AAPL',
+      marketValue: 100,
+      totalCost: 80,
+      unrealizedPnl: 20,
+      position24hChange: 1,
+    })
+    const long: PerpHeadlineTerm = {
+      symbol: 'BTC',
+      positionSide: 'long',
+      valueAdd: 1200,
+      unrealizedAdd: 200,
+      dayAdd: 200,
+      priced: true,
+      margin: 1000,
+      fundingNet: 0,
+      feeNet: 0,
+      unrealized: 200,
+      equity: 1200,
+      leverage: 20,
+      availableMargin: 190,
+      quantity: 0.2,
+      entry: 100000,
+      mark: 101000,
+      notional: 20200,
+      dayChange: 200,
+    }
+
+    const r = aggregatePreferredPortfolio([spot], [cash], [long])
+    expect(r.totalMarketValue).toBe(10300)
+    expect(r.totalCost).toBe(9080)
+    expect(r.totalUnrealizedPnl).toBe(220)
+    expect(r.total24hChange).toBe(201)
+    expect(r.assetCount).toBe(2)
+    expect(r.pricedAssetCount).toBe(2)
+    expect(r.holdingsCount).toBe(2)
+    expect(r.enrichedHoldings.map((h) => h.symbol)).toEqual([
+      'AAPL',
+      'Available Cash',
+    ])
+    expect(r.totalMarketValue).not.toBe(10300 + 20200)
+  })
+
+  it('keeps an unpriced perp in value and in the partial-price count', () => {
+    const cash = eh({
+      symbol: 'Available Cash',
+      asset_type: 'cash',
+      quantity: 9000,
+      avgCost: 1,
+      totalCost: 9000,
+      currentPrice: 1,
+      marketValue: 9000,
+      unrealizedPnl: 0,
+      position24hChange: 0,
+    })
+    const missing: PerpHeadlineTerm = {
+      symbol: 'BTC',
+      positionSide: 'long',
+      valueAdd: 1000,
+      unrealizedAdd: 0,
+      dayAdd: 0,
+      priced: false,
+      margin: 1000,
+      fundingNet: 0,
+      feeNet: 0,
+      unrealized: null,
+      equity: 1000,
+      leverage: 20,
+      availableMargin: null,
+      quantity: 0.2,
+      entry: 100000,
+      mark: null,
+      notional: null,
+      dayChange: null,
+    }
+
+    const r = aggregatePreferredPortfolio([], [cash], [missing])
+    expect(r.totalMarketValue).toBe(10000)
+    expect(r.totalUnrealizedPnl).toBe(0)
+    expect(r.total24hChange).toBe(0)
+    expect(r.totalCost).toBe(9000)
+    expect(r.unpricedSymbols).toEqual(['BTC long'])
+    expect(r.assetCount).toBe(1)
     expect(r.pricedAssetCount).toBe(0)
   })
 })

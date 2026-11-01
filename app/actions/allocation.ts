@@ -12,6 +12,7 @@ import {
   suggestRebalance,
   validatePolicySpec,
   type AllocationPolicySpec,
+  type PlanPerp,
   type RebalanceMode,
   type TypeWeightMap,
 } from '@/lib/allocationTargets'
@@ -40,6 +41,18 @@ export type AllocationWorkspaceData = {
   bySymbol: ReturnType<typeof computeDrift>['bySymbol']
   suggestions: ReturnType<typeof suggestRebalance>['suggestions']
   notes: string[]
+}
+
+function planPerps(
+  openPerps: { symbol: string; positionSide: 'long' | 'short'; equity: number }[],
+  include: boolean
+): PlanPerp[] {
+  if (!include) return []
+  return openPerps.map((perp) => ({
+    symbol: perp.symbol,
+    positionSide: perp.positionSide,
+    equity: perp.equity,
+  }))
 }
 
 function emptySpec(): AllocationPolicySpec {
@@ -177,9 +190,10 @@ export async function getAllocationWorkspace(opts?: {
   const user = await getCurrentUser()
   if (!user) return { error: 'Not authenticated' }
 
-  const [policyRes, portfolio] = await Promise.all([
+  const [policyRes, portfolio, profile] = await Promise.all([
     getAllocationPolicy(),
     getPortfolioData(),
+    getCurrentUserProfile(),
   ])
   if (policyRes.error) return { error: policyRes.error }
   if (portfolio.error) {
@@ -188,19 +202,32 @@ export async function getAllocationWorkspace(opts?: {
 
   const policy = policyRes.data
   const spec = policy ?? emptySpec()
+  const perps = planPerps(portfolio.openPerps, profile?.futuresInPlan === true)
+  // Goals and the plan stay on spot plus cash. The headline also includes perp equity.
+  const spotMarketValue = portfolio.enrichedHoldings
+    .filter((h) => h.asset_type === 'cash' || h.priceAvailable)
+    .reduce((sum, h) => sum + h.marketValue, 0)
+  const spotUnpriced = portfolio.enrichedHoldings
+    .filter((h) => h.asset_type !== 'cash' && !h.priceAvailable)
+    .map((h) => h.symbol)
   const drift = policy
-    ? computeDrift(portfolio.enrichedHoldings, spec)
+    ? computeDrift(portfolio.enrichedHoldings, spec, perps)
     : {
-        totalMarketValue: portfolio.totalMarketValue,
-        unpricedSymbols: portfolio.unpricedSymbols,
+        totalMarketValue: spotMarketValue,
+        unpricedSymbols: spotUnpriced,
         byType: [],
         bySymbol: [],
       }
   const plan = policy
-    ? suggestRebalance(portfolio.enrichedHoldings, spec, {
-        mode: opts?.mode ?? 'inplace',
-        cashIn: opts?.cashIn,
-      })
+    ? suggestRebalance(
+        portfolio.enrichedHoldings,
+        spec,
+        {
+          mode: opts?.mode ?? 'inplace',
+          cashIn: opts?.cashIn,
+        },
+        perps
+      )
     : { suggestions: [], notes: [] }
 
   const breakdown = allocationBreakdown(portfolio.enrichedHoldings)

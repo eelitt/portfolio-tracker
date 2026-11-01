@@ -33,7 +33,7 @@ export function applyFilters(
   if (params.searchTerm.trim()) {
     const term = params.searchTerm.toLowerCase().trim()
     result = result.filter(tx =>
-      tx.symbol.toLowerCase().includes(term) ||
+      historySymbolLabel(tx).toLowerCase().includes(term) ||
       (tx.notes || '').toLowerCase().includes(term)
     )
   }
@@ -77,11 +77,11 @@ export function applySort(
       valA = new Date(a.executed_at).getTime()
       valB = new Date(b.executed_at).getTime()
     } else if (params.sortColumn === 'symbol') {
-      valA = a.symbol.toLowerCase()
-      valB = b.symbol.toLowerCase()
+      valA = historySymbolLabel(a).toLowerCase()
+      valB = historySymbolLabel(b).toLowerCase()
     } else if (params.sortColumn === 'quantity') {
-      valA = a.quantity
-      valB = b.quantity
+      valA = a.quantity ?? 0
+      valB = b.quantity ?? 0
     } else if (params.sortColumn === 'pnl') {
       const rank = (tx: AugmentedTransaction) => {
         const amount = params.pnlAmountById?.get(tx.id ?? '')
@@ -96,8 +96,8 @@ export function applySort(
       valA = ra.amount
       valB = rb.amount
     } else {
-      valA = a.unit_price
-      valB = b.unit_price
+      valA = a.unit_price ?? 0
+      valB = b.unit_price ?? 0
     }
 
     if (valA < valB) return params.sortDirection === 'asc' ? -1 : 1
@@ -108,9 +108,44 @@ export function applySort(
   return result
 }
 
+const WALLET_ACTIONS = new Set<Transaction['action']>([
+  'funding',
+  'fee',
+  'margin_add',
+  'margin_remove',
+])
+
+const ACTION_LABELS: Record<Transaction['action'], string> = {
+  buy: 'Buy',
+  sell: 'Sell',
+  inflow: 'Inflow',
+  outflow: 'Outflow',
+  funding: 'Funding',
+  fee: 'Fee',
+  margin_add: 'Add margin',
+  margin_remove: 'Remove margin',
+}
+
+function isWalletAction(action: Transaction['action']): boolean {
+  return WALLET_ACTIONS.has(action)
+}
+
+/** Symbol cell. A future row includes the side, such as "BTC long". */
+export function historySymbolLabel(tx: Pick<AugmentedTransaction, 'symbol' | 'asset_type' | 'position_side'>): string {
+  if (tx.asset_type === 'future' && (tx.position_side === 'long' || tx.position_side === 'short')) {
+    return `${tx.symbol} ${tx.position_side}`
+  }
+  return tx.symbol
+}
+
+export function historyActionLabel(action: Transaction['action']): string {
+  return ACTION_LABELS[action] ?? action
+}
+
 /**
  * Formats the Quantity cell value.
  * For cash: shows the monetary amount (converted).
+ * For a future funding, fee, or margin row: blank. The amount is the price cell.
  * For assets: shows the raw quantity (caller decides precision).
  */
 export function formatQuantityCell(
@@ -119,17 +154,19 @@ export function formatQuantityCell(
   usdToPreferredRate: number,
   usdToEurRate: number
 ): string | number {
+  if (tx.asset_type === 'future' && isWalletAction(tx.action)) return ''
   if (tx.asset_type === 'cash') {
     const txCurr = (tx.currency as PreferredCurrency) || 'USD'
     const trueEurRate = usdToEurRate || 0.92
-    const usdEq = getAmountInUsd(tx.quantity, txCurr, trueEurRate)
+    const usdEq = getAmountInUsd(tx.quantity ?? 0, txCurr, trueEurRate)
     return formatCurrency(usdEq, preferredCurrency, usdToPreferredRate)
   }
-  return tx.quantity
+  return tx.quantity ?? 0
 }
 
 /**
  * Formats the Price cell value.
+ * For a future funding, fee, or margin row: the USD amount, converted to the preferred currency.
  * For cash: unit price is always 1 in its own currency.
  * For assets: converts the unit price.
  */
@@ -139,12 +176,16 @@ export function formatPriceCell(
   usdToPreferredRate: number,
   usdToEurRate: number
 ): string {
+  if (tx.asset_type === 'future' && isWalletAction(tx.action)) {
+    if (tx.amount == null || !Number.isFinite(tx.amount)) return ''
+    return formatCurrency(tx.amount, preferredCurrency, usdToPreferredRate)
+  }
   if (tx.asset_type === 'cash') {
-    return formatCurrency(tx.unit_price, preferredCurrency, 1)
+    return formatCurrency(tx.unit_price ?? 0, preferredCurrency, 1)
   }
   const txCurr = (tx.currency as PreferredCurrency) || 'USD'
   const trueEurRate = usdToEurRate || 0.92
-  const usdEq = getAmountInUsd(tx.unit_price, txCurr, trueEurRate)
+  const usdEq = getAmountInUsd(tx.unit_price ?? 0, txCurr, trueEurRate)
   return formatCurrency(usdEq, preferredCurrency, usdToPreferredRate)
 }
 

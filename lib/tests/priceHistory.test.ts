@@ -131,6 +131,26 @@ describe('markersFromTransactions', () => {
     expect(markers[1].price).toBe(60000)
   })
 
+  it('does not mark a future fill on the spot chart', () => {
+    const withFuture: Transaction[] = [
+      ...txs,
+      {
+        symbol: 'BTC',
+        asset_type: 'future',
+        action: 'buy',
+        position_side: 'long',
+        quantity: 0.2,
+        unit_price: 100000,
+        amount: 1000,
+        executed_at: '2026-01-11T00:00:00.000Z',
+        currency: 'USD',
+      },
+    ]
+    const markers = markersFromTransactions(withFuture, 'BTC', 'USD', 1)
+    expect(markers).toHaveLength(2)
+    expect(markers.every((m) => m.price !== 100000)).toBe(true)
+  })
+
   it('converts unit price to preferred EUR', () => {
     const markers = markersFromTransactions(txs, 'BTC', 'EUR', 0.9)
     expect(markers[0].price).toBe(45000)

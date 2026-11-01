@@ -22,7 +22,40 @@ export interface InvestorProfileFields {
   monthlyContribution: MonthlyContribution | null
 }
 
-export interface UserProfile extends InvestorProfileFields {
+/** profiles.summary_label. The first summary card. */
+export type SummaryLabel = 'total_market_value' | 'total_value'
+
+export interface FuturesSettings {
+  /** One pie slice per open side. Default on. */
+  futuresInPie: boolean
+  /** Drift and rebalance include a futures bucket. Default off. */
+  futuresInPlan: boolean
+  summaryLabel: SummaryLabel
+}
+
+export const DEFAULT_FUTURES_SETTINGS: FuturesSettings = {
+  futuresInPie: true,
+  futuresInPlan: false,
+  summaryLabel: 'total_market_value',
+}
+
+export function summaryLabelText(label: SummaryLabel | null | undefined): string {
+  return label === 'total_value' ? 'Total value' : 'Total Market Value'
+}
+
+export function futuresSettingsFromRow(row: {
+  futures_in_pie?: boolean | null
+  futures_in_plan?: boolean | null
+  summary_label?: string | null
+} | null): FuturesSettings {
+  return {
+    futuresInPie: row?.futures_in_pie !== false,
+    futuresInPlan: row?.futures_in_plan === true,
+    summaryLabel: row?.summary_label === 'total_value' ? 'total_value' : 'total_market_value',
+  }
+}
+
+export interface UserProfile extends InvestorProfileFields, FuturesSettings {
   id: string
   email?: string
   preferredCurrency: PreferredCurrency

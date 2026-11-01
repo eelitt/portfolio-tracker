@@ -4,9 +4,10 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser, getCurrentUserProfile } from '@/lib/user'
 import { Suspense } from 'react'
 import SummarySkeleton from './components/SummarySkeleton'
-import HoldingsSkeleton from './components/HoldingsSkeleton'
+import HoldingsSkeleton, { ChartsSkeleton } from './components/HoldingsSkeleton'
 import SummarySection from './summary/SummarySection'
-import HoldingsSection from './holdings/HoldingsSection'
+import HoldingsSection, { HoldingsChartsSection } from './holdings/HoldingsSection'
+import PerpHoldingsSection from './perps/PerpHoldingsSection'
 import TransactionHistorySection from './transactions/TransactionHistorySection'
 import WatchlistSection from './watchlist/WatchlistSection'
 import DashboardSections from './DashboardSections'
@@ -43,7 +44,9 @@ export default async function DashboardPage() {
         This lets Next.js stream them independently as their data resolves.
 
         - SummarySection: the 4 KPI cards + partial-price warning banner
-        - HoldingsSection: per-symbol cards + allocation pie
+        - HoldingsSection: per-symbol cards
+        - PerpHoldingsSection: open perp cards, omitted when this user has no future rows
+        - HoldingsChartsSection: allocation, performance, and price
         - TransactionHistorySection: table + both CSV export buttons
 
         The skeletons are real fallbacks now (they were previously placed
@@ -58,6 +61,16 @@ export default async function DashboardPage() {
         holdings={
           <Suspense fallback={<HoldingsSkeleton />}>
             <HoldingsSection />
+          </Suspense>
+        }
+        perps={
+          <Suspense fallback={null}>
+            <PerpHoldingsSection />
+          </Suspense>
+        }
+        charts={
+          <Suspense fallback={<ChartsSkeleton />}>
+            <HoldingsChartsSection />
           </Suspense>
         }
         watchlist={

@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
+  aggregatePreferredPortfolio,
   calculateCashHoldingsInPreferred,
+  perpQuoteInPreferred,
+  perpUnrealizedPercent,
   toPreferredHolding,
 } from '../convertToPreferred'
+import { ledgerPerpRows, reducePerps } from '../perps'
 import type { EnrichedHolding, Transaction } from '../types'
 
 const RATE = 0.87 // USD → EUR test rate
@@ -307,5 +311,226 @@ describe('calculateCashHoldingsInPreferred', () => {
       },
     ]
     expect(calculateCashHoldingsInPreferred(txs, 'EUR', RATE)).toEqual([])
+  })
+})
+
+function usdCash(quantity: number): Transaction {
+  return {
+    symbol: 'Available Cash',
+    asset_type: 'cash',
+    action: 'inflow',
+    quantity,
+    unit_price: 1,
+    executed_at: '2026-01-01T00:00:00Z',
+    currency: 'USD',
+  }
+}
+
+function futureRow(
+  partial: Partial<Transaction> & Pick<Transaction, 'action' | 'executed_at'>
+): Transaction {
+  return {
+    symbol: 'BTC',
+    asset_type: 'future',
+    position_side: 'long',
+    quantity: 0.2,
+    unit_price: 100000,
+    amount: 1000,
+    currency: 'USD',
+    ...partial,
+  }
+}
+
+function headline(
+  txs: Transaction[],
+  mark: { mark?: number | null; previousMark?: number | null },
+  currency: 'USD' | 'EUR' = 'USD',
+  rate = 1
+) {
+  const cash = calculateCashHoldingsInPreferred(txs, currency, rate)
+  const book = reducePerps({ rows: ledgerPerpRows(txs) })
+  const terms = book.positions.map((position) =>
+    perpQuoteInPreferred(position, mark, currency, rate)
+  )
+  return aggregatePreferredPortfolio([], cash, terms)
+}
+
+describe('perp headline', () => {
+  const open = futureRow({
+    action: 'buy',
+    executed_at: '2026-01-02T00:00:00Z',
+  })
+
+  it('leaves the total unchanged on an open and moves it by 200 on a 1% long', () => {
+    const txs = [usdCash(10000), open]
+    const flat = headline(txs, { mark: 100000, previousMark: 100000 })
+    expect(flat.totalMarketValue).toBe(10000)
+    expect(flat.totalCost).toBe(9000)
+    expect(flat.totalUnrealizedPnl).toBe(0)
+
+    const up = headline(txs, { mark: 101000, previousMark: 100000 })
+    expect(up.totalMarketValue).toBe(10200)
+    expect(up.totalUnrealizedPnl).toBe(200)
+    expect(up.total24hChange).toBe(200)
+    expect(up.totalMarketValue).not.toBe(9000 + 20200)
+
+    const card = perpQuoteInPreferred(
+      reducePerps({ rows: ledgerPerpRows(txs) }).positions[0],
+      { mark: 101000, previousMark: 100000 },
+      'USD',
+      1
+    )
+    expect(card.equity).toBe(1200)
+    expect(card.unrealized).toBe(200)
+    expect(perpUnrealizedPercent(card.unrealized, card.margin)).toBe(20)
+    expect(card.margin).toBe(1000)
+    expect(card.leverage).toBe(20)
+    expect(card.availableMargin).toBe(190)
+    expect(card.notional).toBe(20200)
+    expect(card.dayChange).toBe(200)
+    expect(card.mark).toBe(101000)
+
+    const missing = perpQuoteInPreferred(
+      reducePerps({ rows: ledgerPerpRows(txs) }).positions[0],
+      { mark: null, previousMark: null },
+      'USD',
+      1
+    )
+    expect(missing.equity).toBe(1000)
+    expect(missing.unrealized).toBeNull()
+    expect(missing.mark).toBeNull()
+    expect(missing.notional).toBeNull()
+    expect(missing.dayChange).toBeNull()
+    expect(perpUnrealizedPercent(missing.unrealized, missing.margin)).toBeUndefined()
+    expect(perpUnrealizedPercent(200, 0)).toBeUndefined()
+    expect(perpUnrealizedPercent(200, -100)).toBeUndefined()
+  })
+
+  it('books a short gain when the mark falls and a loss when it rises', () => {
+    const txs = [
+      usdCash(10000),
+      futureRow({
+        action: 'sell',
+        position_side: 'short',
+        quantity: 0.5,
+        executed_at: '2026-01-02T00:00:00Z',
+      }),
+    ]
+    expect(headline(txs, { mark: 98000, previousMark: 100000 }).totalMarketValue).toBe(
+      11000
+    )
+    expect(headline(txs, { mark: 102000, previousMark: 100000 }).totalMarketValue).toBe(
+      9000
+    )
+  })
+
+  it('leaves the total unchanged on a partial close', () => {
+    const txs = [
+      usdCash(10000),
+      open,
+      futureRow({
+        action: 'sell',
+        quantity: 0.1,
+        unit_price: 101000,
+        amount: null,
+        executed_at: '2026-01-03T00:00:00Z',
+      }),
+    ]
+    const totals = headline(txs, { mark: 101000, previousMark: 101000 })
+    expect(totals.totalMarketValue).toBe(10200)
+    expect(calculateCashHoldingsInPreferred(txs, 'USD', 1)[0].marketValue).toBe(9600)
+  })
+
+  it('lowers equity for funding and a fee and leaves cash unchanged', () => {
+    const txs = [
+      usdCash(10000),
+      open,
+      futureRow({
+        action: 'funding',
+        quantity: null,
+        unit_price: null,
+        amount: -40,
+        executed_at: '2026-01-02T12:00:00Z',
+      }),
+      futureRow({
+        action: 'fee',
+        quantity: null,
+        unit_price: null,
+        amount: -5,
+        executed_at: '2026-01-02T12:01:00Z',
+      }),
+    ]
+    const cash = calculateCashHoldingsInPreferred(txs, 'USD', 1)
+    expect(cash).toHaveLength(1)
+    expect(cash[0].symbol).toBe('Available Cash')
+    expect(cash[0].marketValue).toBe(9000)
+    expect(headline(txs, { mark: 101000, previousMark: 100000 }).totalMarketValue).toBe(
+      10155
+    )
+  })
+
+  it('leaves the total unchanged when 200 margin is added', () => {
+    const txs = [
+      usdCash(10000),
+      open,
+      futureRow({
+        action: 'margin_add',
+        quantity: null,
+        unit_price: null,
+        amount: 200,
+        executed_at: '2026-01-02T12:00:00Z',
+      }),
+    ]
+    const cash = calculateCashHoldingsInPreferred(txs, 'USD', 1)
+    expect(cash[0].marketValue).toBe(8800)
+    expect(headline(txs, { mark: 101000, previousMark: 100000 }).totalMarketValue).toBe(
+      10200
+    )
+  })
+
+  it('keeps margin when the mark is missing and adds nothing for a missing previous mark', () => {
+    const txs = [usdCash(10000), open]
+    const missing = headline(txs, { mark: null, previousMark: null })
+    expect(missing.totalMarketValue).toBe(10000)
+    expect(missing.totalUnrealizedPnl).toBe(0)
+    expect(missing.total24hChange).toBe(0)
+    expect(missing.unpricedSymbols).toEqual(['BTC long'])
+
+    const noPrev = headline(txs, { mark: 101000, previousMark: null })
+    expect(noPrev.totalMarketValue).toBe(10200)
+    expect(noPrev.total24hChange).toBe(0)
+  })
+
+  it('converts margin, unrealized, and the mark, then recomputes the EUR total', () => {
+    const totals = headline(
+      [usdCash(10000), open],
+      { mark: 101000, previousMark: 100000 },
+      'EUR',
+      RATE
+    )
+    expect(totals.totalMarketValue).toBeCloseTo(10200 * RATE, 2)
+    expect(totals.totalUnrealizedPnl).toBeCloseTo(200 * RATE, 2)
+    expect(totals.total24hChange).toBeCloseTo(200 * RATE, 2)
+    expect(totals.totalCost).toBeCloseTo(9000 * RATE, 2)
+  })
+
+  it('does not move a savings balance when Available Cash pays the margin', () => {
+    const txs: Transaction[] = [
+      {
+        symbol: 'Savings',
+        asset_type: 'cash',
+        action: 'inflow',
+        quantity: 500,
+        unit_price: 1,
+        executed_at: '2026-01-01T00:00:00Z',
+        currency: 'USD',
+      },
+      usdCash(10000),
+      open,
+    ]
+    const cash = calculateCashHoldingsInPreferred(txs, 'USD', 1)
+    expect(cash).toHaveLength(2)
+    expect(cash.find((h) => h.symbol === 'Savings')?.marketValue).toBe(500)
+    expect(cash.find((h) => h.symbol === 'Available Cash')?.marketValue).toBe(9000)
   })
 })

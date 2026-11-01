@@ -13,6 +13,7 @@ export function getAssetTypeLabel(assetType: string): string {
     stock: 'Stock',
     etf: 'ETF / Index',
     crypto: 'Crypto',
+    future: 'Future',
     cash: 'Cash / Savings',
   }
   return labels[assetType] ?? assetType

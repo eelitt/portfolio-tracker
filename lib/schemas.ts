@@ -4,20 +4,127 @@ import { z } from 'zod'
  * Zod schema used for validating user input when creating or editing transactions.
  *
  * - Runs on the server inside the Server Actions.
- * - Coerces strings from FormData into numbers.
+ * - Coerces strings from FormData into numbers. Blank quantity, price, and amount are null.
  * - Symbol is uppercased for consistency.
+ * - A future wallet row has null quantity and price. Amount is rejected on every other asset type.
  * - Used by createTransaction and updateTransaction.
  */
-export const transactionSchema = z.object({
-  symbol: z.string().min(1, 'Symbol is required').toUpperCase(),
-  asset_type: z.enum(['stock', 'etf', 'crypto', 'cash']),
-  action: z.enum(['buy', 'sell', 'inflow', 'outflow']),
-  quantity: z.coerce.number().positive('Quantity must be greater than 0'),
-  unit_price: z.coerce.number().positive('Price must be greater than 0'),
-  executed_at: z.string().min(1, 'Date is required'),
-  notes: z.string().optional(),
-  currency: z.enum(['USD', 'EUR']).optional(),
-})
+
+const WALLET_ACTIONS = new Set(['funding', 'fee', 'margin_add', 'margin_remove'])
+
+function blankToNull(value: unknown): unknown {
+  if (value === '' || value === undefined || value === null) return null
+  return value
+}
+
+function parseBlankNumber(value: unknown): number | null {
+  if (value === '' || value === undefined || value === null) return null
+  const n = typeof value === 'number' ? value : Number(value)
+  return n
+}
+
+const blankNumber = z.preprocess(parseBlankNumber, z.number().nullable())
+
+const blankSide = z.preprocess(
+  blankToNull,
+  z.enum(['long', 'short']).nullable()
+)
+
+function issue(
+  ctx: z.RefinementCtx,
+  path: string,
+  message: string
+) {
+  ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message })
+}
+
+export const transactionSchema = z
+  .object({
+    symbol: z.string().min(1, 'Symbol is required').toUpperCase(),
+    asset_type: z.enum(['stock', 'etf', 'crypto', 'cash', 'future']),
+    action: z.enum([
+      'buy',
+      'sell',
+      'inflow',
+      'outflow',
+      'funding',
+      'fee',
+      'margin_add',
+      'margin_remove',
+    ]),
+    quantity: blankNumber,
+    unit_price: blankNumber,
+    amount: blankNumber.optional(),
+    position_side: blankSide.optional(),
+    executed_at: z.string().min(1, 'Date is required'),
+    notes: z.string().optional(),
+    currency: z.enum(['USD', 'EUR']).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.asset_type !== 'future') {
+      if (data.amount != null) {
+        issue(ctx, 'amount', 'Amount is only for a future')
+      }
+      if (data.position_side != null) {
+        issue(ctx, 'position_side', 'Position side is only for a future')
+      }
+      if (data.quantity == null || !(data.quantity > 0)) {
+        issue(ctx, 'quantity', 'Quantity must be greater than 0')
+      }
+      if (data.unit_price == null || !(data.unit_price > 0)) {
+        issue(ctx, 'unit_price', 'Price must be greater than 0')
+      }
+      return
+    }
+
+    if (data.position_side == null) {
+      issue(ctx, 'position_side', 'Position side is required')
+    }
+
+    if (data.action === 'buy' || data.action === 'sell') {
+      if (data.quantity == null || !(data.quantity > 0)) {
+        issue(ctx, 'quantity', 'Quantity must be greater than 0')
+      }
+      if (data.unit_price == null || !(data.unit_price > 0)) {
+        issue(ctx, 'unit_price', 'Price must be greater than 0')
+      }
+      if (data.amount != null && !(data.amount > 0)) {
+        issue(ctx, 'amount', 'Margin must be greater than 0')
+      }
+      return
+    }
+
+    if (!WALLET_ACTIONS.has(data.action)) {
+      issue(ctx, 'action', 'That action is not used on a future')
+      return
+    }
+
+    if (data.quantity != null) {
+      issue(ctx, 'quantity', 'Quantity is empty on a funding, fee, or margin row')
+    }
+    if (data.unit_price != null) {
+      issue(ctx, 'unit_price', 'Price is empty on a funding, fee, or margin row')
+    }
+
+    if (data.action === 'fee') {
+      if (data.amount == null || !(data.amount < 0)) {
+        issue(ctx, 'amount', 'A fee is stored as a negative amount')
+      }
+      return
+    }
+    if (data.action === 'funding') {
+      if (data.amount == null || data.amount === 0) {
+        issue(ctx, 'amount', 'Amount is required')
+      }
+      return
+    }
+    if (data.amount == null || !(data.amount > 0)) {
+      issue(ctx, 'amount', 'Margin must be greater than 0')
+    }
+  })
+  .transform((data) =>
+    data.asset_type === 'future' ? { ...data, currency: 'USD' as const } : data
+  )
 
 export type TransactionFormData = z.infer<typeof transactionSchema>
 
@@ -66,6 +173,22 @@ export const investorProfileSchema = z.object({
 })
 
 export type InvestorProfileForm = z.infer<typeof investorProfileSchema>
+
+export const futuresSettingsSchema = z
+  .object({
+    futuresInPie: z.boolean().optional(),
+    futuresInPlan: z.boolean().optional(),
+    summaryLabel: z.enum(['total_market_value', 'total_value']).optional(),
+  })
+  .refine(
+    (value) =>
+      value.futuresInPie !== undefined ||
+      value.futuresInPlan !== undefined ||
+      value.summaryLabel !== undefined,
+    { message: 'Nothing to save' }
+  )
+
+export type FuturesSettingsForm = z.infer<typeof futuresSettingsSchema>
 
 export const allocationPolicySchema = z.object({
   typeWeights: z.object({

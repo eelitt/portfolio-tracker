@@ -1,6 +1,11 @@
 import { tool } from 'ai'
 import { z } from 'zod'
-import { computeDrift, suggestMixFromProfile, suggestRebalance } from '@/lib/allocationTargets'
+import {
+  computeDrift,
+  suggestMixFromProfile,
+  suggestRebalance,
+  type PlanPerp,
+} from '@/lib/allocationTargets'
 import { getAllocationPolicy } from '@/app/actions/allocation'
 import { getAssumptionRates } from '@/app/actions/assumptions'
 import { getUserGoals } from '@/app/actions/goals'
@@ -15,6 +20,12 @@ import {
 } from '@/lib/projections'
 import { toolDescription, toolFailure } from '@/lib/aiTools'
 import type { AnalystToolCtx } from './toolContext'
+
+async function planPerpsForUser(openPerps: PlanPerp[]): Promise<PlanPerp[]> {
+  const profile = await getCurrentUserProfile()
+  if (profile?.futuresInPlan !== true) return []
+  return openPerps
+}
 
 export function createPlanTools(ctx: AnalystToolCtx) {
   const { load, loadFailed } = ctx
@@ -36,7 +47,11 @@ export function createPlanTools(ctx: AnalystToolCtx) {
             'No target allocation saved. The user can set type weights in the Plan sidebar.'
           )
         }
-        const drift = computeDrift(loaded.holdings, policy.data)
+        const drift = computeDrift(
+          loaded.holdings,
+          policy.data,
+          await planPerpsForUser(loaded.data.openPerps)
+        )
         return {
           preferredCurrency: loaded.data.preferredCurrency,
           tolerancePp: policy.data.tolerancePp,
@@ -74,10 +89,15 @@ export function createPlanTools(ctx: AnalystToolCtx) {
           )
         }
         const mode = args.mode ?? 'inplace'
-        const plan = suggestRebalance(loaded.holdings, policy.data, {
-          mode,
-          cashIn: args.cashIn,
-        })
+        const plan = suggestRebalance(
+          loaded.holdings,
+          policy.data,
+          {
+            mode,
+            cashIn: args.cashIn,
+          },
+          await planPerpsForUser(loaded.data.openPerps)
+        )
         return {
           preferredCurrency: loaded.data.preferredCurrency,
           mode,
@@ -166,7 +186,10 @@ export function createPlanTools(ctx: AnalystToolCtx) {
           usedCryptoRates(assumptions),
           assumptions.fallbackCrypto
         )
-        const bookMv = loaded.data.totalMarketValue
+        // Goal starting value is spot plus cash. The headline also includes perp equity.
+        const bookMv = loaded.holdings
+          .filter((h) => h.asset_type === 'cash' || h.priceAvailable)
+          .reduce((sum, h) => sum + h.marketValue, 0)
         const warning = fundingWarning(
           selected
             .filter((g) => !g.is_completed)

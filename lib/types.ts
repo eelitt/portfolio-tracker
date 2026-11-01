@@ -16,19 +16,38 @@
  */
 export type AssetType = 'stock' | 'etf' | 'crypto' | 'cash'
 
-export type TransactionAction = 'buy' | 'sell' | 'inflow' | 'outflow'
+/** Spot asset types plus a perp row. A future is not an allocation or chart type. */
+export type LedgerAssetType = AssetType | 'future'
+
+export type SpotAction = 'buy' | 'sell' | 'inflow' | 'outflow'
+
+export type TransactionAction =
+  | SpotAction
+  | 'funding'
+  | 'fee'
+  | 'margin_add'
+  | 'margin_remove'
+
+export type PositionSide = 'long' | 'short'
 
 /** A single buy or sell transaction recorded by the user. */
 export interface Transaction {
   id?: string
   symbol: string
-  asset_type: AssetType
+  asset_type: LedgerAssetType
   action: TransactionAction
-  quantity: number
-  unit_price: number
+  /** Null on a future funding, fee, or margin row. */
+  quantity: number | null
+  /** Null on a future funding, fee, or margin row. */
+  unit_price: number | null
   executed_at: string
   notes?: string
   currency?: 'USD' | 'EUR'   // currency in which the unit_price (assets) or quantity (cash) was denominated at entry time
+  /** Set on a future row. Null on stock, ETF, crypto, and cash. */
+  position_side?: PositionSide | null
+  /** Margin, funding, or fee on a future row. Null on other asset types. */
+  amount?: number | null
+  created_at?: string
 }
 
 /**

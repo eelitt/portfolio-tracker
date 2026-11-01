@@ -110,6 +110,7 @@ export function buildEvalPortfolioData(
     preferredCurrency,
     usdToPreferredRate,
     usdToEurRate,
+    openPerps: [],
     error: null,
   }
 }

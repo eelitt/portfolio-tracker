@@ -3,6 +3,7 @@ export type {
   AllocationPolicySpec,
   DriftRow,
   DriftStatus,
+  PlanPerp,
   Horizon,
   InvestorProfile,
   MonthlyContribution,
@@ -20,5 +21,5 @@ export {
   formatContributionContext,
   formatContributionLabel,
 } from './contribution'
-export { computeDrift } from './drift'
+export { computeDrift, futuresEquity } from './drift'
 export { suggestRebalance } from './suggestRebalance'
