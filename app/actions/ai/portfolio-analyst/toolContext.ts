@@ -5,6 +5,15 @@ import type { EnrichedHolding, Transaction } from '@/lib/types'
 
 export const assetTypeSchema = z.enum(['stock', 'etf', 'crypto', 'cash'])
 
+/** Read tools may name a future. Writes stay on assetTypeSchema. */
+export const ledgerAssetTypeSchema = z.enum([
+  'stock',
+  'etf',
+  'crypto',
+  'cash',
+  'future',
+])
+
 export function round2(n: number) {
   return Number(n.toFixed(2))
 }

@@ -133,7 +133,7 @@ export function openHoldingKeys(
 ): Set<string> {
   const keys = new Set<string>()
   for (const h of holdings) {
-    if (h.asset_type === 'cash' || !(h.quantity > 0)) continue
+    if (h.asset_type === 'cash' || h.asset_type === 'future' || !(h.quantity > 0)) continue
     keys.add(openHoldingKey(h.symbol, h.asset_type))
   }
   return keys

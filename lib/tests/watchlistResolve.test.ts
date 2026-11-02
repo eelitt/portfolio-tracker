@@ -63,10 +63,12 @@ describe('openHoldingKeys', () => {
       { symbol: 'aapl', asset_type: 'stock', quantity: 2 },
       { symbol: 'USD', asset_type: 'cash', quantity: 100 },
       { symbol: 'BNB', asset_type: 'crypto', quantity: 0 },
+      { symbol: 'BTC', asset_type: 'future', quantity: 0.2 },
     ])
     expect(keys.has('stock:AAPL')).toBe(true)
     expect(keys.has('cash:USD')).toBe(false)
     expect(keys.has('crypto:BNB')).toBe(false)
+    expect(keys.has('future:BTC')).toBe(false)
   })
 })
 

@@ -39,7 +39,10 @@ function downloadCsv(filename: string, csvContent: string) {
 
 /**
  * Exports the full transaction history as CSV.
- * Columns: Date, Symbol, Type, Action, Quantity, Price, Total Value, Notes
+ * Columns: Date, Symbol, Type, Side, Action, Quantity, Price, Amount, Total Value, Notes.
+ * A future row is the ledger row only: side, action, and amount. No realized-P&L
+ * column, and no Available Cash line for a future fill. Total Value stays
+ * quantity × price for spot and cash. A future leaves that cell blank.
  */
 export function exportTransactionsToCsv(transactions: any[]) {
   if (!transactions || transactions.length === 0) {
@@ -51,24 +54,35 @@ export function exportTransactionsToCsv(transactions: any[]) {
     'Date',
     'Symbol',
     'Type',
+    'Side',
     'Action',
     'Quantity',
     'Price',
+    'Amount',
     'Total Value',
     'Notes',
   ]
 
   const rows = transactions.map((tx) => {
-    const totalValue = (tx.quantity * tx.unit_price).toFixed(2)
+    const future = tx.asset_type === 'future'
+    const qty = Number(tx.quantity)
+    const price = Number(tx.unit_price)
+    const amount = Number(tx.amount)
+    const totalValue =
+      !future && Number.isFinite(qty) && Number.isFinite(price)
+        ? (qty * price).toFixed(2)
+        : ''
     const date = new Date(tx.executed_at).toISOString().split('T')[0]
 
     return [
       date,
       tx.symbol,
       tx.asset_type,
+      future ? tx.position_side || '' : '',
       tx.action,
-      tx.quantity,
-      tx.unit_price,
+      Number.isFinite(qty) ? tx.quantity : '',
+      Number.isFinite(price) ? tx.unit_price : '',
+      future && Number.isFinite(amount) ? amount.toFixed(2) : '',
       totalValue,
       tx.notes || '',
     ]

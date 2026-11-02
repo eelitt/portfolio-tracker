@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { EnrichedHolding, Transaction } from '../types'
+import type { PerpHeadlineTerm } from '../convertToPreferred'
 import {
   filterEnrichedHoldings,
   allocationBreakdown,
@@ -7,6 +8,8 @@ import {
   simulateSellFraction,
   simulatePriceShock,
   compactTransactions,
+  cashTotal,
+  compactOpenFutures,
 } from '../portfolioAnalyst'
 
 function eh(partial: Partial<EnrichedHolding> & Pick<EnrichedHolding, 'symbol'>): EnrichedHolding {
@@ -194,6 +197,24 @@ describe('realizedPnlFromTransactions', () => {
     expect(result.bySymbol[0].symbol).toBe('SOL')
   })
 
+  it('ignores a future fill on the same symbol', () => {
+    const result = realizedPnlFromTransactions([
+      ...txs,
+      {
+        symbol: 'SOL',
+        asset_type: 'future',
+        action: 'sell',
+        position_side: 'long',
+        quantity: 4,
+        unit_price: 1,
+        amount: 100,
+        executed_at: '2025-08-01T00:00:00Z',
+      },
+    ])
+    expect(result.totalRealizedPnl).toBe(260)
+    expect(result.sellCount).toBe(3)
+  })
+
   it('filters by symbol', () => {
     const result = realizedPnlFromTransactions(txs, { symbol: 'AAPL' })
     expect(result.totalRealizedPnl).toBe(100)
@@ -343,5 +364,80 @@ describe('compactTransactions', () => {
     expect(result).toHaveLength(2)
     expect(result[0].symbol).toBe('BTC')
     expect(result[0].unitPrice).toBe(100)
+    expect(result[0].positionSide).toBeNull()
+    expect(result[0].amount).toBeNull()
+  })
+
+  it('keeps a future fee off the spot quantity', () => {
+    const result = compactTransactions(
+      [
+        {
+          symbol: 'BTC',
+          asset_type: 'future',
+          action: 'fee',
+          position_side: 'short',
+          quantity: null,
+          unit_price: null,
+          amount: -1.5,
+          executed_at: '2026-02-01T00:00:00Z',
+        },
+      ],
+      { assetType: 'future' }
+    )
+    expect(result).toHaveLength(1)
+    expect(result[0].quantity).toBeNull()
+    expect(result[0].unitPrice).toBeNull()
+    expect(result[0].positionSide).toBe('short')
+    expect(result[0].amount).toBe(-1.5)
+  })
+})
+
+describe('open futures and cash total', () => {
+  it('sums cash holdings and does not read a future as cash', () => {
+    const holdings = [
+      eh({
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        quantity: 80,
+        marketValue: 80,
+        currentPrice: 1,
+        priceAvailable: true,
+      }),
+      eh({
+        symbol: 'BTC',
+        asset_type: 'crypto',
+        quantity: 1,
+        marketValue: 1000,
+      }),
+    ]
+    expect(cashTotal(holdings)).toBe(80)
+  })
+
+  it('reports equity as the worth of an open side', () => {
+    const perp: PerpHeadlineTerm = {
+      symbol: 'BTC',
+      positionSide: 'long',
+      valueAdd: 1500,
+      unrealizedAdd: 400,
+      dayAdd: 10,
+      priced: true,
+      margin: 1000,
+      fundingNet: 50,
+      feeNet: -20,
+      unrealized: 470,
+      equity: 1500,
+      leverage: 20,
+      availableMargin: 900,
+      quantity: 0.2,
+      entry: 100000,
+      mark: 102350,
+      notional: 20470,
+      dayChange: 10,
+    }
+    const [row] = compactOpenFutures([perp])
+    expect(row.equity).toBe(1500)
+    expect(row.side).toBe('long')
+    expect(row.notional).toBe(20470)
+    expect(row.equity).not.toBe(row.notional)
   })
 })

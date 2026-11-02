@@ -5,10 +5,13 @@ import {
   allocationBreakdown,
   realizedPnlFromTransactions,
   compactTransactions,
+  cashTotal,
+  compactOpenFutures,
 } from '@/lib/portfolioAnalyst'
 import { toolDescription } from '@/lib/aiTools'
 import {
   assetTypeSchema,
+  ledgerAssetTypeSchema,
   round2,
   type AnalystToolCtx,
 } from './toolContext'
@@ -36,6 +39,8 @@ export function createReadTools(ctx: AnalystToolCtx) {
           pricedAssetCount: data.pricedAssetCount,
           unpricedSymbols: data.unpricedSymbols,
           transactionCount: (data.transactions || []).length,
+          cashTotal: cashTotal(loaded.holdings),
+          openFutures: compactOpenFutures(data.openPerps),
         }
       },
     }),
@@ -90,6 +95,7 @@ export function createReadTools(ctx: AnalystToolCtx) {
         const breakdown = allocationBreakdown(loaded.holdings)
         return {
           preferredCurrency: loaded.data.preferredCurrency,
+          note: 'Spot and cash only. Open futures are on the portfolio summary and are not in these weights.',
           ...breakdown,
         }
       },
@@ -126,8 +132,19 @@ export function createReadTools(ctx: AnalystToolCtx) {
       description: toolDescription('get_transactions'),
       parameters: z.object({
         symbol: z.string().optional(),
-        assetType: assetTypeSchema.optional(),
-        action: z.enum(['buy', 'sell', 'inflow', 'outflow']).optional(),
+        assetType: ledgerAssetTypeSchema.optional(),
+        action: z
+          .enum([
+            'buy',
+            'sell',
+            'inflow',
+            'outflow',
+            'funding',
+            'fee',
+            'margin_add',
+            'margin_remove',
+          ])
+          .optional(),
         year: z.number().int().optional(),
         limit: z.number().int().min(1).max(40).optional(),
       }),

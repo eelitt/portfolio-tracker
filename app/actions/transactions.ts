@@ -22,9 +22,11 @@ import { ledgerPerpRows, validatePerps } from '@/lib/perps'
 import {
   cashEventsInUsd,
   ledgerAfterSave,
+  saveRowFromForm,
   type SaveChange,
   type SaveRow,
 } from '@/lib/perpSave'
+import { planImport } from '@/lib/csvImport'
 import { getSymbolsForType } from '@/lib/symbols'
 
 /** Shape returned by mutation actions to the client (used with useActionState). */
@@ -43,33 +45,6 @@ const SAVE_ROW_COLUMNS =
 function futureSymbolAllowed(symbol: string): boolean {
   const upper = symbol.trim().toUpperCase()
   return getSymbolsForType('crypto').some((entry) => entry.symbol.toUpperCase() === upper)
-}
-
-function saveRowFromForm(
-  data: TransactionFormData,
-  currency: 'USD' | 'EUR',
-  id?: string,
-  createdAt?: string | null
-): SaveRow {
-  const future = data.asset_type === 'future'
-  const wallet =
-    data.action === 'funding' ||
-    data.action === 'fee' ||
-    data.action === 'margin_add' ||
-    data.action === 'margin_remove'
-  return {
-    id,
-    symbol: data.symbol,
-    asset_type: data.asset_type,
-    action: data.action,
-    position_side: future ? data.position_side : null,
-    quantity: future && wallet ? null : data.quantity,
-    unit_price: future && wallet ? null : data.unit_price,
-    amount: future ? data.amount : null,
-    executed_at: data.executed_at,
-    created_at: createdAt,
-    currency: future ? 'USD' : currency,
-  }
 }
 
 /** Replay the book that would remain. A reject writes nothing. */
@@ -425,113 +400,144 @@ export async function getHoldingsForExport() {
 /** Hard cap — matches csvParsedTransactionsSchema / AI import client limit. */
 const MAX_IMPORT_TRANSACTIONS = 200
 
+export type ImportResult = {
+  imported: number
+  skipped: { index: number; symbol: string; reason: string }[]
+}
+
+function importInsertPayload(
+  row: SaveRow & { notes?: string | null },
+  userId: string
+) {
+  return {
+    symbol: row.symbol,
+    asset_type: row.asset_type,
+    action: row.action,
+    position_side: row.position_side ?? null,
+    quantity: row.quantity ?? null,
+    unit_price: row.unit_price ?? null,
+    amount: row.amount ?? null,
+    executed_at: row.executed_at,
+    notes: row.notes ?? null,
+    currency: row.currency === 'EUR' ? 'EUR' : 'USD',
+    user_id: userId,
+  }
+}
+
 export async function importTransactions(
   transactions: TransactionFormData[]
-): Promise<{ imported: number; errors: string[] }> {
+): Promise<ImportResult> {
   const supabase = await createClient()
   const user = await getCurrentUser()
   if (!user) {
-    return { imported: 0, errors: ['Not authenticated'] }
+    return { imported: 0, skipped: [{ index: -1, symbol: '', reason: 'Not authenticated' }] }
   }
 
   if (!transactions || transactions.length === 0) {
-    return { imported: 0, errors: ['No transactions to import'] }
+    return {
+      imported: 0,
+      skipped: [{ index: -1, symbol: '', reason: 'No transactions to import' }],
+    }
   }
 
   if (transactions.length > MAX_IMPORT_TRANSACTIONS) {
     return {
       imported: 0,
-      errors: [
-        `At most ${MAX_IMPORT_TRANSACTIONS} transactions per import. Split the file and try again.`,
+      skipped: [
+        {
+          index: -1,
+          symbol: '',
+          reason: `At most ${MAX_IMPORT_TRANSACTIONS} transactions per import. Split the file and try again.`,
+        },
       ],
     }
   }
 
+  const { data: existingRows, error: loadError } = await supabase
+    .from('transactions')
+    .select(SAVE_ROW_COLUMNS)
+    .eq('user_id', user.id)
+  if (loadError) {
+    return { imported: 0, skipped: [{ index: -1, symbol: '', reason: loadError.message }] }
+  }
+
   const profile = await getCurrentUserProfile()
   const defaultCurrency = profile?.preferredCurrency || 'USD'
-
-  let imported = 0
-  const errors: string[] = []
-
+  const symbols = new Set<string>()
+  for (const row of existingRows || []) {
+    if (row.asset_type === 'future' && row.symbol) symbols.add(String(row.symbol).toUpperCase())
+  }
   for (const tx of transactions) {
-    const result = transactionSchema.safeParse(tx)
-    if (!result.success) {
-      errors.push(`Row for ${tx.symbol || 'unknown'}: ${Object.values(result.error.flatten().fieldErrors).flat().join(', ')}`)
-      continue
-    }
+    if (tx.asset_type === 'future' && tx.symbol) symbols.add(tx.symbol.toUpperCase())
+  }
+  const [usdToEurRate, marks] = await Promise.all([
+    getUsdToEurRate(),
+    getUsdMMarks([...symbols]),
+  ])
 
-    const validated = result.data
+  let pending = transactions.map((row, index) => ({ row, index }))
+  let book = (existingRows || []) as SaveRow[]
+  let imported = 0
+  const skipped: ImportResult['skipped'] = []
 
-    const insertData: TransactionFormData & { currency: 'USD' | 'EUR' } = {
-      ...validated,
-      currency: validated.currency || defaultCurrency,
-    }
-
-    if (insertData.asset_type === 'cash' && insertData.quantity != null) {
-      insertData.quantity = Number(Number(insertData.quantity).toFixed(2))
-    }
-    if (insertData.asset_type === 'future') {
-      insertData.currency = 'USD'
-      if (!futureSymbolAllowed(insertData.symbol)) {
-        errors.push(`Failed to import ${validated.symbol}: Symbol is not in the crypto catalog`)
-        continue
-      }
-    }
-
-    if (
-      validated.asset_type === 'future' ||
-      validated.asset_type === 'cash' ||
-      creditsSpotProceeds(validated)
-    ) {
-      const bookError = await perpSaveError(supabase, user.id, {
-        kind: 'create',
-        row: saveRowFromForm(validated, insertData.currency),
-      })
-      if (bookError) {
-        errors.push(`Failed to import ${validated.symbol}: ${bookError}`)
-        continue
-      }
-    }
-
-    const { error } = await supabase.from('transactions').insert({
-      ...insertData,
-      user_id: user.id,
+  while (pending.length > 0) {
+    const { steps } = planImport({
+      existing: book,
+      incoming: pending,
+      usdToEurRate,
+      marks,
+      nowIso: new Date().toISOString(),
+      defaultCurrency,
+      futureSymbolAllowed,
     })
+    if (steps.length === 0) break
 
-    if (error) {
-      errors.push(`Failed to import ${validated.symbol}: ${error.message}`)
-      continue
-    }
-
-    imported++
-
-    // Auto credit sale proceeds to Available Cash (best-effort, same as manual create)
-    if (creditsSpotProceeds(validated)) {
-      const proceeds = Number(validated.quantity) * Number(validated.unit_price)
-      if (proceeds > 0) {
-        const sellCurrency = insertData.currency || 'USD'
-        const cashInsert = {
-          symbol: 'Available Cash',
-          asset_type: 'cash',
-          action: 'inflow',
-          quantity: Number(proceeds.toFixed(2)),
-          unit_price: 1,
-          executed_at: validated.executed_at,
-          notes: `Proceeds from SELL ${validated.quantity} ${validated.symbol} @ ${validated.unit_price}`,
-          currency: sellCurrency,
-          user_id: user.id,
+    let writeFailed = false
+    for (const step of steps) {
+      if (!step.ok) {
+        if (!skipped.some((item) => item.index === step.index)) {
+          skipped.push({ index: step.index, symbol: step.symbol, reason: step.reason })
         }
-        const { error: cashError } = await supabase.from('transactions').insert(cashInsert)
-        if (cashError) {
-          console.error('Auto cash credit during import failed:', cashError.message)
+        pending = pending.filter((item) => item.index !== step.index)
+        continue
+      }
+
+      const [primary, ...extra] = step.rows
+      if (!primary) {
+        pending = pending.filter((item) => item.index !== step.index)
+        continue
+      }
+      const { error } = await supabase
+        .from('transactions')
+        .insert(importInsertPayload(primary, user.id))
+      if (error) {
+        skipped.push({ index: step.index, symbol: primary.symbol, reason: error.message })
+        pending = pending.filter((item) => item.index !== step.index)
+        writeFailed = true
+        break
+      }
+
+      imported++
+      const written: SaveRow[] = [primary]
+      for (const extraRow of extra) {
+        const { error: extraError } = await supabase
+          .from('transactions')
+          .insert(importInsertPayload(extraRow, user.id))
+        if (extraError) {
+          console.error('Auto cash credit during import failed:', extraError.message)
+        } else {
+          written.push(extraRow)
         }
       }
+      book = [...book, ...written]
+      pending = pending.filter((item) => item.index !== step.index)
     }
+    if (!writeFailed) break
   }
 
   if (imported > 0) {
     revalidatePath('/dashboard')
   }
 
-  return { imported, errors }
+  return { imported, skipped }
 }

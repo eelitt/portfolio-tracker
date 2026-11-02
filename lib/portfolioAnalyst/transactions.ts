@@ -2,7 +2,7 @@
  * Compact / filter transaction lists for analyst tool payloads.
  */
 
-import type { AssetType, Transaction } from '../types'
+import type { LedgerAssetType, Transaction } from '../types'
 import { roundMoney } from './shared'
 
 /**
@@ -12,7 +12,7 @@ export function compactTransactions(
   transactions: Transaction[],
   options: {
     symbol?: string
-    assetType?: AssetType
+    assetType?: LedgerAssetType
     action?: Transaction['action']
     year?: number
     limit?: number
@@ -43,8 +43,13 @@ export function compactTransactions(
     symbol: t.symbol,
     assetType: t.asset_type,
     action: t.action,
-    quantity: Number(t.quantity),
-    unitPrice: roundMoney(Number(t.unit_price)),
+    quantity: t.quantity == null ? null : Number(t.quantity),
+    unitPrice: t.unit_price == null ? null : roundMoney(Number(t.unit_price)),
+    positionSide: t.asset_type === 'future' ? t.position_side ?? null : null,
+    amount:
+      t.asset_type === 'future' && t.amount != null
+        ? roundMoney(Number(t.amount))
+        : null,
     executedAt: t.executed_at,
     currency: t.currency ?? null,
     notes: t.notes ? String(t.notes).slice(0, 120) : undefined,

@@ -25,6 +25,7 @@ export type {
 } from './types'
 
 export { filterEnrichedHoldings, allocationBreakdown } from './holdings'
+export { cashTotal, compactOpenFutures } from './openFutures'
 export { realizedPnlFromTransactions } from './realizedPnl'
 export { simulateSellFraction, simulatePriceShock } from './scenarios'
 export { compactTransactions } from './transactions'

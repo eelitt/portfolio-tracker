@@ -1,5 +1,6 @@
 import { getAmountInUsd } from './currency'
 import { ledgerPerpRows, type CashEvent, type PerpRow } from './perps'
+import type { TransactionFormData } from './schemas'
 import type { PositionSide } from './types'
 
 /**
@@ -26,6 +27,34 @@ export type SaveChange =
   | { kind: 'create'; row: SaveRow }
   | { kind: 'update'; id: string; row: SaveRow }
   | { kind: 'delete'; id: string }
+
+/** The row a form payload would write. A future wallet row has no size or price. */
+export function saveRowFromForm(
+  data: TransactionFormData,
+  currency: 'USD' | 'EUR',
+  id?: string,
+  createdAt?: string | null
+): SaveRow {
+  const future = data.asset_type === 'future'
+  const wallet =
+    data.action === 'funding' ||
+    data.action === 'fee' ||
+    data.action === 'margin_add' ||
+    data.action === 'margin_remove'
+  return {
+    id,
+    symbol: data.symbol,
+    asset_type: data.asset_type,
+    action: data.action,
+    position_side: future ? data.position_side : null,
+    quantity: future && wallet ? null : data.quantity,
+    unit_price: future && wallet ? null : data.unit_price,
+    amount: future ? data.amount : null,
+    executed_at: data.executed_at,
+    created_at: createdAt,
+    currency: future ? 'USD' : currency,
+  }
+}
 
 function stamp(row: SaveRow, nowIso: string): SaveRow {
   return {

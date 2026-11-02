@@ -42,23 +42,30 @@ profile (preferred currency)
         + getUserTransactions()          -- RLS
         │
         ├─ calculateHoldings(txs)        -- weighted average, per symbol
-        │       drop cash rows from this book
+        │       drop cash and future rows
         │       getPricesForHoldings(assets, { forceFresh: false })
         │       enrichHoldings            -- missing/0 quote ⇒ priceAvailable false, uPnL 0
         │       toPreferredHolding        -- marks are USD; costs in entry currency; recompute P&L
         │
-        └─ calculateCashHoldingsInPreferred(txs)
-                convert each cash tx, then net
+        ├─ ledgerPerpRows + reducePerps   -- lib/perps.ts, one reduce
+        │       getUsdMMarks               -- open futures only; USD-M mark, not the spot ticker
+        │       perpQuoteInPreferred       -- equity, unrealized, 24h
         │
-        └─ aggregatePreferredPortfolio(assets, cash)
-                MV / 24h = priced assets + cash
-                cost = all open positions (including unpriced)
-                uPnL = priced assets only
+        └─ calculateCashHoldingsInPreferred(txs, marks)
+                convert each cash tx, then net
+                add futureCashDelta to Available Cash
+        │
+        └─ aggregatePreferredPortfolio(assets, cash, perps)
+                MV / 24h = priced assets + cash + open perp equity
+                cost = spot positions (including unpriced); margin is not cost
+                uPnL = priced spot + priced perp unrealized
 ```
 
 ### Why cash is a second reduce
 
-`calculateHoldings` groups by symbol and stamps **currency from the first chronological row**. Mixed EUR+USD cash would become a nonsense face sum. Cash is therefore converted **per transaction** into preferred currency and netted there. Asset positions still use the first-tx currency as the cost denomination (one currency per symbol is the current model, not a multi-lot FX book).
+`calculateHoldings` groups by symbol and stamps **currency from the first chronological row**. Mixed EUR+USD cash would become a nonsense face sum. Cash is therefore converted **per transaction** into preferred currency and netted there. Future rows are not cash transactions. Their net USD cash effect (`futureCashDelta`) is converted and added to Available Cash. That is the one cash total. Goals, the analyst, export, and the headline read it from this pipeline. They do not sum cash rows on their own. Asset positions still use the first-tx currency as the cost denomination (one currency per symbol is the current model, not a multi-lot FX book).
+
+A future never joins the spot walk. The same ticker can be a spot holding and a long, a short, or both. Portfolio value adds each open side's equity. Notional is not in the total. A missing mark keeps margin, funding, and fees in value and adds nothing to unrealized P&L or 24h.
 
 ### Invariants this pipeline exists to protect
 
@@ -93,6 +100,7 @@ Called only for **open non-cash holdings** (and watchlist / fund NAVs when those
 | Stock / most ETFs | Finnhub quote (`FINNHUB_API_KEY`; missing key → no fetch) |
 | Selected Finnish funds | Yahoo chart NAV, EUR → USD (same catalog route for Price-tab history) |
 | Crypto | Binance 24hr ticker, batched; stables = 1, no network |
+| Open futures | Binance USD-M mark, and that mark 24 hours earlier. Not the spot ticker |
 | Cash | Face 1, no network |
 
 `getPricesForHoldings` defaults to **fresh** (`forceFresh` undefined → `true`) and retries missing symbols once. The dashboard pipeline passes **`forceFresh: false`** so a 60s Data Cache tag `prices` is reused across currency toggles and Plan reloads. The Refresh control `revalidateTag('prices')` then fetches again.
@@ -123,6 +131,8 @@ user text
 ```
 
 `assertWriteAllowed` is the only confirm gate. Watchlist add/remove are writes **without** that gate (commanding turn). They must not be sent through `assertWriteAllowed` (registry: `requiresConfirmation: false`).
+
+Prepare and confirm stay on stock, ETF, crypto, and cash. The analyst can describe open futures and the cash total from `getPortfolioData`. It cannot write a future, a funding row, a fee, or a margin change.
 
 Dry-run (`body.dryRun` or phrases like “dry run:” / “what would you do”) validates and describes. No draft persist, no insert, no forced news refresh.
 
@@ -178,6 +188,8 @@ Goals persist name, target, optional `target_date` / `planned_monthly` / `assign
 
 Daily USD snapshots: Edge Function `portfolio-snapshots` → `portfolio_snapshots` (RLS read). Performance chart: `getPortfolioSnapshots` + `lib/aggregateSnapshots.ts` (daily 90d / monthly 24m / yearly). That series is **not** rebuilt from transactions + historical marks on each page load.
 
+From the day futures shipped, a new `portfolio_snapshots` total is spot market value plus the cash total plus open perp equity. Each open side is a `holding_snapshots` row valued at equity, with `position_side` set. Spot and cash rows store `''`. Notional is not stored. A flat side writes no row. Older days are not rewritten. The job's math is a second copy in `supabase/functions/portfolio-snapshots/book.ts`. An open future uses the USD-M mark, not the spot ticker.
+
 Chart / Price-tab history uses the same catalog routing as live marks: `yahoo_chart` funds (e.g. OP Amerikka) load Yahoo daily bars, not Finnhub. Bars are stored USD (EUR NAV ÷ USD/EUR).
 
 Optional benchmarks (SPY, URTH, BTC) overlay that chart as **price** series from `price_bars` (`syncSymbolHistory`: full backfill once, then gap-fill / cache_only). They are **not** fetched on the dashboard GET — only when a Performance-tab chip is on. Tracking error lives in `lib/benchmarks/` (daily MV vs price). Daily-linked TWR, vol, and max drawdown live in `lib/performance/` (cash inflow/outflow only; buys/sells are not CF). Headline excess is TWR − bench price return. Contribution is still ΔMV. Formulas: [calculation_logic.md](./calculation_logic.md).
@@ -188,7 +200,7 @@ Optional benchmarks (SPY, URTH, BTC) overlay that chart as **price** series from
 
 Unit tests under `lib/tests/` are the architecture’s proof for **money and gates**, not for CSS.
 
-They are supposed to fail if: weighted-average / remaining basis / oversell cap changes; a transaction row's P&L diverges from that holding; missing quote invents −100% P&L; mixed-currency P&L is scaled; cash nets raw faces; HMO applies to a loss; confirm accepts a jailbreak sentence; type weights do not sum to 100; excess/TE uses fill-forward or a single overlapping point; contribution % is shown when book Δ is 0; a cash deposit is treated as TWR; TWR invents a return when base MV is 0.
+They are supposed to fail if: weighted-average / remaining basis / oversell cap changes; a future row joins the spot average or a future fill writes Available Cash; a snapshot stores notional instead of equity; a transaction row's P&L diverges from that holding; missing quote invents −100% P&L; mixed-currency P&L is scaled; cash nets raw faces; HMO applies to a loss; confirm accepts a jailbreak sentence; type weights do not sum to 100; excess/TE uses fill-forward or a single overlapping point; contribution % is shown when book Δ is 0; a cash deposit is treated as TWR; TWR invents a return when base MV is 0.
 
 They are **not** supposed to prove RLS. User A vs user B is a policy + integration concern.
 
@@ -202,6 +214,7 @@ They are **not** supposed to prove RLS. User A vs user B is a policy + integrati
 | Dashboard pipeline | `lib/portfolioData.ts` |
 | Dashboard UI | `app/(app)/dashboard/` |
 | Reduce / enrich | `lib/calculatePortfolio.ts` |
+| Perp reduce | `lib/perps.ts` |
 | FX + cash + totals | `lib/convertToPreferred.ts`, `lib/currency.ts` |
 | Live marks | `lib/prices/` |
 | Price history | `lib/priceHistory/` |

@@ -26,9 +26,11 @@ import { Upload, Loader2, Trash2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { parseCsvWithAI } from '@/app/actions/ai/csv-import/parseCsvWithAI'
 import { importTransactions } from '@/app/actions/transactions'
-import type { AssetType, TransactionAction } from '@/lib/types'
+import type { LedgerAssetType, TransactionAction } from '@/lib/types'
 import type { TransactionFormData } from '@/lib/schemas'
 import { transactionSchema } from '@/lib/schemas'
+import { fromLocalInput, toLocalInput } from './FutureOrderFields'
+import { historyActionLabel } from './transactionUtils'
 
 interface ImportTransactionsModalProps {
   /** Optional custom trigger element (e.g. a button). If omitted, the modal can be opened via the 'open-csv-import' custom event. */
@@ -56,6 +58,9 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
   // Non-fatal messages returned by the AI parser (e.g. "could not map fee column").
   const [warnings, setWarnings] = useState<string[]>([])
 
+  // Reasons aligned with preview after a save leaves some rows unsaved.
+  const [rowReasons, setRowReasons] = useState<(string | null)[]>([])
+
   // Used only for display in the preview header.
   const [fileName, setFileName] = useState('')
 
@@ -69,6 +74,7 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
   const reset = () => {
     setPreview([])
     setWarnings([])
+    setRowReasons([])
     setFileName('')
     setError(null)
   }
@@ -169,6 +175,7 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
 
         if (result.data) {
           setPreview(result.data.transactions || [])
+          setRowReasons([])
           setWarnings(result.data.warnings || [])
           if ((result.data.transactions || []).length === 0) {
             setError('AI could not extract any transactions. You can add rows manually below.')
@@ -186,26 +193,61 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
    *
    * Special handling:
    * - Changing asset_type resets the action (cash uses inflow/outflow, others use buy/sell).
+   * - Future keeps a crypto symbol and shows side and amount.
    * - Cash always forces unit_price to 1.
-   * - Number fields are parsed with parseFloat for safety.
+   * - A blank number stays empty so an open can wait for margin.
    */
-  const updatePreviewRow = (index: number, field: keyof PreviewTx, value: any) => {
+  const updatePreviewRow = (index: number, field: keyof PreviewTx, value: string) => {
+    setRowReasons((prev) => {
+      if (!prev[index]) return prev
+      const next = [...prev]
+      next[index] = null
+      return next
+    })
     setPreview((prev) => {
       const next = [...prev]
-      const row = { ...next[index] } as any
+      const row = { ...next[index] }
 
       if (field === 'asset_type') {
-        row.asset_type = value as AssetType
-        // Reset action when type changes
-        row.action = value === 'cash' ? 'inflow' : 'buy'
-        if (value === 'cash') {
+        const prevType = row.asset_type
+        const nextType = value as LedgerAssetType
+        row.asset_type = nextType
+        const keepSymbol =
+          (prevType === 'crypto' && nextType === 'future') ||
+          (prevType === 'future' && nextType === 'crypto')
+        if (!keepSymbol) row.symbol = ''
+        if (nextType === 'cash') {
+          row.action = 'inflow'
           row.unit_price = 1
+          row.amount = null
+          row.position_side = null
+        } else if (nextType === 'future') {
+          if (row.action === 'inflow' || row.action === 'outflow') row.action = 'buy'
+          row.position_side = row.position_side === 'short' ? 'short' : 'long'
+          row.currency = 'USD'
+        } else {
+          if (row.action !== 'buy' && row.action !== 'sell') row.action = 'buy'
+          row.amount = null
+          row.position_side = null
         }
       } else if (field === 'action') {
         row.action = value as TransactionAction
-      } else if (field === 'quantity' || field === 'unit_price') {
-        row[field] = parseFloat(value) || 0
-      } else {
+        const wallet =
+          value === 'funding' ||
+          value === 'fee' ||
+          value === 'margin_add' ||
+          value === 'margin_remove'
+        if (wallet) {
+          row.quantity = null
+          row.unit_price = null
+        }
+      } else if (field === 'position_side') {
+        row.position_side = value === 'short' ? 'short' : 'long'
+      } else if (field === 'quantity' || field === 'unit_price' || field === 'amount') {
+        row[field] = value === '' ? null : Number(value)
+      } else if (field === 'executed_at') {
+        row.executed_at = value.includes('T') ? fromLocalInput(value) : value
+      } else if (field === 'symbol' || field === 'notes') {
         row[field] = value
       }
 
@@ -217,6 +259,7 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
   /** Removes a row from the preview. */
   const deleteRow = (index: number) => {
     setPreview((prev) => prev.filter((_, i) => i !== index))
+    setRowReasons((prev) => prev.filter((_, i) => i !== index))
   }
 
   /**
@@ -260,26 +303,33 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
   const handleImport = async () => {
     if (preview.length === 0) return
 
-    const validTxs = preview.filter(isRowValid)
-    if (validTxs.length === 0) {
-      setError('No valid transactions to import. Please fix the highlighted rows.')
-      return
-    }
-
     setIsImporting(true)
     setError(null)
 
     try {
-      const result = await importTransactions(validTxs)
+      const result = await importTransactions(preview)
+      const blocked = result.skipped.filter((row) => row.index < 0)
+      if (blocked.length > 0) {
+        setError(blocked.map((row) => row.reason).join(' • '))
+        return
+      }
 
       if (result.imported > 0) {
         toast.success(`Imported ${result.imported} transaction(s)`)
         window.dispatchEvent(new CustomEvent('portfolio-updated'))
-        handleClose()
       }
 
-      if (result.errors.length > 0) {
-        setError(result.errors.join(' • '))
+      if (result.skipped.length > 0) {
+        const kept = preview
+          .map((row, index) => ({
+            row,
+            reason: result.skipped.find((item) => item.index === index)?.reason ?? null,
+          }))
+          .filter((item) => item.reason)
+        setPreview(kept.map((item) => item.row))
+        setRowReasons(kept.map((item) => item.reason))
+      } else if (result.imported > 0) {
+        handleClose()
       }
     } catch (e) {
       setError('Import failed. Please try again.')
@@ -287,9 +337,6 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
       setIsImporting(false)
     }
   }
-
-  /** Derived: whether any row currently fails validation (used to disable the Import button). */
-  const hasInvalid = preview.some((tx) => !isRowValid(tx))
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -341,6 +388,21 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
             </div>
           )}
 
+          {rowReasons.some(Boolean) && (
+            <div className="alert-warning">
+              <div className="font-medium mb-1">These rows were not saved:</div>
+              <ul className="list-disc pl-5 space-y-0.5 text-xs">
+                {preview.map((tx, index) =>
+                  rowReasons[index] ? (
+                    <li key={index}>
+                      {tx.symbol || 'Row'}: {rowReasons[index]}
+                    </li>
+                  ) : null
+                )}
+              </ul>
+            </div>
+          )}
+
           {/* Non-fatal warnings returned by the AI parser */}
           {warnings.length > 0 && (
             <div className="alert-warning">
@@ -360,7 +422,7 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
                     Preview — {preview.length} transactions from {fileName}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    Edit any field. Only valid rows will be imported.
+                    Edit any field. A future row can set side and margin. Rows that fail stay in this list with the reason.
                   </div>
                 </div>
                 <Button variant="outline" size="sm" onClick={addEmptyRow}>
@@ -377,9 +439,11 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
                       <th className="px-2 py-2 text-left">Date</th>
                       <th className="px-2 py-2 text-left">Symbol</th>
                       <th className="px-2 py-2 text-left">Type</th>
+                      <th className="px-2 py-2 text-left">Side</th>
                       <th className="px-2 py-2 text-left">Action</th>
                       <th className="px-2 py-2 text-right">Qty</th>
                       <th className="px-2 py-2 text-right">Price</th>
+                      <th className="px-2 py-2 text-right">Amount</th>
                       <th className="px-2 py-2 text-left">Notes</th>
                       <th className="px-2 py-2 w-8"></th>
                     </tr>
@@ -387,18 +451,25 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
                   <tbody className="divide-y">
                     {preview.map((tx, index) => {
                       const valid = isRowValid(tx)
+                      const wallet =
+                        tx.action === 'funding' ||
+                        tx.action === 'fee' ||
+                        tx.action === 'margin_add' ||
+                        tx.action === 'margin_remove'
+                      const dated = tx.executed_at?.includes('T')
                       return (
                         <tr
                           key={index}
-                          className={!valid ? 'bg-destructive/10' : ''}
+                          className={!valid || rowReasons[index] ? 'bg-destructive/10' : ''}
+                          title={rowReasons[index] || undefined}
                         >
-                          {/* Executed date */}
+                          {/* Executed date. A clock time stays on the row. */}
                           <td className="px-2 py-1.5">
                             <input
-                              type="date"
-                              value={tx.executed_at?.split('T')[0] || ''}
+                              type={dated ? 'datetime-local' : 'date'}
+                              value={dated ? toLocalInput(tx.executed_at, true) : (tx.executed_at?.slice(0, 10) || '')}
                               onChange={(e) => updatePreviewRow(index, 'executed_at', e.target.value)}
-                              className="border p-1 rounded w-32 text-xs"
+                              className="border p-1 rounded w-40 text-xs"
                             />
                           </td>
                           {/* Symbol (auto-uppercased on change) */}
@@ -420,10 +491,25 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
                               <option value="stock">Stock</option>
                               <option value="etf">ETF</option>
                               <option value="crypto">Crypto</option>
+                              <option value="future">Future</option>
                               <option value="cash">Cash</option>
                             </select>
                           </td>
-                          {/* Action — dynamically shows buy/sell or inflow/outflow based on asset type */}
+                          <td className="px-2 py-1.5">
+                            {tx.asset_type === 'future' ? (
+                              <select
+                                value={tx.position_side === 'short' ? 'short' : 'long'}
+                                onChange={(e) => updatePreviewRow(index, 'position_side', e.target.value)}
+                                className="border p-1 rounded text-xs"
+                              >
+                                <option value="long">Long</option>
+                                <option value="short">Short</option>
+                              </select>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
+                          </td>
+                          {/* Action — buy/sell, cash, or a future wallet action */}
                           <td className="px-2 py-1.5">
                             <select
                               value={tx.action}
@@ -435,6 +521,15 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
                                   <option value="inflow">Inflow</option>
                                   <option value="outflow">Outflow</option>
                                 </>
+                              ) : tx.asset_type === 'future' ? (
+                                <>
+                                  <option value="buy">{historyActionLabel('buy')}</option>
+                                  <option value="sell">{historyActionLabel('sell')}</option>
+                                  <option value="funding">{historyActionLabel('funding')}</option>
+                                  <option value="fee">{historyActionLabel('fee')}</option>
+                                  <option value="margin_add">{historyActionLabel('margin_add')}</option>
+                                  <option value="margin_remove">{historyActionLabel('margin_remove')}</option>
+                                </>
                               ) : (
                                 <>
                                   <option value="buy">Buy</option>
@@ -445,18 +540,22 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
                           </td>
                           {/* Quantity */}
                           <td className="px-2 py-1.5 text-right">
-                            <input
-                              type="number"
-                              step="any"
-                              value={tx.quantity ?? ''}
-                              onChange={(e) => updatePreviewRow(index, 'quantity', e.target.value)}
-                              className="border p-1 rounded w-20 text-xs text-right font-mono"
-                            />
+                            {tx.asset_type === 'future' && wallet ? (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            ) : (
+                              <input
+                                type="number"
+                                step="any"
+                                value={tx.quantity ?? ''}
+                                onChange={(e) => updatePreviewRow(index, 'quantity', e.target.value)}
+                                className="border p-1 rounded w-20 text-xs text-right font-mono"
+                              />
+                            )}
                           </td>
                           {/* Unit price — hidden / forced to 1 for cash rows */}
                           <td className="px-2 py-1.5 text-right">
-                            {tx.asset_type === 'cash' ? (
-                              <span className="text-muted-foreground text-xs">1</span>
+                            {tx.asset_type === 'cash' || (tx.asset_type === 'future' && wallet) ? (
+                              <span className="text-muted-foreground text-xs">{tx.asset_type === 'cash' ? '1' : '—'}</span>
                             ) : (
                               <input
                                 type="number"
@@ -465,6 +564,19 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
                                 onChange={(e) => updatePreviewRow(index, 'unit_price', e.target.value)}
                                 className="border p-1 rounded w-20 text-xs text-right font-mono"
                               />
+                            )}
+                          </td>
+                          <td className="px-2 py-1.5 text-right">
+                            {tx.asset_type === 'future' ? (
+                              <input
+                                type="number"
+                                step="any"
+                                value={tx.amount ?? ''}
+                                onChange={(e) => updatePreviewRow(index, 'amount', e.target.value)}
+                                className="border p-1 rounded w-20 text-xs text-right font-mono"
+                              />
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
                             )}
                           </td>
                           {/* Free-text notes */}
@@ -505,7 +617,7 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
                   </Button>
                   <Button
                     onClick={handleImport}
-                    disabled={isImporting || validCount === 0 || hasInvalid}
+                    disabled={isImporting || preview.length === 0}
                   >
                     {isImporting ? (
                       <>
@@ -513,7 +625,7 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
                         Importing...
                       </>
                     ) : (
-                      `Import ${validCount} transaction${validCount === 1 ? '' : 's'}`
+                      `Import ${preview.length} transaction${preview.length === 1 ? '' : 's'}`
                     )}
                   </Button>
                 </div>

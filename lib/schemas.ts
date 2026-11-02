@@ -304,6 +304,42 @@ export const csvParsedTransactionsSchema = z.object({
 export type CsvParsedTransactions = z.infer<typeof csvParsedTransactionsSchema>
 
 /**
+ * What the model may return. normalizeCsvImport turns this into ledger rows.
+ * realized_pnl is accepted so a profit column has somewhere to go, and is not stored.
+ */
+export const csvAiRowSchema = z.object({
+  symbol: z.string(),
+  asset_type: z.enum(['stock', 'etf', 'crypto', 'cash', 'future']),
+  action: z.enum([
+    'buy',
+    'sell',
+    'inflow',
+    'outflow',
+    'funding',
+    'fee',
+    'margin_add',
+    'margin_remove',
+  ]),
+  quantity: z.number().nullable().optional(),
+  unit_price: z.number().nullable().optional(),
+  amount: z.number().nullable().optional(),
+  position_side: z.enum(['long', 'short']).nullable().optional(),
+  executed_at: z.string(),
+  notes: z.string().nullable().optional(),
+  currency: z.enum(['USD', 'EUR']).nullable().optional(),
+  fee: z.number().nullable().optional(),
+  realized_pnl: z.number().nullable().optional(),
+  skip: z.enum(['liquidation', 'inverse', 'option', 'wallet_transfer']).nullable().optional(),
+})
+
+export const csvAiParseSchema = z.object({
+  transactions: z.array(csvAiRowSchema).max(200, 'CSV may contain at most 200 transactions'),
+  warnings: z.array(z.string()).optional(),
+})
+
+export type CsvAiParse = z.infer<typeof csvAiParseSchema>
+
+/**
  * Zod schema for authenticated password change.
  * Used by changePassword Server Action (and client-side pre-checks).
  * Min length matches signup (Supabase default).

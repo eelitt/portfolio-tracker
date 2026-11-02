@@ -17,7 +17,7 @@ export const TOOL_REGISTRY: Record<string, ToolMeta> = {
     id: 'get_portfolio_summary',
     name: 'Portfolio summary',
     description:
-      'Get high-level portfolio totals: market value, cost, unrealized P&L, 24h change, preferred currency, holding counts, and unpriced symbols.',
+      'Get high-level portfolio totals: market value, cost, unrealized P&L, 24h change, preferred currency, holding counts, unpriced symbols, cashTotal, and openFutures. Worth of a future is equity, not notional. cashTotal is the cash book after margin movements. Do not add cash rows yourself.',
     owner: 'portfolio_analyst',
     sideEffect: 'read',
     requiresConfirmation: false,
@@ -30,7 +30,7 @@ export const TOOL_REGISTRY: Record<string, ToolMeta> = {
     id: 'get_holdings',
     name: 'Holdings list',
     description:
-      'List open holdings with optional filters (asset type, symbol, unrealized P&L % thresholds). Use for questions like positions down more than X%.',
+      'List open spot and cash holdings with optional filters (asset type, symbol, unrealized P&L % thresholds). Open futures are not in this list. Use get_portfolio_summary for a future.',
     owner: 'portfolio_analyst',
     sideEffect: 'read',
     requiresConfirmation: false,
@@ -43,7 +43,7 @@ export const TOOL_REGISTRY: Record<string, ToolMeta> = {
     id: 'get_allocation',
     name: 'Allocation',
     description:
-      'Get portfolio allocation weights by symbol and by asset type (priced assets + cash only).',
+      'Get portfolio allocation weights by symbol and by asset type (priced spot assets + cash only). Open futures are not in these weights.',
     owner: 'portfolio_analyst',
     sideEffect: 'read',
     requiresConfirmation: false,
@@ -134,7 +134,7 @@ export const TOOL_REGISTRY: Record<string, ToolMeta> = {
     id: 'get_transactions',
     name: 'Transactions',
     description:
-      'List recent transactions with optional filters. Hard limit 40. Use for grounding specific trade history questions.',
+      'List recent transactions with optional filters, including future rows (side and amount). Hard limit 40. A future row is not a spot holding. Use for grounding specific trade history questions.',
     owner: 'portfolio_analyst',
     sideEffect: 'read',
     requiresConfirmation: false,
@@ -160,7 +160,7 @@ export const TOOL_REGISTRY: Record<string, ToolMeta> = {
     id: 'prepare_transaction',
     name: 'Prepare transaction draft',
     description:
-      'Parse/validate a natural-language trade into a draft. Does NOT write to the database. ALWAYS call this when the user describes a buy/sell/deposit. On status=ready, stores a pending draft for confirm_transaction. Pass sourceText with the user’s words (must include € or $). European decimals: pass unit_price as 7.76 when they write 7,76.',
+      'Parse/validate a natural-language spot or cash trade into a draft. Does NOT write to the database. ALWAYS call this when the user describes a buy/sell/deposit of stock, ETF, crypto, or cash. Do not call it for a future, funding, a fee, or a margin change. On status=ready, stores a pending draft for confirm_transaction. Pass sourceText with the user’s words (must include € or $). European decimals: pass unit_price as 7.76 when they write 7,76.',
     owner: 'portfolio_analyst',
     sideEffect: 'staging',
     requiresConfirmation: false,
