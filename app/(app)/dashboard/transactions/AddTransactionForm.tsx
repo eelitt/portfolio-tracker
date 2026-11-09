@@ -11,7 +11,7 @@
 import { useActionState } from 'react'
 import { createTransaction, type ActionState } from '@/app/actions/transactions'
 import { toast } from 'sonner'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, startTransition } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import SymbolSelect from './SymbolSelect'
@@ -106,15 +106,22 @@ export default function AddTransactionForm({
     }
   }, [state, onSuccess])
 
-  const submitForm = (formData: FormData) => {
+  const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const formData = new FormData(event.currentTarget)
     if (assetType === 'future') {
-      formData.set('executed_at', fromLocalInput(String(formData.get('executed_at') || '')))
+      formData.set(
+        'executed_at',
+        fromLocalInput(String(formData.get('executed_at') || ''))
+      )
     }
-    formAction(formData)
+    startTransition(() => {
+      formAction(formData)
+    })
   }
 
   return (
-    <form action={submitForm} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <form onSubmit={onSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <div className="space-y-1.5">
         <label htmlFor="add-asset-type" className={labelClassName}>
           Asset type

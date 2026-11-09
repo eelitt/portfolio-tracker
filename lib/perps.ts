@@ -274,10 +274,12 @@ function blank(row: PerpRow): PerpRowPnl {
 
 function reject(row: PerpRow, reason: string): PerpReject {
   const id = row.id ?? ''
+  const who = `${row.symbol.toUpperCase()} ${row.position_side}`
+  const named = id && id !== 'new' ? `${who} (${id})` : who
   return {
     ok: false,
     rowId: id,
-    reason: `${row.symbol.toUpperCase()} ${row.position_side} (${id}): ${reason}`,
+    reason: `${named}: ${reason}`,
   }
 }
 

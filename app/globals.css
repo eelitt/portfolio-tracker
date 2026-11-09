@@ -180,8 +180,10 @@
     );
   }
 
-  /* Keep app content above the grid layer */
-  body > * {
+  /* Keep app content above the grid layer.
+     The toaster section must stay out of this stacking context so a toast
+     can sit above a dialog overlay instead of being blurred behind it. */
+  body > *:not(:has([data-sonner-toaster])) {
     position: relative;
     z-index: 1;
   }

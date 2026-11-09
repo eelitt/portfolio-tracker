@@ -97,6 +97,11 @@ describe('perp save book', () => {
       }
     )
     expect(open.ok).toBe(false)
+    if (!open.ok) {
+      expect(open.reason).toBe(
+        'BTC long: available cash is smaller than the margin'
+      )
+    }
 
     const add = check(
       [cash(10000), openLong()],
