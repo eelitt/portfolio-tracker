@@ -297,6 +297,16 @@ describe('averageMonthlyUserInflows', () => {
     expect(r.months.find((m) => m.key === '2026-07')?.buys).toBe(300)
   })
 
+  it('counts USDT cash at $1', () => {
+    const r = averageMonthlyUserInflows(
+      [tx({ executed_at: '2026-07-01', quantity: 100, currency: 'USDT' })],
+      'USD',
+      0.92,
+      now
+    )
+    expect(r.monthlyCash).toBeCloseTo(100 / 3, 8)
+  })
+
   it('does not count a future buy as a deposit', () => {
     const txs = [
       {

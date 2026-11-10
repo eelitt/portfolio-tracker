@@ -52,8 +52,8 @@ profile (preferred currency)
         │       perpQuoteInPreferred       -- equity, unrealized, 24h
         │
         └─ calculateCashHoldingsInPreferred(txs, marks)
-                convert each cash tx, then net
-                add futureCashDelta to Available Cash
+                fiat pool (USD+EUR), then USDT and USDC faces at $1
+                add futureCashDelta to the Available Cash total, and keep it when it is not positive
         │
         └─ aggregatePreferredPortfolio(assets, cash, perps)
                 MV / 24h = priced assets + cash + open perp equity
@@ -63,7 +63,7 @@ profile (preferred currency)
 
 ### Why cash is a second reduce
 
-`calculateHoldings` groups by symbol and stamps **currency from the first chronological row**. Mixed EUR+USD cash would become a nonsense face sum. Cash is therefore converted **per transaction** into preferred currency and netted there. Future rows are not cash transactions. Their net USD cash effect (`futureCashDelta`) is converted and added to Available Cash. That is the one cash total. Goals, the analyst, export, and the headline read it from this pipeline. They do not sum cash rows on their own. Asset positions still use the first-tx currency as the cost denomination (one currency per symbol is the current model, not a multi-lot FX book).
+`calculateHoldings` groups by symbol and stamps **currency from the first chronological row**. Mixed EUR+USD cash would become a nonsense face sum. Cash is therefore converted **per transaction** into preferred currency and netted there. A cash denomination is USD, EUR, USDT, or USDC. USD and EUR share one fiat pool. USDT and USDC are $1 and each net in their own face. The display toggle does not change the stored denomination. Future rows are not cash transactions. Their net USD cash effect (`futureCashDelta`) is converted and added to the Available Cash total, without rewriting a stable face. Only that Available Cash total funds margin. The total stays when it is zero or negative, so margin larger than the cash still changes portfolio value and a remaining stable face stays inside it. That is the one cash total. Pie and allocation read the positive fiat and stable faces from it and leave the margin effect out of those weights. Goals, the analyst, export, and the headline read it from this pipeline. They do not sum cash rows on their own. Asset positions still use the first-tx currency as the cost denomination (one currency per symbol is the current model, not a multi-lot FX book).
 
 A future never joins the spot walk. The same ticker can be a spot holding and a long, a short, or both. Portfolio value adds each open side's equity. Notional is not in the total. A missing mark keeps margin, funding, and fees in value and adds nothing to unrealized P&L or 24h.
 
@@ -113,7 +113,7 @@ Unpriced names stay in the holdings list and in **cost**; they drop out of MV, a
 
 ### Form
 
-`transactionSchema` (Zod) → `createTransaction` / update / delete. Optional currency; if omitted, preferred currency. Cash quantities rounded to 2 dp. RLS still requires `user_id = auth.uid()`.
+`transactionSchema` (Zod) → `createTransaction` / update / delete. The cash form sends Held as: USD, EUR, USDT, or USDC. USDT and USDC are rejected on any other asset type. If currency is omitted, store the preferred currency. Cash quantities rounded to 2 dp. CSV import still writes USD or EUR only. RLS still requires `user_id = auth.uid()`. Current behavior and open questions: [cash_denominations.md](./cash_denominations.md).
 
 The schema currently allows `cash` + `buy`. Chat validation rejects that combo (`inflow`/`outflow` only). Forms should not rely on chat rules.
 
@@ -228,6 +228,7 @@ They are **not** supposed to prove RLS. User A vs user B is a policy + integrati
 | TWR / vol / drawdown | `lib/performance/` |
 | Snapshots | `app/actions/snapshots.ts`, `supabase/functions/portfolio-snapshots/` |
 | Formula sheet | `calculation_logic.md` |
+| Cash denominations | `cash_denominations.md` |
 | Tax engine and tax README | `lib/tax/` |
 | Tax UI | `app/(app)/tax/` |
 | Analyst math | `lib/portfolioAnalyst/` |

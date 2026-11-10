@@ -55,6 +55,22 @@ describe('buildHoldingSlices Other parts', () => {
     expect(slices[1].color).not.toBe(slices[2].color)
   })
 
+  it('counts a stable face inside a negative cash total and leaves the margin out', () => {
+    const slices = buildHoldingSlices([
+      { symbol: 'AAPL', marketValue: 50, asset_type: 'stock' },
+      {
+        symbol: 'Available Cash',
+        marketValue: -50,
+        weightValue: 100,
+        asset_type: 'cash',
+      },
+    ])
+    expect(slices.map((s) => [s.name, s.value])).toEqual([
+      ['Available Cash', 100],
+      ['AAPL', 50],
+    ])
+  })
+
   it('rolls both sides into one Future type slice', () => {
     const slices = buildTypeSlices([
       { symbol: 'BTC', marketValue: 100, asset_type: 'crypto' },

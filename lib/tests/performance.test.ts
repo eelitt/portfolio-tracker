@@ -43,6 +43,25 @@ describe('cashFlowsFromTransactions', () => {
     )
     expect(flows).toEqual([{ date: '2026-01-02', amount: 70 }])
   })
+
+  it('counts a USDT inflow at face value', () => {
+    const flows = cashFlowsFromTransactions(
+      [
+        {
+          symbol: 'Available Cash',
+          asset_type: 'cash',
+          action: 'inflow',
+          quantity: 100,
+          unit_price: 1,
+          executed_at: '2026-01-02T12:00:00.000Z',
+          currency: 'USDT',
+        },
+      ],
+      'USD',
+      0.92
+    )
+    expect(flows).toEqual([{ date: '2026-01-02', amount: 100 }])
+  })
 })
 
 describe('dailyTwrs / linkedReturn', () => {

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   convertAmount,
   convertBetweenCurrencies,
+  heldAsForCashCard,
   unitPriceShownInPreferred,
   unitPriceToStore,
   formatCurrency,
@@ -11,6 +12,42 @@ import {
 } from '../currency'
 
 const RATE = 0.87
+
+describe('heldAsForCashCard', () => {
+  it('prefills the only stable when the card has no fiat', () => {
+    expect(
+      heldAsForCashCard(
+        { fiatPreferred: 0, stables: [{ currency: 'USDC', face: 25 }] },
+        'EUR'
+      )
+    ).toBe('USDC')
+  })
+
+  it('keeps the preferred currency when fiat is present or the stables are mixed', () => {
+    expect(
+      heldAsForCashCard(
+        {
+          fiatPreferred: 10,
+          stables: [{ currency: 'USDC', face: 25 }],
+        },
+        'EUR'
+      )
+    ).toBe('EUR')
+    expect(
+      heldAsForCashCard(
+        {
+          fiatPreferred: 0,
+          stables: [
+            { currency: 'USDT', face: 10 },
+            { currency: 'USDC', face: 25 },
+          ],
+        },
+        'EUR'
+      )
+    ).toBe('EUR')
+    expect(heldAsForCashCard(undefined, 'USD')).toBe('USD')
+  })
+})
 
 describe('FX helpers', () => {
   it('convertAmount is identity for USD and scales to EUR', () => {

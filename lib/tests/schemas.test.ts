@@ -114,6 +114,25 @@ describe('transactionSchema', () => {
     ).toBe(false)
   })
 
+  it('accepts USDT cash and rejects USDT on a stock', () => {
+    const cash = transactionSchema.safeParse(
+      validTx({
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'inflow',
+        quantity: 50,
+        unit_price: 1,
+        currency: 'USDT',
+      })
+    )
+    expect(cash.success).toBe(true)
+    if (!cash.success) return
+    expect(cash.data.currency).toBe('USDT')
+
+    const stock = transactionSchema.safeParse(validTx({ currency: 'USDT' }))
+    expect(stock.success).toBe(false)
+  })
+
   it('currently allows cash + buy (chat layer rejects; schema does not)', () => {
     const r = transactionSchema.safeParse(
       validTx({

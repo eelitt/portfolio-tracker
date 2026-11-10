@@ -2,6 +2,34 @@ import type { PreferredCurrency } from '@/lib/userTypes'
 
 export type Currency = PreferredCurrency
 
+/** Stored on a cash row. Preferred display currency stays USD or EUR. */
+export const CASH_DENOMINATIONS = ['USD', 'EUR', 'USDT', 'USDC'] as const
+export type CashDenomination = (typeof CASH_DENOMINATIONS)[number]
+
+export function isCashDenomination(
+  value: string | null | undefined
+): value is CashDenomination {
+  return value === 'USD' || value === 'EUR' || value === 'USDT' || value === 'USDC'
+}
+
+export function isStableCash(
+  value: string | null | undefined
+): value is 'USDT' | 'USDC' {
+  return value === 'USDT' || value === 'USDC'
+}
+
+/**
+ * Held as for a new cash row opened from a holding card.
+ * One stable and no fiat balance uses that stable. Anything mixed, or fiat only, uses the preferred currency.
+ */
+export function heldAsForCashCard(
+  parts: { fiatPreferred: number; stables: { currency: 'USDT' | 'USDC' }[] } | undefined,
+  preferred: PreferredCurrency
+): CashDenomination {
+  if (!parts || parts.fiatPreferred !== 0 || parts.stables.length !== 1) return preferred
+  return parts.stables[0].currency
+}
+
 export const CURRENCY_SYMBOLS: Record<Currency, string> = {
   USD: '$',
   EUR: '€',
@@ -57,6 +85,52 @@ export function getAmountInUsd(
 ): number {
   if (fromCurrency === 'USD') return amount
   return amount / usdToEurRate
+}
+
+/**
+ * Cash face in USD. EUR uses the rate. USDT and USDC are $1.
+ * Any other denomination, including a missing one, stays USD.
+ */
+export function cashFaceInUsd(
+  amount: number,
+  currency: string | null | undefined,
+  usdToEurRate: number
+): number {
+  const rate = usdToEurRate > 0 && Number.isFinite(usdToEurRate) ? usdToEurRate : 0.92
+  if ((currency || '').toUpperCase() === 'EUR') return amount / rate
+  return amount
+}
+
+/**
+ * Dollar value of one cash face, rounded to the cent.
+ * A stored fiat value wins over today's rate. A stable is always its face.
+ * A fiat row with no stored value uses today's rate.
+ */
+export function ledgerFiatUsd(
+  face: number,
+  currency: string | null | undefined,
+  usdToEurRate: number,
+  storedUsd?: number | null
+): number {
+  if (!Number.isFinite(face)) return 0
+  if (isStableCash(currency)) return Number(face.toFixed(2))
+  if (storedUsd != null && Number.isFinite(Number(storedUsd))) {
+    return Number(Number(storedUsd).toFixed(2))
+  }
+  return Number(cashFaceInUsd(face, currency, usdToEurRate).toFixed(2))
+}
+
+/** Dollar value to store on a new or edited fiat cash row. Null for a stable. */
+export function frozenFiatUsd(
+  currency: string | null | undefined,
+  quantity: number | null | undefined,
+  unitPrice: number | null | undefined,
+  usdToEurRate: number
+): number | null {
+  if (isStableCash(currency)) return null
+  const face = Number(quantity) * Number(unitPrice ?? 1)
+  if (!Number.isFinite(face)) return null
+  return ledgerFiatUsd(face, currency, usdToEurRate, null)
 }
 
 /** Unit price as the edit form should show it: preferred currency, same path as the table. */

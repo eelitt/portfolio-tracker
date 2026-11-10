@@ -19,7 +19,11 @@ import FutureOrderFields, { fromLocalInput, toLocalInput } from './FutureOrderFi
 import type { LedgerAssetType, PositionSide, TransactionAction } from '@/lib/types'
 import { fieldClassName, labelClassName } from './formStyles'
 import type { PreferredCurrency } from '@/lib/userTypes'
-import { getCurrencySymbol } from '@/lib/currency'
+import {
+  CASH_DENOMINATIONS,
+  getCurrencySymbol,
+  type CashDenomination,
+} from '@/lib/currency'
 
 const initialState: ActionState = { error: undefined, success: false }
 interface AddTransactionFormProps {
@@ -31,6 +35,8 @@ interface AddTransactionFormProps {
   initialAction?: TransactionAction
   /** Side filled in when a perp card opens this form. */
   initialSide?: PositionSide
+  /** Cash card that is one stable. Otherwise the form uses the preferred currency. */
+  initialHeldAs?: CashDenomination
   /** Currency this price will be stored in. */
   preferredCurrency?: PreferredCurrency
 }
@@ -41,6 +47,7 @@ export default function AddTransactionForm({
   initialSymbol,
   initialAction,
   initialSide,
+  initialHeldAs,
   preferredCurrency = 'USD',
 }: AddTransactionFormProps) {
   const [state, formAction, isPending] = useActionState(createTransaction, initialState)
@@ -48,6 +55,7 @@ export default function AddTransactionForm({
   // Controlled state for the dependent asset_type + symbol pair.
   const [assetType, setAssetType] = useState<LedgerAssetType>(initialAssetType || 'stock')
   const [symbol, setSymbol] = useState(initialSymbol || '')
+  const [heldAs, setHeldAs] = useState<CashDenomination>(initialHeldAs ?? preferredCurrency)
 
   const defaultAction =
     initialAction || (initialAssetType === 'cash' ? 'inflow' : 'buy')
@@ -219,7 +227,26 @@ export default function AddTransactionForm({
       )}
 
       {assetType === 'cash' ? (
-        <input type="hidden" name="unit_price" value="1" />
+          <div className="space-y-1.5">
+            <input type="hidden" name="unit_price" value="1" />
+            <label htmlFor="add-held-as" className={labelClassName}>
+              Held as
+            </label>
+            <select
+              id="add-held-as"
+              name="currency"
+              value={heldAs}
+              onChange={(e) => setHeldAs(e.target.value as CashDenomination)}
+              className={fieldClassName}
+              required
+            >
+              {CASH_DENOMINATIONS.map((denomination) => (
+                <option key={denomination} value={denomination}>
+                  {denomination}
+                </option>
+              ))}
+            </select>
+          </div>
       ) : assetType !== 'future' ? (
         <div className="space-y-1.5">
           <label htmlFor="add-unit-price" className={labelClassName}>

@@ -111,7 +111,7 @@ export function calculateHoldings(transactions: Transaction[]): Holding[] {
           realizedPnl: Number(realizedPnl.toFixed(2)),
           // Attach currency for all holdings so we know the denomination of unit prices / costs.
           // Legacy non-cash txs without currency default to USD.
-          currency: firstTx.currency || 'USD',
+          currency: firstTx.currency === 'EUR' ? 'EUR' : 'USD',
         })
       }
     }

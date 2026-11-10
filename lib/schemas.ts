@@ -58,9 +58,15 @@ export const transactionSchema = z
     position_side: blankSide.optional(),
     executed_at: z.string().min(1, 'Date is required'),
     notes: z.string().optional(),
-    currency: z.enum(['USD', 'EUR']).optional(),
+    currency: z.enum(['USD', 'EUR', 'USDT', 'USDC']).optional(),
   })
   .superRefine((data, ctx) => {
+    if (
+      (data.currency === 'USDT' || data.currency === 'USDC') &&
+      data.asset_type !== 'cash'
+    ) {
+      issue(ctx, 'currency', 'USDT and USDC are only for cash')
+    }
     if (data.asset_type !== 'future') {
       if (data.amount != null) {
         issue(ctx, 'amount', 'Amount is only for a future')

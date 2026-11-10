@@ -20,7 +20,7 @@ function assetClassOf(assetType: Transaction['asset_type']): TaxAssetClass | nul
 
 function toEur(
   amount: number,
-  currency: 'USD' | 'EUR' | undefined,
+  currency: string | null | undefined,
   usdToEurRate: number
 ): number {
   const from = currency === 'EUR' ? 'EUR' : 'USD'

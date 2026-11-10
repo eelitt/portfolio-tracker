@@ -1,5 +1,11 @@
 import { Transaction } from '@/lib/types'
-import { formatCurrency, getAmountInUsd } from '@/lib/currency'
+import {
+  ledgerFiatUsd,
+  formatCurrency,
+  formatQuantity,
+  getAmountInUsd,
+  isStableCash,
+} from '@/lib/currency'
 import type { PreferredCurrency } from '@/lib/userTypes'
 
 export type AugmentedTransaction = Transaction & { formattedDate?: string }
@@ -156,9 +162,16 @@ export function formatQuantityCell(
 ): string | number {
   if (tx.asset_type === 'future' && isWalletAction(tx.action)) return ''
   if (tx.asset_type === 'cash') {
-    const txCurr = (tx.currency as PreferredCurrency) || 'USD'
+    if (isStableCash(tx.currency)) {
+      return `${formatQuantity(tx.quantity ?? 0)} ${tx.currency}`
+    }
     const trueEurRate = usdToEurRate || 0.92
-    const usdEq = getAmountInUsd(tx.quantity ?? 0, txCurr, trueEurRate)
+    const usdEq = ledgerFiatUsd(
+      Number(tx.quantity) * Number(tx.unit_price ?? 1),
+      tx.currency,
+      trueEurRate,
+      tx.amount
+    )
     return formatCurrency(usdEq, preferredCurrency, usdToPreferredRate)
   }
   return tx.quantity ?? 0
@@ -181,6 +194,7 @@ export function formatPriceCell(
     return formatCurrency(tx.amount, preferredCurrency, usdToPreferredRate)
   }
   if (tx.asset_type === 'cash') {
+    if (isStableCash(tx.currency)) return formatQuantity(1)
     return formatCurrency(tx.unit_price ?? 0, preferredCurrency, 1)
   }
   const txCurr = (tx.currency as PreferredCurrency) || 'USD'

@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { formatCurrency, formatQuantity } from '@/lib/currency'
+import { formatCurrency, formatQuantity, heldAsForCashCard } from '@/lib/currency'
 import { getAssetTypeLabel } from '@/lib/utils'
-import type { AssetType, EnrichedHolding } from '@/lib/types'
+import type { AssetType, CashParts, EnrichedHolding } from '@/lib/types'
 import type { HoldingNewsImpactEntry } from '@/lib/schemas'
 import { HoldingNewsTooltip } from './HoldingNewsTooltip'
 import { HoldingCardLogo } from './HoldingCardLogo'
@@ -19,6 +19,47 @@ interface HoldingsGridProps {
     impact?: Record<string, HoldingNewsImpactEntry>
     cachedAt?: string
   } | null
+}
+
+function CashPartLines({
+  parts,
+  preferredCurrency,
+}: {
+  parts: CashParts
+  preferredCurrency: 'USD' | 'EUR'
+}) {
+  return (
+    <>
+      {parts.fiatPreferred !== 0 ? (
+        <div className="flex justify-between">
+          <span>Fiat</span>
+          <span>
+            <SensitiveValue
+              value={formatCurrency(parts.fiatPreferred, preferredCurrency, 1)}
+            />
+          </span>
+        </div>
+      ) : null}
+      {parts.stables.map((stable) => (
+        <div key={stable.currency} className="flex justify-between">
+          <span>{stable.currency}</span>
+          <span>
+            <SensitiveValue value={formatQuantity(stable.face)} />
+          </span>
+        </div>
+      ))}
+      {parts.marginPreferred !== 0 ? (
+        <div className="flex justify-between">
+          <span>Margin</span>
+          <span>
+            <SensitiveValue
+              value={formatCurrency(parts.marginPreferred, preferredCurrency, 1)}
+            />
+          </span>
+        </div>
+      ) : null}
+    </>
+  )
 }
 
 function HoldingCard({
@@ -38,9 +79,13 @@ function HoldingCard({
   const [tooltipOpen, setTooltipOpen] = useState(false)
 
   const openAddTransactionForHolding = (symbol: string, assetType: AssetType) => {
+    const currency =
+      assetType === 'cash'
+        ? heldAsForCashCard(holding.cashParts, preferredCurrency)
+        : undefined
     window.dispatchEvent(
       new CustomEvent('add-transaction', {
-        detail: { asset_type: assetType, symbol },
+        detail: { asset_type: assetType, symbol, currency },
       })
     )
   }
@@ -120,6 +165,12 @@ function HoldingCard({
                   )}
                 </span>
               </div>
+              {holding.cashParts ? (
+                <CashPartLines
+                  parts={holding.cashParts}
+                  preferredCurrency={preferredCurrency}
+                />
+              ) : null}
               {holding.asset_type !== 'cash' && (
                 <div className="flex justify-between font-medium">
                   <span>Unrealized P&amp;L</span>

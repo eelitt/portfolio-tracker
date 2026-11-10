@@ -1,4 +1,6 @@
 import {
+  ledgerFiatUsd,
+  convertAmount,
   convertBetweenCurrencies,
   type Currency,
 } from '@/lib/currency'
@@ -124,13 +126,11 @@ export function averageMonthlyUserInflows(
     const day = String(tx.executed_at || '').slice(0, 10)
     const t = Date.parse(`${day}T00:00:00Z`)
     if (!Number.isFinite(t) || t < start || t > end) continue
-    const txCurr = (tx.currency || 'USD') as Currency
-    const notional = convertBetweenCurrencies(
-      Number(tx.quantity) * Number(tx.unit_price || 1),
-      txCurr,
-      preferredCurrency,
-      usdToEurRate
-    )
+    const face = Number(tx.quantity) * Number(tx.unit_price || 1)
+    const usd = isCash
+      ? ledgerFiatUsd(face, tx.currency, usdToEurRate, tx.amount)
+      : convertBetweenCurrencies(face, (tx.currency || 'USD') as Currency, 'USD', usdToEurRate)
+    const notional = convertAmount(usd, preferredCurrency, usdToEurRate)
     if (!Number.isFinite(notional) || !(notional > 0)) continue
     inflowCount += 1
     const row = byKey.get(day.slice(0, 7))

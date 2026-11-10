@@ -2,7 +2,7 @@
  * Holdings query helpers for the Portfolio Analyst agent.
  */
 
-import type { EnrichedHolding } from '../types'
+import { holdingWeight, type EnrichedHolding } from '../types'
 import type { AllocationBreakdown, AllocationSlice, HoldingFilters } from './types'
 import {
   MAX_HOLDINGS_LIMIT,
@@ -60,15 +60,18 @@ export function allocationBreakdown(holdings: EnrichedHolding[]): AllocationBrea
     .filter((h) => h.asset_type !== 'cash' && !h.priceAvailable)
     .map((h) => h.symbol)
 
-  const inBase = holdings.filter(isInMvBase)
-  const totalMarketValue = inBase.reduce((s, h) => s + h.marketValue, 0)
+  const inBase = holdings.filter(
+    (h) => holdingWeight(h) > 0 && (h.priceAvailable || h.asset_type === 'cash')
+  )
+  const totalMarketValue = inBase.reduce((s, h) => s + holdingWeight(h), 0)
 
   const bySymbolMap = new Map<string, number>()
   const byTypeMap = new Map<string, number>()
 
   for (const h of inBase) {
-    bySymbolMap.set(h.symbol, (bySymbolMap.get(h.symbol) ?? 0) + h.marketValue)
-    byTypeMap.set(h.asset_type, (byTypeMap.get(h.asset_type) ?? 0) + h.marketValue)
+    const value = holdingWeight(h)
+    bySymbolMap.set(h.symbol, (bySymbolMap.get(h.symbol) ?? 0) + value)
+    byTypeMap.set(h.asset_type, (byTypeMap.get(h.asset_type) ?? 0) + value)
   }
 
   const toSlices = (map: Map<string, number>): AllocationSlice[] =>

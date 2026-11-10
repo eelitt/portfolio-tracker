@@ -1,4 +1,4 @@
-import { convertBetweenCurrencies, type Currency } from '@/lib/currency'
+import { convertAmount, ledgerFiatUsd, type Currency } from '@/lib/currency'
 import type { Transaction } from '@/lib/types'
 
 export type CashFlow = { date: string; amount: number }
@@ -18,10 +18,13 @@ export function cashFlowsFromTransactions(
     if (tx.action !== 'inflow' && tx.action !== 'outflow') continue
     const date = String(tx.executed_at || '').slice(0, 10)
     if (!date) continue
-    const txCurr = (tx.currency || 'USD') as Currency
-    const notional = convertBetweenCurrencies(
-      Number(tx.quantity) * Number(tx.unit_price || 1),
-      txCurr,
+    const notional = convertAmount(
+      ledgerFiatUsd(
+        Number(tx.quantity) * Number(tx.unit_price || 1),
+        tx.currency,
+        usdToEurRate,
+        tx.amount
+      ),
       preferredCurrency,
       usdToEurRate
     )

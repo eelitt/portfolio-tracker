@@ -10,6 +10,7 @@ import { getAllocationPolicy } from '@/app/actions/allocation'
 import { getAssumptionRates } from '@/app/actions/assumptions'
 import { getUserGoals } from '@/app/actions/goals'
 import { getCurrentUserProfile } from '@/lib/user'
+import { holdingWeight } from '@/lib/types'
 import {
   assignedPv,
   evaluateGoal,
@@ -174,12 +175,12 @@ export function createPlanTools(ctx: AnalystToolCtx) {
 
         const slices = loaded.holdings
           .filter(
-            (h) => (h.asset_type === 'cash' || h.priceAvailable) && h.marketValue > 0
+            (h) => (h.asset_type === 'cash' || h.priceAvailable) && holdingWeight(h) > 0
           )
           .map((h) => ({
             symbol: h.symbol,
             assetType: h.asset_type,
-            marketValue: h.marketValue,
+            marketValue: holdingWeight(h),
           }))
         const annualRate = expectedReturnFromSlices(
           slices,

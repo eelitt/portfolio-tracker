@@ -1,4 +1,6 @@
 import { getSymbolsForType } from './symbols'
+import { frozenFiatUsd, isStableCash } from './currency'
+import { cashOutflowRefusal } from './convertToPreferred'
 import {
   cashEventsInUsd,
   ledgerAfterSave,
@@ -14,8 +16,8 @@ import {
 } from './schemas'
 
 /**
- * CSV preview rows and the save plan. The plan uses validatePerps.
- * It does not invent a second cash total or a second reject rule.
+ * CSV preview rows and the save plan. The plan uses the cash refusal and validatePerps.
+ * It does not invent a second cash total.
  */
 
 const SKIP_WARNINGS = {
@@ -189,11 +191,29 @@ export function planImport(input: {
       continue
     }
 
-    const currency: 'USD' | 'EUR' =
+    const chosen =
       data.asset_type === 'future' ? 'USD' : data.currency || input.defaultCurrency
+    // Import stays on USD or EUR. USDT and USDC are not written from a CSV row.
+    const currency: 'USD' | 'EUR' = chosen === 'EUR' ? 'EUR' : 'USD'
     const row = saveRowFromForm(data, currency, `import:${item.index}`)
+    if (row.asset_type === 'cash' && !isStableCash(currency)) {
+      row.amount = frozenFiatUsd(currency, row.quantity, row.unit_price, input.usdToEurRate)
+    }
     const next = ledgerAfterSave(book, { kind: 'create', row }, input.nowIso)
     if (changesBook(data)) {
+      const over = cashOutflowRefusal(next, input.usdToEurRate, {
+        kind: 'create',
+        id: row.id,
+      })
+      if (over) {
+        steps.push({
+          ok: false,
+          index: item.index,
+          symbol: data.symbol,
+          reason: over,
+        })
+        continue
+      }
       const verdict = validatePerps({
         rows: ledgerPerpRows(next),
         cash: cashEventsInUsd(next, input.usdToEurRate),

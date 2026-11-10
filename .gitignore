@@ -47,3 +47,4 @@ supabase/migrations*
 *.tsbuildinfo
 next-env.d.ts
 CLAUDE.md
+cash_denominations.md

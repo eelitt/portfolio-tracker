@@ -1,13 +1,21 @@
 import type { Currency } from './currency'
-import { convertAmount, convertBetweenCurrencies } from './currency'
 import {
+  convertAmount,
+  convertBetweenCurrencies,
+  isStableCash,
+  ledgerFiatUsd,
+} from './currency'
+import {
+  cashOutflowText,
+  compareLedgerTime,
   ledgerPerpRows,
   quotePerp,
   reducePerps,
+  scopeCashRefusal,
   type OpenPerp,
   type PerpMark,
 } from './perps'
-import type { EnrichedHolding, PositionSide, Transaction } from './types'
+import type { CashParts, EnrichedHolding, PositionSide, Transaction } from './types'
 
 /** Open perp, already in the preferred currency, for the portfolio total and the card. */
 export type PerpHeadlineTerm = {
@@ -268,15 +276,141 @@ export function toPreferredHolding(
   }
 }
 
+type CashPoolRow = {
+  id?: string
+  symbol: string
+  asset_type?: string
+  action: string
+  quantity?: number | null
+  unit_price?: number | null
+  executed_at: string
+  created_at?: string | null
+  currency?: string | null
+  /** Frozen dollar value of a fiat row. Absent on older rows and on stables. */
+  amount?: number | null
+}
+
+type PoolOver = {
+  id?: string
+  symbol: string
+  currency: string
+  executedAt: string
+  created_at?: string | null
+}
+
+const POOL_EPS = 0.001
+
 /**
- * Build cash holdings in preferred currency by converting each cash transaction
- * with its own currency before netting.
+ * One symbol's pools in USD. The fiat pool is the USD value of USD and EUR faces.
+ * An outflow above its pool is reported, then capped. This is the only pool walk.
+ */
+function reduceSymbolPools(txs: readonly CashPoolRow[], usdToEurRate: number) {
+  const sorted = [...txs].sort((a, b) => compareLedgerTime(a, b))
+  let fiatUsd = 0
+  let usdt = 0
+  let usdc = 0
+  let over: PoolOver | null = null
+
+  for (const tx of sorted) {
+    const raw = Number(tx.quantity) * Number(tx.unit_price)
+    if (!Number.isFinite(raw)) continue
+    const face = Number(raw.toFixed(2))
+    const inflow = tx.action === 'buy' || tx.action === 'inflow'
+    const outflow = tx.action === 'sell' || tx.action === 'outflow'
+    if (!inflow && !outflow) continue
+
+    if (isStableCash(tx.currency)) {
+      const stable = tx.currency === 'USDC' ? 'USDC' : 'USDT'
+      const pool = stable === 'USDC' ? usdc : usdt
+      if (outflow && face > pool + POOL_EPS && !over) {
+        over = {
+          id: tx.id,
+          symbol: tx.symbol,
+          currency: stable,
+          executedAt: tx.executed_at,
+          created_at: tx.created_at,
+        }
+      }
+      const next = inflow ? pool + face : Math.max(0, pool - Math.min(face, pool))
+      if (stable === 'USDC') usdc = next
+      else usdt = next
+      continue
+    }
+
+    const usd = ledgerFiatUsd(face, tx.currency, usdToEurRate, tx.amount)
+    if (!Number.isFinite(usd)) continue
+    if (outflow && usd > fiatUsd + POOL_EPS && !over) {
+      over = {
+        id: tx.id,
+        symbol: tx.symbol,
+        currency: tx.currency || 'USD',
+        executedAt: tx.executed_at,
+        created_at: tx.created_at,
+      }
+    }
+    if (inflow) fiatUsd += usd
+    else if (fiatUsd > 0) fiatUsd = Math.max(0, fiatUsd - Math.min(usd, fiatUsd))
+  }
+
+  return { fiatUsd, usdt, usdc, over }
+}
+
+/**
+ * Refusal for a ledger that contains an outflow larger than its pool at that time.
+ * The reduce still caps a row that is already stored.
+ */
+export function cashOutflowRefusal(
+  rows: readonly CashPoolRow[],
+  usdToEurRate: number,
+  change?: { kind: 'create' | 'update' | 'delete'; id?: string }
+): string | null {
+  const grouped = new Map<string, CashPoolRow[]>()
+  for (const row of rows) {
+    if (row.asset_type !== 'cash') continue
+    const list = grouped.get(row.symbol)
+    if (list) list.push(row)
+    else grouped.set(row.symbol, [row])
+  }
+  let earliest: PoolOver | null = null
+  for (const txs of grouped.values()) {
+    const over = reduceSymbolPools(txs, usdToEurRate).over
+    if (!over) continue
+    if (
+      !earliest ||
+      compareLedgerTime(
+        { executed_at: over.executedAt, created_at: over.created_at, id: over.id },
+        {
+          executed_at: earliest.executedAt,
+          created_at: earliest.created_at,
+          id: earliest.id,
+        }
+      ) < 0
+    ) {
+      earliest = over
+    }
+  }
+  if (!earliest) return null
+  const text = cashOutflowText({
+    symbol: earliest.symbol,
+    currency: earliest.currency,
+    executedAt: earliest.executedAt,
+    kind: 'pool',
+  })
+  if (!change) return text
+  return scopeCashRefusal(text, change.kind, earliest.id, change.id)
+}
+
+/**
+ * Build cash holdings in preferred currency.
  *
- * calculateHoldings cannot do this correctly: it sums face amounts across
- * currencies and stamps currency from the first chronological tx only.
+ * USD and EUR share one fiat pool: each face is converted, then netted.
+ * USDT and USDC net in their own face at $1. An outflow spends only its pool.
+ *
+ * calculateHoldings cannot do this: it sums faces and stamps the first row's currency.
  *
  * Future rows are not cash transactions. Their net USD cash effect is converted
- * and applied to Available Cash. This does not insert an Available Cash row.
+ * and applied to the Available Cash total. This does not insert an Available Cash row
+ * and does not rewrite a stable face. The total stays when it is not positive.
  */
 export function calculateCashHoldingsInPreferred(
   transactions: Transaction[],
@@ -307,60 +441,32 @@ export function calculateCashHoldingsInPreferred(
   const holdings: EnrichedHolding[] = []
 
   for (const [symbol, txs] of grouped) {
-    const sorted = [...txs].sort(
-      (a, b) =>
-        new Date(a.executed_at).getTime() - new Date(b.executed_at).getTime()
+    const pools = reduceSymbolPools(txs, usdToEurRate)
+    const stableUsdt = Number(pools.usdt.toFixed(2))
+    const stableUsdc = Number(pools.usdc.toFixed(2))
+    const stablePreferred = Number(
+      convertAmount(stableUsdt + stableUsdc, preferredCurrency, usdToEurRate).toFixed(2)
     )
-
-    // Balance in preferred currency (cash face amounts, unit price treated as 1 after convert)
-    let quantity = 0
-    let realizedPnl = 0
-
-    for (const tx of sorted) {
-      const txCurr = (tx.currency || 'USD') as Currency
-      // Cash quantity is the face amount in tx currency; unit_price is normally 1.
-      // Convert the notional so non-1 unit prices still work.
-      const notional = convertBetweenCurrencies(
-        Number(tx.quantity) * Number(tx.unit_price),
-        txCurr,
-        preferredCurrency,
-        usdToEurRate
-      )
-
-      if (tx.action === 'buy' || tx.action === 'inflow') {
-        quantity += notional
-      } else if (tx.action === 'sell' || tx.action === 'outflow') {
-        if (quantity > 0) {
-          const sellQ = Math.min(notional, quantity)
-          // Cash avg cost is 1 in display currency; realized ≈ 0 for pure face-value cash
-          const avgCost = 1
-          const sellValue = sellQ // unit price 1 in preferred
-          const costBasis = sellQ * avgCost
-          realizedPnl += sellValue - costBasis
-          quantity -= sellQ
-          if (quantity < 0) quantity = 0
-        }
-      }
-    }
-
-    const finalQty = Number(quantity.toFixed(2))
+    const fiatPreferred = Number(
+      convertAmount(pools.fiatUsd, preferredCurrency, usdToEurRate).toFixed(2)
+    )
+    const finalQty = Number((fiatPreferred + stablePreferred).toFixed(2))
     if (finalQty > 0) {
-      holdings.push({
-        symbol,
-        asset_type: 'cash',
-        quantity: finalQty,
-        avgCost: 1,
-        totalCost: finalQty,
-        realizedPnl: Number(realizedPnl.toFixed(2)),
-        currency: preferredCurrency,
-        currentPrice: 1,
-        marketValue: finalQty,
-        unrealizedPnl: 0,
-        unrealizedPnlPercent: 0,
-        change24h: 0,
-        position24hChange: 0,
-        priceAvailable: true,
-      })
+      const stables: CashParts['stables'] = []
+      if (stableUsdt > 0) stables.push({ currency: 'USDT', face: stableUsdt })
+      if (stableUsdc > 0) stables.push({ currency: 'USDC', face: stableUsdc })
+      holdings.push(
+        cashHolding(
+          symbol,
+          finalQty,
+          preferredCurrency,
+          finalQty,
+          0,
+          stables.length > 0
+            ? { fiatPreferred, stables, marginPreferred: 0 }
+            : undefined
+        )
+      )
     }
   }
 
@@ -371,7 +477,9 @@ function cashHolding(
   symbol: string,
   quantity: number,
   currency: Currency,
-  realizedPnl = 0
+  weightValue: number,
+  realizedPnl = 0,
+  cashParts?: CashParts
 ): EnrichedHolding {
   return {
     symbol,
@@ -388,6 +496,8 @@ function cashHolding(
     change24h: 0,
     position24hChange: 0,
     priceAvailable: true,
+    weightValue,
+    ...(cashParts ? { cashParts } : {}),
   }
 }
 
@@ -401,14 +511,24 @@ function applyFutureCash(
 
   const idx = holdings.findIndex((h) => h.symbol === AVAILABLE_CASH)
   if (idx === -1) {
-    if (!(delta > 0)) return holdings
-    return [...holdings, cashHolding(AVAILABLE_CASH, delta, preferredCurrency)]
+    return [
+      ...holdings,
+      cashHolding(AVAILABLE_CASH, delta, preferredCurrency, 0, 0, {
+        fiatPreferred: 0,
+        stables: [],
+        marginPreferred: delta,
+      }),
+    ]
   }
 
   const current = holdings[idx]
   const next = Number((current.quantity + delta).toFixed(2))
-  if (!(next > 0)) return holdings.filter((_, i) => i !== idx)
   const copy = [...holdings]
-  copy[idx] = cashHolding(AVAILABLE_CASH, next, preferredCurrency, current.realizedPnl)
+  const weight = current.weightValue ?? Math.max(0, current.quantity)
+  copy[idx] = cashHolding(AVAILABLE_CASH, next, preferredCurrency, weight, current.realizedPnl, {
+    fiatPreferred: current.cashParts ? current.cashParts.fiatPreferred : current.quantity,
+    stables: current.cashParts?.stables ?? [],
+    marginPreferred: delta,
+  })
   return copy
 }

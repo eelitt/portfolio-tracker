@@ -1,4 +1,4 @@
-import type { AssetType, PositionSide } from '@/lib/types'
+import { holdingWeight, type AssetType, type PositionSide } from '@/lib/types'
 import { colorForHoldingSymbol } from '@/lib/aggregateSnapshots'
 import { catalogNameFor } from '@/lib/portfolioAnalyst'
 import { getAssetTypeLabel } from '@/lib/utils'
@@ -7,6 +7,8 @@ import { historySymbolLabel } from '@/app/(app)/dashboard/transactions/transacti
 export type AllocationHolding = {
   symbol: string
   marketValue: number
+  /** Cash weight with margin left out. Other holdings leave this unset. */
+  weightValue?: number
   asset_type?: AssetType | 'future'
   positionSide?: PositionSide | null
   priceAvailable?: boolean
@@ -69,6 +71,7 @@ export function buildHoldingSlices(
   holdings: AllocationHolding[]
 ): AllocationSlice[] {
   const positive = holdings
+    .map((h) => ({ ...h, marketValue: holdingWeight(h) }))
     .filter((h) => h.marketValue > 0)
     .sort((a, b) => b.marketValue - a.marketValue)
 
@@ -128,9 +131,10 @@ export function buildTypeSlices(
 ): AllocationSlice[] {
   const byType = new Map<string, number>()
   for (const h of holdings) {
-    if (!(h.marketValue > 0)) continue
+    const value = holdingWeight(h)
+    if (!(value > 0)) continue
     const t = h.asset_type ?? 'stock'
-    byType.set(t, (byType.get(t) ?? 0) + h.marketValue)
+    byType.set(t, (byType.get(t) ?? 0) + value)
   }
   const total = [...byType.values()].reduce((s, v) => s + v, 0)
   if (total <= 0) return []

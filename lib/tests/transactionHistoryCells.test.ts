@@ -59,6 +59,20 @@ describe('history cells', () => {
     expect(formatPriceCell(fee, 'EUR', 0.87, 0.87)).toBe('€-4,35')
   })
 
+  it('shows stable cash as a face and leaves its price unconverted', () => {
+    const tx = row({
+      action: 'inflow',
+      asset_type: 'cash',
+      symbol: 'Available Cash',
+      quantity: 50,
+      unit_price: 1,
+      currency: 'USDT',
+      position_side: null,
+    })
+    expect(formatQuantityCell(tx, 'EUR', 0.92, 0.92)).toBe('50,00 USDT')
+    expect(formatPriceCell(tx, 'EUR', 0.92, 0.92)).toBe('1,00')
+  })
+
   it('finds and sorts a future by the name that includes the side', () => {
     const spot = row({
       action: 'buy',

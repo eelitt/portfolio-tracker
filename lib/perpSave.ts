@@ -1,4 +1,5 @@
-import { getAmountInUsd } from './currency'
+import { isStableCash, ledgerFiatUsd } from './currency'
+import type { CashDenomination } from './currency'
 import { ledgerPerpRows, type CashEvent, type PerpRow } from './perps'
 import type { TransactionFormData } from './schemas'
 import type { PositionSide } from './types'
@@ -31,7 +32,7 @@ export type SaveChange =
 /** The row a form payload would write. A future wallet row has no size or price. */
 export function saveRowFromForm(
   data: TransactionFormData,
-  currency: 'USD' | 'EUR',
+  currency: CashDenomination,
   id?: string,
   createdAt?: string | null
 ): SaveRow {
@@ -116,7 +117,7 @@ export function ledgerAfterSave(
   return withSpotProceeds([...existing, row], row, nowIso)
 }
 
-/** Signed USD notional of each cash row. Inflow and buy are positive. */
+/** Signed USD of each Available Cash row. Other cash labels do not fund margin. */
 export function cashEventsInUsd(
   rows: readonly SaveRow[],
   usdToEurRate: number
@@ -125,16 +126,24 @@ export function cashEventsInUsd(
   const events: CashEvent[] = []
   for (const row of rows) {
     if (row.asset_type !== 'cash') continue
+    if (row.symbol.trim().toUpperCase() !== 'AVAILABLE CASH') continue
     const qty = Number(row.quantity)
     const px = Number(row.unit_price ?? 1)
     if (!Number.isFinite(qty) || !Number.isFinite(px)) continue
-    const face = getAmountInUsd(qty * px, row.currency === 'EUR' ? 'EUR' : 'USD', rate)
+    const usd = ledgerFiatUsd(
+      qty * px,
+      row.currency,
+      rate,
+      isStableCash(row.currency) ? null : row.amount
+    )
     const sign = row.action === 'sell' || row.action === 'outflow' ? -1 : 1
     events.push({
       id: row.id,
       executed_at: row.executed_at,
       created_at: row.created_at,
-      amount: Number((sign * face).toFixed(2)),
+      amount: Number((sign * usd).toFixed(2)),
+      symbol: row.symbol,
+      currency: row.currency,
     })
   }
   return events

@@ -119,6 +119,66 @@ describe('perp save book', () => {
     if (!add.ok) expect(add.reason).toContain('available cash')
   })
 
+  it('does not let Savings fund margin', () => {
+    const saved = check(
+      [
+        {
+          id: 'savings',
+          symbol: 'Savings',
+          asset_type: 'cash',
+          action: 'inflow',
+          quantity: 10000,
+          unit_price: 1,
+          currency: 'USD',
+          executed_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      openLong()
+    )
+    expect(saved.ok).toBe(false)
+    if (!saved.ok) expect(saved.reason).toContain('available cash')
+  })
+
+  it('refuses a later stable withdrawal that would push Available Cash negative', () => {
+    const saved = check(
+      [
+        {
+          id: 'usdc',
+          symbol: 'Available Cash',
+          asset_type: 'cash',
+          action: 'inflow',
+          quantity: 100,
+          unit_price: 1,
+          currency: 'USDC',
+          executed_at: '2026-01-01T00:00:00Z',
+        },
+        {
+          id: 'open',
+          symbol: 'BTC',
+          asset_type: 'future',
+          action: 'buy',
+          position_side: 'long',
+          quantity: 0.01,
+          unit_price: 100000,
+          amount: 40,
+          executed_at: '2026-01-02T00:00:00Z',
+          currency: 'USD',
+        },
+      ],
+      {
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'outflow',
+        quantity: 100,
+        unit_price: 1,
+        currency: 'USDC',
+        executed_at: '2026-01-04T00:00:00Z',
+      }
+    )
+    expect(saved.ok).toBe(false)
+    if (!saved.ok) expect(saved.reason).toContain('backing margin')
+  })
+
   it('rejects a margin removal above available margin', () => {
     const saved = check(
       [cash(10000), openLong()],

@@ -78,6 +78,8 @@ export type CashEvent = {
   created_at?: string | null
   /** Signed USD. Inflow positive, outflow negative. */
   amount: number
+  symbol?: string
+  currency?: string | null
 }
 
 export type PerpMark = {
@@ -144,6 +146,51 @@ type Timed = {
   kind: 'perp' | 'cash'
   row?: PerpRow
   cash?: number
+  symbol?: string
+  currency?: string | null
+}
+
+/** Date, then save time, then id. Cash and margin both use this order. */
+export function compareLedgerTime(
+  a: { executed_at: string; created_at?: string | null; id?: string | null },
+  b: { executed_at: string; created_at?: string | null; id?: string | null }
+): number {
+  const ta = new Date(a.executed_at).getTime()
+  const tb = new Date(b.executed_at).getTime()
+  if (ta !== tb) return ta - tb
+  const ca = a.created_at ?? ''
+  const cb = b.created_at ?? ''
+  if (ca !== cb) return ca < cb ? -1 : 1
+  return (a.id ?? '').localeCompare(b.id ?? '')
+}
+
+export function cashOutflowText(input: {
+  symbol: string
+  currency: string
+  executedAt: string
+  kind: 'pool' | 'backing'
+}): string {
+  const date = String(input.executedAt).slice(0, 10)
+  const denom = input.currency || 'USD'
+  const symbol =
+    input.symbol.trim().toUpperCase() === 'AVAILABLE CASH' ? 'Available Cash' : input.symbol
+  if (input.kind === 'backing') {
+    return `${symbol} ${denom} outflow on ${date} would leave Available Cash negative. The remainder is backing margin.`
+  }
+  const pool = denom === 'USDT' || denom === 'USDC' ? denom : 'fiat'
+  return `${symbol} ${denom} outflow on ${date} is larger than the ${pool} balance at that time.`
+}
+
+/** When the failing outflow is not the row being saved, say so. */
+export function scopeCashRefusal(
+  text: string,
+  changeKind: 'create' | 'update' | 'delete',
+  failingId?: string,
+  editedId?: string
+): string {
+  if (!failingId || failingId === editedId) return text
+  if (changeKind === 'delete') return `Deleting this row leaves a later outflow short. ${text}`
+  return `This change leaves a later outflow short. ${text}`
 }
 
 const QTY = 8
@@ -190,10 +237,7 @@ function compareTimed(a: Timed, b: Timed): number {
   const bFill = b.row ? isFill(b.row.action) : false
   if (aFee && bFill) return 1
   if (bFee && aFill) return -1
-  const ca = a.created_at ?? ''
-  const cb = b.created_at ?? ''
-  if (ca !== cb) return ca < cb ? -1 : 1
-  return (a.id ?? '').localeCompare(b.id ?? '')
+  return compareLedgerTime(a, b)
 }
 
 function positiveMark(mark: number | null | undefined): number | null {
@@ -432,6 +476,8 @@ function walk(
       id: cash.id,
       kind: 'cash',
       cash: Number(cash.amount),
+      symbol: cash.symbol,
+      currency: cash.currency,
     })
   }
   events.sort(compareTimed)
@@ -443,7 +489,20 @@ function walk(
 
   for (const event of events) {
     if (event.kind === 'cash') {
-      cash = roundCash(cash + (event.cash ?? 0))
+      const next = roundCash(cash + (event.cash ?? 0))
+      if (checkLimits && (event.cash ?? 0) < 0 && next < 0) {
+        return {
+          ok: false,
+          rowId: event.id ?? '',
+          reason: cashOutflowText({
+            symbol: event.symbol || 'Available Cash',
+            currency: event.currency || 'USD',
+            executedAt: event.executed_at,
+            kind: 'backing',
+          }),
+        }
+      }
+      cash = next
       continue
     }
     const row = event.row!

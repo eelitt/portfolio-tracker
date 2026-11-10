@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   aggregatePreferredPortfolio,
   calculateCashHoldingsInPreferred,
+  cashOutflowRefusal,
   perpQuoteInPreferred,
   perpUnrealizedPercent,
   toPreferredHolding,
@@ -227,6 +228,7 @@ describe('calculateCashHoldingsInPreferred', () => {
     // 100 EUR + 100 USD * 0.87 = 187 EUR (not 200)
     expect(cash[0].marketValue).toBeCloseTo(100 + 100 * RATE, 2)
     expect(cash[0].quantity).toBeCloseTo(100 + 100 * RATE, 2)
+    expect(cash[0].cashParts).toBeUndefined()
     expect(cash[0].currentPrice).toBe(1)
     expect(cash[0].unrealizedPnl).toBe(0)
     expect(cash[0].position24hChange).toBe(0)
@@ -311,6 +313,341 @@ describe('calculateCashHoldingsInPreferred', () => {
       },
     ]
     expect(calculateCashHoldingsInPreferred(txs, 'EUR', RATE)).toEqual([])
+  })
+
+  it('keeps USDT at $1 beside USD, and converts only the total when preferred is EUR', () => {
+    const txs: Transaction[] = [
+      {
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'inflow',
+        quantity: 100,
+        unit_price: 1,
+        executed_at: '2025-01-01',
+        currency: 'USD',
+      },
+      {
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'inflow',
+        quantity: 50,
+        unit_price: 1,
+        executed_at: '2025-01-02',
+        currency: 'USDT',
+      },
+    ]
+
+    const usd = calculateCashHoldingsInPreferred(txs, 'USD', 0.92)
+    expect(usd[0].quantity).toBe(150)
+    expect(usd[0].cashParts).toEqual({
+      fiatPreferred: 100,
+      stables: [{ currency: 'USDT', face: 50 }],
+      marginPreferred: 0,
+    })
+
+    const eur = calculateCashHoldingsInPreferred(txs, 'EUR', 0.92)
+    expect(eur[0].quantity).toBeCloseTo(150 * 0.92, 2)
+    expect(eur[0].cashParts?.stables).toEqual([{ currency: 'USDT', face: 50 }])
+    expect(eur[0].cashParts?.fiatPreferred).toBeCloseTo(92, 2)
+  })
+
+  it('does not let a USDT outflow spend euros', () => {
+    const txs: Transaction[] = [
+      {
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'inflow',
+        quantity: 100,
+        unit_price: 1,
+        executed_at: '2025-01-01',
+        currency: 'EUR',
+      },
+      {
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'inflow',
+        quantity: 50,
+        unit_price: 1,
+        executed_at: '2025-01-02',
+        currency: 'USDT',
+      },
+      {
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'outflow',
+        quantity: 20,
+        unit_price: 1,
+        executed_at: '2025-01-03',
+        currency: 'USDT',
+      },
+    ]
+
+    const cash = calculateCashHoldingsInPreferred(txs, 'EUR', 0.92)
+    expect(cash[0].cashParts?.fiatPreferred).toBe(100)
+    expect(cash[0].cashParts?.stables).toEqual([{ currency: 'USDT', face: 30 }])
+  })
+
+  it('adds future margin to the Available Cash total and leaves the USDT face', () => {
+    const txs: Transaction[] = [
+      {
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'inflow',
+        quantity: 100,
+        unit_price: 1,
+        executed_at: '2026-01-01T00:00:00Z',
+        currency: 'USD',
+      },
+      {
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'inflow',
+        quantity: 50,
+        unit_price: 1,
+        executed_at: '2026-01-01T00:00:00Z',
+        currency: 'USDT',
+      },
+      futureRow({
+        action: 'buy',
+        executed_at: '2026-01-02T00:00:00Z',
+        quantity: 0.01,
+        amount: 10,
+      }),
+    ]
+
+    const cash = calculateCashHoldingsInPreferred(txs, 'USD', 1)
+    expect(cash[0].quantity).toBe(140)
+    expect(cash[0].cashParts).toEqual({
+      fiatPreferred: 100,
+      stables: [{ currency: 'USDT', face: 50 }],
+      marginPreferred: -10,
+    })
+  })
+
+  it('keeps the Margin line after the last stable is spent', () => {
+    const txs: Transaction[] = [
+      {
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'inflow',
+        quantity: 100,
+        unit_price: 1,
+        executed_at: '2026-01-01T00:00:00Z',
+        currency: 'USD',
+      },
+      {
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'inflow',
+        quantity: 40,
+        unit_price: 1,
+        executed_at: '2026-01-01T00:00:00Z',
+        currency: 'USDC',
+      },
+      {
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'outflow',
+        quantity: 40,
+        unit_price: 1,
+        executed_at: '2026-01-02T00:00:00Z',
+        currency: 'USDC',
+      },
+      futureRow({
+        action: 'buy',
+        executed_at: '2026-01-03T00:00:00Z',
+        quantity: 0.01,
+        amount: 10,
+      }),
+    ]
+
+    const cash = calculateCashHoldingsInPreferred(txs, 'USD', 1)
+    expect(cash[0].quantity).toBe(90)
+    expect(cash[0].cashParts).toEqual({
+      fiatPreferred: 100,
+      stables: [],
+      marginPreferred: -10,
+    })
+  })
+
+  it('keeps Available Cash when margin is larger than the stable face', () => {
+    const txs: Transaction[] = [
+      {
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'inflow',
+        quantity: 100,
+        unit_price: 1,
+        executed_at: '2026-01-01T00:00:00Z',
+        currency: 'USDC',
+      },
+      futureRow({
+        action: 'buy',
+        executed_at: '2026-01-02T00:00:00Z',
+        quantity: 0.01,
+        amount: 150,
+      }),
+    ]
+
+    const cash = calculateCashHoldingsInPreferred(txs, 'USD', 1)
+    expect(cash).toHaveLength(1)
+    expect(cash[0].quantity).toBe(-50)
+    expect(cash[0].marketValue).toBe(-50)
+    expect(cash[0].weightValue).toBe(100)
+    expect(cash[0].cashParts).toEqual({
+      fiatPreferred: 0,
+      stables: [{ currency: 'USDC', face: 100 }],
+      marginPreferred: -150,
+    })
+  })
+})
+
+describe('cashOutflowRefusal', () => {
+  it('refuses an outflow larger than its own pool and allows one that fits', () => {
+    const inflow = {
+      symbol: 'Available Cash',
+      asset_type: 'cash',
+      action: 'inflow',
+      quantity: 40,
+      unit_price: 1,
+      executed_at: '2026-01-01',
+      currency: 'USDC',
+    }
+    expect(
+      cashOutflowRefusal(
+        [
+          inflow,
+          {
+            symbol: 'Available Cash',
+            asset_type: 'cash',
+            action: 'outflow',
+            quantity: 40,
+            unit_price: 1,
+            executed_at: '2026-01-02',
+            currency: 'USDC',
+          },
+        ],
+        0.92
+      )
+    ).toBeNull()
+    expect(
+      cashOutflowRefusal(
+        [
+          inflow,
+          {
+            symbol: 'Available Cash',
+            asset_type: 'cash',
+            action: 'outflow',
+            quantity: 41,
+            unit_price: 1,
+            executed_at: '2026-01-02',
+            currency: 'USDC',
+          },
+        ],
+        0.92
+      )
+    ).toBe(
+      'Available Cash USDC outflow on 2026-01-02 is larger than the USDC balance at that time.'
+    )
+  })
+
+  it('does not let a USDC outflow spend fiat, and caps that row in the reduce', () => {
+    const rows: Transaction[] = [
+      {
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'inflow',
+        quantity: 100,
+        unit_price: 1,
+        executed_at: '2026-01-01',
+        currency: 'EUR',
+      },
+      {
+        symbol: 'Available Cash',
+        asset_type: 'cash',
+        action: 'outflow',
+        quantity: 25,
+        unit_price: 1,
+        executed_at: '2026-01-02',
+        currency: 'USDC',
+      },
+    ]
+    expect(cashOutflowRefusal(rows, 0.92)).toBe(
+      'Available Cash USDC outflow on 2026-01-02 is larger than the USDC balance at that time.'
+    )
+    const cash = calculateCashHoldingsInPreferred(rows, 'EUR', 0.92)
+    expect(cash[0].quantity).toBe(100)
+    expect(cash[0].cashParts).toBeUndefined()
+  })
+
+  it('orders same-day rows by save time and keeps a stored dollar value', () => {
+    const day = '2026-01-02'
+    const inflow = {
+      id: 'in',
+      symbol: 'Available Cash',
+      asset_type: 'cash' as const,
+      action: 'inflow' as const,
+      quantity: 100,
+      unit_price: 1,
+      executed_at: day,
+      created_at: '2026-01-02T00:00:02Z',
+      currency: 'USD' as const,
+      amount: 100,
+    }
+    const outflow = {
+      id: 'out',
+      symbol: 'Available Cash',
+      asset_type: 'cash' as const,
+      action: 'outflow' as const,
+      quantity: 40,
+      unit_price: 1,
+      executed_at: day,
+      created_at: '2026-01-02T00:00:01Z',
+      currency: 'EUR' as const,
+      amount: 40,
+    }
+    expect(cashOutflowRefusal([inflow, outflow], 0.5)).toBe(
+      'Available Cash EUR outflow on 2026-01-02 is larger than the fiat balance at that time.'
+    )
+    expect(cashOutflowRefusal([outflow, { ...inflow, created_at: '2026-01-02T00:00:00Z' }], 0.5)).toBeNull()
+    const cash = calculateCashHoldingsInPreferred(
+      [{ ...inflow, created_at: '2026-01-02T00:00:00Z' }, { ...outflow, created_at: '2026-01-02T00:00:01Z' }],
+      'USD',
+      0.5
+    )
+    expect(cash[0].quantity).toBe(60)
+  })
+
+  it('names a later outflow when an earlier row is the one that changed', () => {
+    const text = cashOutflowRefusal(
+      [
+        {
+          id: 'deposit',
+          symbol: 'Available Cash',
+          asset_type: 'cash',
+          action: 'inflow',
+          quantity: 10,
+          unit_price: 1,
+          executed_at: '2026-01-01',
+          currency: 'USDC',
+        },
+        {
+          id: 'spend',
+          symbol: 'Available Cash',
+          asset_type: 'cash',
+          action: 'outflow',
+          quantity: 25,
+          unit_price: 1,
+          executed_at: '2026-01-03',
+          currency: 'USDC',
+        },
+      ],
+      1,
+      { kind: 'update', id: 'deposit' }
+    )
+    expect(text).toBe(
+      'This change leaves a later outflow short. Available Cash USDC outflow on 2026-01-03 is larger than the USDC balance at that time.'
+    )
   })
 })
 

@@ -16,9 +16,10 @@ import { transactionSchema, type TransactionFormData } from '@/lib/schemas'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser, getCurrentUserProfile } from '@/lib/user'
 import { getPortfolioData } from '@/lib/portfolioData'
-import { getUsdToEurRate } from '@/lib/currency'
+import { frozenFiatUsd, getUsdToEurRate, isCashDenomination, isStableCash, type CashDenomination } from '@/lib/currency'
 import { getUsdMMarks } from '@/lib/prices/binanceUsdM'
-import { ledgerPerpRows, validatePerps } from '@/lib/perps'
+import { cashOutflowRefusal } from '@/lib/convertToPreferred'
+import { ledgerPerpRows, scopeCashRefusal, validatePerps } from '@/lib/perps'
 import {
   cashEventsInUsd,
   ledgerAfterSave,
@@ -36,7 +37,7 @@ export type ActionState = {
 }
 
 export type CreateTransactionResult =
-  | { ok: true; data: TransactionFormData & { currency: 'USD' | 'EUR' } }
+  | { ok: true; data: TransactionFormData & { currency: CashDenomination } }
   | { ok: false; error: string }
 
 const SAVE_ROW_COLUMNS =
@@ -62,19 +63,29 @@ async function perpSaveError(
   const nowIso = new Date().toISOString()
   const ledger = ledgerAfterSave((data || []) as SaveRow[], change, nowIso)
   const rows = ledgerPerpRows(ledger)
-  if (rows.length === 0) return null
+  const hasCash = ledger.some((row) => row.asset_type === 'cash')
+  if (rows.length === 0 && !hasCash) return null
 
   const symbols = [...new Set(rows.map((row) => row.symbol))]
   const [usdToEurRate, marks] = await Promise.all([
     getUsdToEurRate(),
     getUsdMMarks(symbols),
   ])
+  const editedId = change.kind === 'create' ? 'new' : change.id
+  const over = cashOutflowRefusal(ledger, usdToEurRate, { kind: change.kind, id: editedId })
+  if (over) return over
+  if (rows.length === 0) return null
   const saved = validatePerps({
     rows,
     cash: cashEventsInUsd(ledger, usdToEurRate),
     marks,
   })
-  if (!saved.ok) return saved.reason
+  if (!saved.ok) {
+    if (saved.reason.includes('outflow')) {
+      return scopeCashRefusal(saved.reason, change.kind, saved.rowId, editedId)
+    }
+    return saved.reason
+  }
   return null
 }
 
@@ -93,6 +104,7 @@ function formRaw(formData: FormData) {
     position_side: formData.get('position_side'),
     executed_at: formData.get('executed_at'),
     notes: formData.get('notes'),
+    currency: formData.get('currency') || undefined,
   }
 }
 
@@ -121,7 +133,9 @@ export async function createTransactionRecord(
     return { ok: false, error: 'Not authenticated' }
   }
 
-  let currency: 'USD' | 'EUR' | undefined = result.data.currency
+  let currency: CashDenomination | undefined = isCashDenomination(result.data.currency)
+    ? result.data.currency
+    : undefined
   if (result.data.asset_type === 'future') {
     currency = 'USD'
     if (!futureSymbolAllowed(result.data.symbol)) {
@@ -146,8 +160,11 @@ export async function createTransactionRecord(
 
   const row = saveRowFromForm(
     { ...result.data, quantity },
-    currency as 'USD' | 'EUR'
+    currency as CashDenomination
   )
+  if (row.asset_type === 'cash' && !isStableCash(currency)) {
+    row.amount = frozenFiatUsd(currency, row.quantity, row.unit_price, await getUsdToEurRate())
+  }
   const bookError = await perpSaveError(supabase, user.id, { kind: 'create', row })
   if (bookError) return { ok: false, error: bookError }
 
@@ -178,6 +195,7 @@ export async function createTransactionRecord(
         executed_at: result.data.executed_at,
         notes: `Proceeds from SELL ${result.data.quantity} ${result.data.symbol} @ ${result.data.unit_price}`,
         currency: sellCurrency,
+        amount: frozenFiatUsd(sellCurrency, proceeds, 1, await getUsdToEurRate()),
         user_id: user.id,
       }
       const { error: cashError } = await supabase.from('transactions').insert(cashInsert)
@@ -192,7 +210,7 @@ export async function createTransactionRecord(
     ok: true,
     data: {
       ...result.data,
-      currency: row.currency as 'USD' | 'EUR',
+      currency: row.currency as CashDenomination,
     },
   }
 }
@@ -279,7 +297,7 @@ export async function updateTransaction(
   // verify ownership (defense-in-depth in addition to Supabase RLS)
   const { data: transaction } = await supabase
     .from('transactions')
-    .select('user_id, asset_type, currency, created_at')
+    .select('user_id, asset_type, currency, created_at, quantity, unit_price, amount')
     .eq('id', transactionId)
     .single()
 
@@ -296,11 +314,20 @@ export async function updateTransaction(
     return { error: result.error.flatten().fieldErrors }
   }
 
-  let currency: 'USD' | 'EUR'
+  let currency: CashDenomination
   if (result.data.asset_type === 'future') {
     currency = 'USD'
     if (!futureSymbolAllowed(result.data.symbol)) {
       return { error: 'Symbol is not in the crypto catalog' }
+    }
+  } else if (result.data.asset_type === 'cash') {
+    if (isCashDenomination(result.data.currency)) {
+      currency = result.data.currency
+    } else if (isCashDenomination(transaction.currency)) {
+      currency = transaction.currency
+    } else {
+      const profile = await getCurrentUserProfile()
+      currency = profile?.preferredCurrency || 'USD'
     }
   } else if (transaction.currency === 'USD' || transaction.currency === 'EUR') {
     // Keep the entry currency so a price stays in the currency it was entered in.
@@ -321,6 +348,17 @@ export async function updateTransaction(
     transactionId,
     transaction.created_at ?? null
   )
+  if (row.asset_type === 'cash' && !isStableCash(currency)) {
+    const sameFace =
+      Number(transaction.quantity) === Number(row.quantity) &&
+      Number(transaction.unit_price ?? 1) === Number(row.unit_price ?? 1) &&
+      (transaction.currency || 'USD') === currency &&
+      transaction.amount != null &&
+      Number.isFinite(Number(transaction.amount))
+    row.amount = sameFace
+      ? Number(transaction.amount)
+      : frozenFiatUsd(currency, row.quantity, row.unit_price, await getUsdToEurRate())
+  }
   const bookError = await perpSaveError(supabase, user.id, {
     kind: 'update',
     id: transactionId,

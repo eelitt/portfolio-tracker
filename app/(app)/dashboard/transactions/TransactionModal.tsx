@@ -26,9 +26,12 @@ import type { LedgerAssetType, PositionSide, TransactionAction } from '@/lib/typ
 import { fieldClassName, labelClassName } from './formStyles'
 import type { PreferredCurrency } from '@/lib/userTypes'
 import {
+  CASH_DENOMINATIONS,
   getCurrencySymbol,
+  isCashDenomination,
   unitPriceShownInPreferred,
   unitPriceToStore,
+  type CashDenomination,
 } from '@/lib/currency'
 
 interface TransactionModalProps {
@@ -57,6 +60,7 @@ export default function TransactionModal({
   const [editUnitPrice, setEditUnitPrice] = useState<number>(1)
   const [editPriceBaseline, setEditPriceBaseline] = useState<number>(1)
   const [editExecutedAt, setEditExecutedAt] = useState('')
+  const [heldAs, setHeldAs] = useState<CashDenomination>(preferredCurrency)
   const [fillBlocked, setFillBlocked] = useState(false)
   const onBlockedChange = useCallback((blocked: boolean) => {
     setFillBlocked((prev) => (prev === blocked ? prev : blocked))
@@ -67,6 +71,7 @@ export default function TransactionModal({
     symbol?: string
     action?: TransactionAction
     positionSide?: PositionSide
+    heldAs?: CashDenomination
   }
   const [addPrefill, setAddPrefill] = useState<AddPrefill | null>(null)
   const [addFormKey, setAddFormKey] = useState(0)
@@ -95,6 +100,9 @@ export default function TransactionModal({
       setEditExecutedAt(
         toLocalInput(transaction.executed_at, transaction.asset_type === 'future')
       )
+      setHeldAs(
+        isCashDenomination(transaction.currency) ? transaction.currency : preferredCurrency
+      )
     }
   }, [transaction, preferredCurrency, usdToEurRate])
 
@@ -108,6 +116,7 @@ export default function TransactionModal({
         symbol?: string
         action?: TransactionAction
         position_side?: PositionSide
+        currency?: string
       }>
     ) => {
       const d = e.detail || {}
@@ -118,6 +127,7 @@ export default function TransactionModal({
         symbol: d.symbol,
         action: d.action ?? (isCash ? 'inflow' : 'sell'),
         positionSide: d.position_side,
+        heldAs: isCash && isCashDenomination(d.currency) ? d.currency : undefined,
       })
       setAddFormKey((k) => k + 1)
       setOpen(true)
@@ -258,6 +268,13 @@ export default function TransactionModal({
                     if (newType === 'cash') {
                       setEditAction('inflow')
                       setEditUnitPrice(1)
+                      if (prev !== 'cash') {
+                        setHeldAs(
+                          isCashDenomination(transaction.currency)
+                            ? transaction.currency
+                            : preferredCurrency
+                        )
+                      }
                     } else if (
                       newType === 'future' &&
                       (editAction === 'inflow' || editAction === 'outflow')
@@ -380,7 +397,26 @@ export default function TransactionModal({
             ) : null}
 
             {editAssetType === 'cash' ? (
-              <input type="hidden" name="unit_price" value={editUnitPrice} />
+                <div className="space-y-1.5">
+                  <input type="hidden" name="unit_price" value={editUnitPrice} />
+                  <label htmlFor="edit-held-as" className={labelClassName}>
+                    Held as
+                  </label>
+                  <select
+                    id="edit-held-as"
+                    name="currency"
+                    value={heldAs}
+                    onChange={(e) => setHeldAs(e.target.value as CashDenomination)}
+                    className={fieldClassName}
+                    required
+                  >
+                    {CASH_DENOMINATIONS.map((denomination) => (
+                      <option key={denomination} value={denomination}>
+                        {denomination}
+                      </option>
+                    ))}
+                  </select>
+                </div>
             ) : editAssetType !== 'future' ? (
               <div className="space-y-1.5">
                 <label htmlFor="edit-unit-price" className={labelClassName}>
@@ -467,6 +503,7 @@ export default function TransactionModal({
             initialSymbol={addPrefill?.symbol}
             initialAction={addPrefill?.action}
             initialSide={addPrefill?.positionSide}
+            initialHeldAs={addPrefill?.heldAs}
             preferredCurrency={preferredCurrency}
           />
         )}

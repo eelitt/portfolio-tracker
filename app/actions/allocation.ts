@@ -17,6 +17,7 @@ import {
   type TypeWeightMap,
 } from '@/lib/allocationTargets'
 import { allocationBreakdown } from '@/lib/portfolioAnalyst'
+import { holdingWeight } from '@/lib/types'
 import {
   averageMonthlyUserInflows,
   weightsFromMarketValues,
@@ -244,11 +245,11 @@ export async function getAllocationWorkspace(opts?: {
   }
 
   const returnSlices: ReturnSlice[] = portfolio.enrichedHoldings
-    .filter((h) => (h.asset_type === 'cash' || h.priceAvailable) && h.marketValue > 0)
+    .filter((h) => (h.asset_type === 'cash' || h.priceAvailable) && holdingWeight(h) > 0)
     .map((h) => ({
       symbol: h.symbol,
       assetType: h.asset_type,
-      marketValue: h.marketValue,
+      marketValue: holdingWeight(h),
     }))
 
   return {

@@ -42,10 +42,10 @@ export interface Transaction {
   unit_price: number | null
   executed_at: string
   notes?: string
-  currency?: 'USD' | 'EUR'   // currency in which the unit_price (assets) or quantity (cash) was denominated at entry time
+  currency?: 'USD' | 'EUR' | 'USDT' | 'USDC'   // entry currency of unit_price, or the cash denomination
   /** Set on a future row. Null on stock, ETF, crypto, and cash. */
   position_side?: PositionSide | null
-  /** Margin, funding, or fee on a future row. Null on other asset types. */
+  /** Margin, funding, or fee on a future row. On fiat cash, the dollar value at save time. */
   amount?: number | null
   created_at?: string
 }
@@ -73,6 +73,14 @@ export interface Holding {
  * symbol. In that case market fields are zeroed and must not be treated as
  * a real price of 0 (see portfolio aggregates + holdings UI).
  */
+/** Native stable faces on a cash holding. Fiat is already in preferred currency. */
+export type CashParts = {
+  fiatPreferred: number
+  stables: { currency: 'USDT' | 'USDC'; face: number }[]
+  /** Future margin already included in the holding total. Negative when margin was posted. */
+  marginPreferred: number
+}
+
 export type EnrichedHolding = Holding & {
   currentPrice: number
   marketValue: number
@@ -81,6 +89,19 @@ export type EnrichedHolding = Holding & {
   change24h: number
   position24hChange: number
   priceAvailable: boolean
+  /** Set when a stable face remains, or when margin has moved this Available Cash total. */
+  cashParts?: CashParts
+  /**
+   * Value for the pie and allocation. Cash uses positive fiat plus stable faces
+   * and leaves margin out. Other holdings leave this unset and use market value.
+   */
+  weightValue?: number
+}
+
+/** Pie and allocation value. Non-positive values drop out. */
+export function holdingWeight(h: { marketValue: number; weightValue?: number }): number {
+  const value = h.weightValue ?? h.marketValue
+  return value > 0 ? value : 0
 }
 
 export interface Goal {
