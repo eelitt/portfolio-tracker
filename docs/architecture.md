@@ -154,9 +154,9 @@ POST /api/portfolio-analyst
   parent agent_runs + child runs
 ```
 
-The orchestrator **does not** do portfolio math. Specialists call `getPortfolioData` / tax / news the same way the UI does.
+The orchestrator does not do portfolio math. Specialists call `getPortfolioData` / tax / news the same way the UI does. Routing and the trust checks on each `invoke_*` tool are in [AI_orchestrator_architecture.md](./AI_orchestrator_architecture.md). How each specialist is built is in [AI_agent_architecture.md](./AI_agent_architecture.md). Prompt shape, registry enforcement, and call structure are in [AI_runtime.md](./AI_runtime.md).
 
-`lib/aiTools/registry.ts` is the contract: `id`, owner, sideEffect (`read` | `staging` | `write` | `external` | `storage`), `requiresConfirmation`, permissions, `failureModes`. Tools return a `failureMode` mapped to `ask_user` / `fallback_simpler` / `retry_same` / `abort`.
+`lib/aiTools/registry.ts` is the contract: `id`, owner, sideEffect (`read` | `staging` | `write` | `external` | `storage`), `requiresConfirmation`, and `failureModes`. `permissions`, `costTier`, and `rateLimitKey` are labels on that row. What the execute path actually checks is in [AI_runtime.md](./AI_runtime.md). Tools return a `failureMode` mapped to `ask_user` / `fallback_simpler` / `retry_same` / `abort`.
 
 **Progressive disclosure:** same engines in UI and chat (analysis popover, news popovers, tax modal, Plan sidebar). Chat is another client, not another calculator.
 
@@ -234,6 +234,9 @@ They are **not** supposed to prove RLS. User A vs user B is a policy + integrati
 | Analyst math | `lib/portfolioAnalyst/` |
 | Tool registry / confirm / dry-run / context | `lib/aiTools/` |
 | Orchestrator | `app/actions/ai/orchestrator/` |
+| Orchestrator design | `AI_orchestrator_architecture.md` |
+| Specialist design | `AI_agent_architecture.md` |
+| AI prompts, registry, call shape | `AI_runtime.md` |
 | Analyst, news, analysis, tax, CSV agents | `app/actions/ai/` (`portfolio-analyst`, `holding-news`, `portfolio-insights`, `tax`, `csv-import`) |
 | AI insights UI | `app/(app)/ai-insights/` |
 | Child-agent runs | `lib/agents/` |
