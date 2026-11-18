@@ -2,17 +2,20 @@
  * Bounded user context pack for orchestrator/analyst (short-term + light long-term).
  * Prefer existing tables: profiles, goals, user_ai_insights.
  * Chat thread is a separate rolling blob (not injected here; the POST already sends messages).
+ * No portfolio totals: those come from analyst tools on the turn that needs them.
  */
 
 import 'server-only'
 
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUserProfile } from '@/lib/user'
-import { getPortfolioData } from '@/lib/portfolioData'
 import { getLatestAIInsight } from '@/app/actions/ai/storage'
 import { HOLDING_NEWS_FEATURE_TYPE } from '@/app/actions/ai/holding-news/newsUtils'
 import type { UserContextPack } from './types'
 import { formatContributionContext } from '@/lib/allocationTargets'
+import { formatUserContextForPrompt } from './formatUserContext'
+
+export { formatUserContextForPrompt }
 
 const MAX_GOALS = 5
 const MAX_ANALYSIS_BULLETS = 6
@@ -88,22 +91,6 @@ export async function buildUserContext(
     lastNews = { asOf, symbolCount }
   }
 
-  let portfolioOneLiner: string | null = null
-  try {
-    const data = await getPortfolioData()
-    if (!data.error && data.totalMarketValue > 0) {
-      const top = [...data.enrichedHoldings]
-        .filter((h) => h.asset_type !== 'cash' && (h.marketValue ?? 0) > 0)
-        .sort((a, b) => (b.marketValue ?? 0) - (a.marketValue ?? 0))
-        .slice(0, 3)
-        .map((h) => h.symbol)
-      const topStr = top.length ? `; top: ${top.join(', ')}` : ''
-      portfolioOneLiner = `~${Math.round(data.totalMarketValue)} ${data.preferredCurrency} MV across ${data.holdingsCount} holdings${topStr}`
-    }
-  } catch {
-    portfolioOneLiner = null
-  }
-
   const bits: string[] = []
   if (profile?.ageBand) bits.push(profile.ageBand.replace('_', '–'))
   if (profile?.horizon) bits.push(profile.horizon.replace('_', '–'))
@@ -141,71 +128,7 @@ export async function buildUserContext(
     goals,
     lastAnalysis,
     lastNews,
-    portfolioOneLiner,
     investorOneLiner,
     targetOneLiner,
   }
-}
-
-/** Compact markdown block for system prompt injection (token-bounded). */
-export function formatUserContextForPrompt(pack: UserContextPack): string {
-  const lines: string[] = [
-    '## User context (trusted server pack — do not invent beyond this + tools)',
-    `- Preferred currency: **${pack.preferredCurrency}**`,
-  ]
-
-  if (pack.portfolioOneLiner) {
-    lines.push(`- Portfolio snapshot: ${pack.portfolioOneLiner}`)
-  }
-  if (pack.investorOneLiner) {
-    lines.push(`- Investor: ${pack.investorOneLiner}`)
-  } else {
-    lines.push('- Investor profile: not set')
-  }
-  if (pack.targetOneLiner) {
-    lines.push(`- ${pack.targetOneLiner}`)
-  } else {
-    lines.push('- Target allocation: not set')
-  }
-
-  if (pack.goals.length > 0) {
-    lines.push('- Goals:')
-    for (const g of pack.goals) {
-      const done = g.isCompleted ? 'done' : 'open'
-      const date = g.targetDate ? `, date ${g.targetDate}` : ''
-      const pmt =
-        g.plannedMonthly != null ? `, planned ${g.plannedMonthly}/mo` : ''
-      lines.push(`  • ${g.name} (target ${g.targetAmount}${date}${pmt}, ${done})`)
-    }
-  } else {
-    lines.push('- Goals: none set')
-  }
-
-  if (pack.lastAnalysis) {
-    lines.push(
-      `- Last portfolio analysis (${pack.lastAnalysis.asOf ?? 'unknown time'}):`
-    )
-    for (const b of pack.lastAnalysis.bullets) {
-      lines.push(`  • ${b}`)
-    }
-  } else {
-    lines.push('- Last portfolio analysis: none stored yet')
-  }
-
-  if (pack.lastNews) {
-    lines.push(
-      `- Last holding-news package: ${pack.lastNews.symbolCount} symbol(s), as of ${pack.lastNews.asOf ?? 'unknown'}`
-    )
-  } else {
-    lines.push('- Last holding-news package: none stored yet')
-  }
-
-  lines.push(
-    '- Money writes: only via prepare → user confirm → confirm_transaction (never invent trades).'
-  )
-  lines.push(
-    '- Watchlist add/remove: execute on that turn (no second confirm); never invent tickers.'
-  )
-
-  return lines.join('\n')
 }

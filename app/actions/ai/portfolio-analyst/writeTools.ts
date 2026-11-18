@@ -39,7 +39,7 @@ export function createWriteTools(ctx: AnalystToolCtx) {
         sourceText: z
           .string()
           .min(1)
-          .describe('User wording (include follow-ups that specify €/$ or ticker)'),
+          .describe('User wording (include follow-ups that specify €, $, USDT, USDC, or a ticker)'),
         symbol: z.string().optional().describe('Ticker e.g. LINK, ETH, AAPL'),
         asset_type: assetTypeSchema.optional(),
         action: z.enum(['buy', 'sell', 'inflow', 'outflow']).optional(),
@@ -53,7 +53,10 @@ export function createWriteTools(ctx: AnalystToolCtx) {
           .optional()
           .describe('ISO date/time; convert "last Friday" yourself; omit to assume now'),
         notes: z.string().optional(),
-        currency: z.enum(['USD', 'EUR']).optional().describe('Ignored if sourceText has €/$'),
+        currency: z
+          .enum(['USD', 'EUR', 'USDT', 'USDC'])
+          .optional()
+          .describe('Ignored when sourceText names the currency. USDT and USDC are only for cash.'),
       }),
       execute: async (args) => {
         const result = validateTransactionDraft({

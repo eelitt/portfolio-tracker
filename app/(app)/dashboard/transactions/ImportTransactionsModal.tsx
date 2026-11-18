@@ -31,16 +31,22 @@ import type { TransactionFormData } from '@/lib/schemas'
 import { transactionSchema } from '@/lib/schemas'
 import { fromLocalInput, toLocalInput } from './FutureOrderFields'
 import { historyActionLabel } from './transactionUtils'
+import { CASH_DENOMINATIONS, formatCurrency, formatQuantity, isCashDenomination, isStableCash } from '@/lib/currency'
+import type { PreferredCurrency } from '@/lib/userTypes'
 
 interface ImportTransactionsModalProps {
   /** Optional custom trigger element (e.g. a button). If omitted, the modal can be opened via the 'open-csv-import' custom event. */
   trigger?: React.ReactNode
+  preferredCurrency?: PreferredCurrency
 }
 
 /** Local alias for the shape we work with in the preview table. */
 type PreviewTx = TransactionFormData
 
-export default function ImportTransactionsModal({ trigger }: ImportTransactionsModalProps) {
+export default function ImportTransactionsModal({
+  trigger,
+  preferredCurrency = 'USD',
+}: ImportTransactionsModalProps) {
   // Controls visibility of the dialog
   const [open, setOpen] = useState(false)
 
@@ -221,6 +227,7 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
           row.unit_price = 1
           row.amount = null
           row.position_side = null
+          if (!isCashDenomination(row.currency)) row.currency = preferredCurrency
         } else if (nextType === 'future') {
           if (row.action === 'inflow' || row.action === 'outflow') row.action = 'buy'
           row.position_side = row.position_side === 'short' ? 'short' : 'long'
@@ -229,6 +236,7 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
           if (row.action !== 'buy' && row.action !== 'sell') row.action = 'buy'
           row.amount = null
           row.position_side = null
+          if (isStableCash(row.currency)) row.currency = 'USD'
         }
       } else if (field === 'action') {
         row.action = value as TransactionAction
@@ -249,6 +257,8 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
         row.executed_at = value.includes('T') ? fromLocalInput(value) : value
       } else if (field === 'symbol' || field === 'notes') {
         row[field] = value
+      } else if (field === 'currency' && isCashDenomination(value)) {
+        row.currency = value
       }
 
       next[index] = row
@@ -555,7 +565,29 @@ export default function ImportTransactionsModal({ trigger }: ImportTransactionsM
                           {/* Unit price — hidden / forced to 1 for cash rows */}
                           <td className="px-2 py-1.5 text-right">
                             {tx.asset_type === 'cash' || (tx.asset_type === 'future' && wallet) ? (
-                              <span className="text-muted-foreground text-xs">{tx.asset_type === 'cash' ? '1' : '—'}</span>
+                              tx.asset_type === 'cash' ? (
+                                <span className="inline-flex flex-col items-end gap-1">
+                                  <span className="text-muted-foreground text-xs">
+                                    {isStableCash(tx.currency)
+                                      ? formatQuantity(1)
+                                      : formatCurrency(1, preferredCurrency, 1)}
+                                  </span>
+                                  <select
+                                    aria-label="Held as"
+                                    value={isCashDenomination(tx.currency) ? tx.currency : preferredCurrency}
+                                    onChange={(e) => updatePreviewRow(index, 'currency', e.target.value)}
+                                    className="border p-1 rounded text-xs"
+                                  >
+                                    {CASH_DENOMINATIONS.map((denomination) => (
+                                      <option key={denomination} value={denomination}>
+                                        {denomination}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">—</span>
+                              )
                             ) : (
                               <input
                                 type="number"

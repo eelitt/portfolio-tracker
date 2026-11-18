@@ -327,7 +327,7 @@ export default function Navbar({
       </div>
 
       {/* Mounted for event-driven open from dropdown + internal dialog state */}
-      <ImportTransactionsModal />
+      <ImportTransactionsModal preferredCurrency={currentCurrency} />
       <SettingsModal
         open={settingsOpen}
         onOpenChange={setSettingsOpen}

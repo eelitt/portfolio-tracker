@@ -5,6 +5,7 @@
 'use client'
 
 import type { AgentRunRow } from '@/lib/agentObservability'
+import { readOrchestratorRoute } from '@/lib/agentObservability/routeMeta'
 import { format } from 'date-fns'
 
 function statusClass(status: string) {
@@ -107,6 +108,10 @@ export function AgentRunDetail({
     )
   }
 
+  const route = readOrchestratorRoute(run.meta?.route)
+  const asked =
+    typeof run.meta?.user_text === 'string' ? run.meta.user_text : ''
+
   return (
     <div className="space-y-2 text-xs overflow-y-auto min-h-0 flex-1 p-1">
       <div className="grid grid-cols-2 gap-x-3 gap-y-1">
@@ -139,6 +144,43 @@ export function AgentRunDetail({
           </>
         ) : null}
       </div>
+
+      {asked ? (
+        <div>
+          <h4 className="font-medium text-muted-foreground pt-1">Asked</h4>
+          <p className="break-words whitespace-pre-wrap">{asked}</p>
+        </div>
+      ) : null}
+
+      {route.length > 0 ? (
+        <div>
+          <h4 className="font-medium text-muted-foreground pt-1">Route</h4>
+          <ol className="mt-1 list-decimal space-y-1 pl-4">
+            {route.map((step, i) => {
+              const detail = [
+                step.task,
+                step.universe,
+                step.mode,
+                step.forceRefresh ? 'refresh' : undefined,
+                step.symbols?.join(', '),
+              ]
+                .filter(Boolean)
+                .join(' · ')
+              return (
+                <li key={`${step.name}-${i}`}>
+                  <span className="font-mono">{step.name}</span>{' '}
+                  <span className={step.ok ? 'text-emerald-400' : 'text-red-400'}>
+                    {step.ok ? 'ok' : 'fail'}
+                  </span>
+                  {detail ? (
+                    <span className="text-muted-foreground"> · {detail}</span>
+                  ) : null}
+                </li>
+              )
+            })}
+          </ol>
+        </div>
+      ) : null}
 
       {childrenRuns.length > 0 ? (
         <div>

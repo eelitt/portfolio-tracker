@@ -73,7 +73,7 @@ export async function parseCsvWithAI(
 - Put a fee charged on a fill in fee. Do not also emit a second fee row.
 - A later explicit margin change is margin_add or margin_remove. A transfer between the spot wallet and the futures wallet is skip wallet_transfer, not margin.
 - A liquidation row is skip liquidation. An inverse contract is skip inverse. An option is skip option.
-- Do not invent prices, sizes, or margin. Cash rows use asset_type cash, action inflow or outflow, and unit_price 1.
+- Do not invent prices, sizes, or margin. Cash rows use asset_type cash, action inflow or outflow, and unit_price 1. Cash currency is USD, EUR, USDT, or USDC. USDT and USDC are only for cash. Any other currency is USD.
 - Warnings name unmapped columns. Realized profit is not a transaction.`,
       prompt: `Parse the following CSV export from an exchange or broker into transactions.
 

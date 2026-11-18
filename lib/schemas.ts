@@ -332,7 +332,7 @@ export const csvAiRowSchema = z.object({
   position_side: z.enum(['long', 'short']).nullable().optional(),
   executed_at: z.string(),
   notes: z.string().nullable().optional(),
-  currency: z.enum(['USD', 'EUR']).nullable().optional(),
+  currency: z.enum(['USD', 'EUR', 'USDT', 'USDC']).nullable().optional(),
   fee: z.number().nullable().optional(),
   realized_pnl: z.number().nullable().optional(),
   skip: z.enum(['liquidation', 'inverse', 'option', 'wallet_transfer']).nullable().optional(),

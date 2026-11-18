@@ -63,21 +63,20 @@ In that mode the news tool forces `forceRefresh` off, and the analyst and analys
 
 ### User context pack
 
-`buildUserContext` in `lib/aiTools/buildUserContext.ts` builds a short trusted block for the system prompt:
+`buildUserContext` in `lib/aiTools/buildUserContext.ts` loads the rows. `formatUserContextForPrompt` in `lib/aiTools/formatUserContext.ts` turns them into the system-prompt block:
 
 - Preferred currency.
-- A one-line market value, holding count, and top symbols, from `getPortfolioData`.
 - Investor profile bits already on `profiles` (age band, horizon, risk, contribution band).
 - Saved asset-type target weights, if a policy exists.
 - Up to five goals.
 - The last stored portfolio-analysis bullets (up to six).
 - When the last holding-news package was stored, and for how many symbols.
 
-The pack does not include the chat thread. The POST already sends messages. It does not include watchlist news. It is a hint so the model can route. Figures the user is meant to trust still come from specialist tools on that turn.
+The pack does not include the chat thread, a market value, a holding count, or top symbols. The POST already sends messages. It does not include watchlist news. It is a hint so the model can route. Figures the user is meant to trust still come from specialist tools on that turn. The builder does not call `getPortfolioData`.
 
 ### Parent run
 
-`startAgentRun` writes a parent `agent_runs` row before streaming. `onStepFinish` records each `invoke_*` result. `onFinish` stores token usage, duration, step count, and the invoked tool names. A stream error finishes the row as `error`. Recording is best-effort and must not fail the user's answer. Child rows are started inside each specialist (`lib/agents/runChildAgent.ts`).
+`startAgentRun` writes a parent `agent_runs` row before streaming. `onStepFinish` records each `invoke_*` result. `onFinish` stores token usage, duration, step count, and the invoked tool names. It also stores `meta.user_text` (the sanitized question, at most 500 characters) and `meta.route` (invoke order, with task, universe, mode, refresh, and symbols). Specialist briefs are not copied into `meta.route`. A stream error finishes the row as `error` and still writes those two fields. The admin run detail shows them as Asked and Route. Recording is best-effort and must not fail the user's answer. Child rows are started inside each specialist (`lib/agents/runChildAgent.ts`).
 
 ## Routing
 

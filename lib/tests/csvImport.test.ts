@@ -158,6 +158,45 @@ describe('normalizeCsvImport', () => {
 })
 
 describe('planImport', () => {
+  it('stores cash USDT and EUR, and stores a stock marked USDT as USD', () => {
+    const usdt: TransactionFormData = {
+      symbol: 'Available Cash',
+      asset_type: 'cash',
+      action: 'inflow',
+      quantity: 50,
+      unit_price: 1,
+      executed_at: '2026-01-02T00:00:00Z',
+      currency: 'USDT',
+    }
+    const eur: TransactionFormData = {
+      symbol: 'Available Cash',
+      asset_type: 'cash',
+      action: 'inflow',
+      quantity: 20,
+      unit_price: 1,
+      executed_at: '2026-01-03T00:00:00Z',
+      currency: 'EUR',
+    }
+    const stock: TransactionFormData = {
+      symbol: 'AAPL',
+      asset_type: 'stock',
+      action: 'buy',
+      quantity: 1,
+      unit_price: 10,
+      executed_at: '2026-01-04T00:00:00Z',
+      currency: 'USDT',
+    }
+    const rows = savedRows(plan([], [usdt, eur, stock]).steps)
+    expect(rows.find((row) => row.currency === 'USDT')).toMatchObject({
+      asset_type: 'cash',
+      quantity: 50,
+      amount: null,
+    })
+    expect(rows.find((row) => row.currency === 'EUR')).toMatchObject({ quantity: 20 })
+    expect(rows.find((row) => row.symbol === 'AAPL')?.currency).toBe('USD')
+  })
+
+
   it('saves an open, its fee, and funding, and skips an oversize reduce', () => {
     const open = future({ action: 'buy', executed_at: '2026-01-02T01:00:00Z' })
     const fee = future({

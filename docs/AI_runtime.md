@@ -55,7 +55,7 @@ Insights (`generatePortfolioInsights`) and CSV import (`parseCsvWithAI`) call `g
 
 Prompts are the policy the registry cannot express: when to call, what to refuse, and how to phrase the answer. They are not pasted here. The headings below are the sections in source order.
 
-**Orchestrator** (`app/actions/ai/orchestrator/prompt.ts`): role, the four specialists, routing rules, trust boundary, answer style, disclaimers, refusal template. Runtime additions are the user-context block and, when active, the dry-run block. Those are appended in the route, not stored in the prompt constant.
+**Orchestrator** (`app/actions/ai/orchestrator/prompt.ts`): role, the four specialists, routing rules, trust boundary, answer style, disclaimers, refusal template. The route appends the user-context block from `formatUserContextForPrompt` (`lib/aiTools/formatUserContext.ts`), and a dry-run block when that mode is on. The block is currency, investor profile, target mix, goals, and whether a stored analysis or holding-news package exists. It has no market value, holding count, or top symbols. `buildUserContext` loads those rows and does not call `getPortfolioData`.
 
 **Analyst** (`app/actions/ai/portfolio-analyst/prompt.ts`): role, trust boundary, in-scope list, out-of-scope list, futures read rules, tool rules, the ten logging steps, watchlist steps, refusal template. `buildAnalystNewsContextBlock` is appended only when the server parsed a news handoff. It is empty otherwise.
 
@@ -111,7 +111,7 @@ Auth is the route: `getUser()`, `profiles.access_to_app`, and the user-scoped Su
 
 **Redaction.** Orchestrator tool results go through `redactForStorage` before they return to the model. The same helper truncates `agent_runs` payloads. Strings stop at 500 characters, depth at 4, arrays at 20. Keys `notes`, `sourceText`, `email`, `password`, `token`, and `authorization` are removed. The model does not see the raw draft notes on the way back up.
 
-**Runs.** `startChildAgentRun` and `finishChildAgentRun` write the child row and swallow their own errors. The parent row is the orchestrator `streamText` in the route. Eval starts its own run with `feature` `portfolio_analyst` and does not go through the route.
+**Runs.** `startChildAgentRun` and `finishChildAgentRun` write the child row and swallow their own errors. The parent row is the orchestrator `streamText` in the route. That finish also stores `meta.user_text` (the question, 500 characters) and `meta.route` (which `invoke_*` ran, in order, with task or universe). The admin Runs detail shows both. Eval starts its own run with `feature` `portfolio_analyst` and does not go through the route.
 
 **Eval.** `lib/agentEval/runSuite.ts` calls `generateText` with the analyst system prompt, the fixture prompt as the only user message, and `createPortfolioAnalystTools` in `evalMode`. Temperature is 0.1. `maxSteps` is 5. The portfolio is the fixture, not the admin's book. Confirm is scored without a stored draft and without an insert. This does not exercise `invoke_news_agent`, `invoke_tax_agent`, or the orchestrator prompt.
 
@@ -130,10 +130,6 @@ The raw responses client is the exception. It exists because the SDK tool call f
 ## Gaps
 
 These are observations. None of them are scheduled work.
-
-**Orchestrator routing is untested.** The eval suite never sends a prompt through `ORCHESTRATOR_SYSTEM_PROMPT`. A wrong specialist, a skipped news call, or a made-up `newsContext` would not fail a fixture. The useful test is a short suite that stubs the four `invoke_*` executors with fixed briefs and asserts which names ran. Running all four live specialists for every case is a poor default: it is slow, and news and insights write `user_ai_insights` rows.
-
-**The context pack can be quoted as a balance.** `buildUserContext` adds a rounded market-value line (`~N currency MV across K holdings`). The orchestrator is told not to invent figures, and it is also handed a figure before any tool call. A careful answer still comes from `get_portfolio_summary`. The pack should stay routing context: currency, goals, target mix, and whether stored analysis or news exists. The value belongs on the analyst tool.
 
 **Registry labels look like gates.** `permissions`, `costTier`, and `rateLimitKey` do not run. Leave them as documentation on the row until a second caller needs one shared check. A permission framework would duplicate the route auth and the three limiters that already exist.
 

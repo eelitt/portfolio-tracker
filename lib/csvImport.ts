@@ -27,6 +27,18 @@ const SKIP_WARNINGS = {
   wallet_transfer: 'A wallet transfer was not imported as margin',
 } as const
 
+/** Cash USDT and USDC stay. Anything else that is not EUR is a dollar face. A missing currency uses the caller's default. */
+export function importCurrency(
+  assetType: string,
+  currency: string | null | undefined,
+  whenMissing: 'USD' | 'EUR'
+): 'USD' | 'EUR' | 'USDT' | 'USDC' {
+  if (assetType === 'future') return 'USD'
+  if (assetType === 'cash' && isStableCash(currency)) return currency
+  if (!currency) return whenMissing
+  return currency === 'EUR' ? 'EUR' : 'USD'
+}
+
 function catalogSymbol(symbol: string): string {
   const upper = symbol.trim().toUpperCase()
   if (!upper.endsWith('USDT')) return upper
@@ -81,7 +93,10 @@ export function normalizeCsvImport(input: CsvAiParse): CsvParsedTransactions {
       position_side: future ? row.position_side ?? null : null,
       executed_at: row.executed_at,
       notes: row.notes ?? undefined,
-      currency: future ? 'USD' : row.currency ?? undefined,
+      currency:
+        row.currency == null && !future
+          ? undefined
+          : importCurrency(row.asset_type, row.currency, 'USD'),
     }
     transactions.push(fill)
 
@@ -166,7 +181,12 @@ export function planImport(input: {
   const steps: ImportStep[] = []
 
   for (const item of ordered) {
-    const parsed = transactionSchema.safeParse(item.row)
+    const currency = importCurrency(
+      item.row.asset_type,
+      item.row.currency,
+      input.defaultCurrency
+    )
+    const parsed = transactionSchema.safeParse({ ...item.row, currency })
     if (!parsed.success) {
       steps.push({
         ok: false,
@@ -191,10 +211,6 @@ export function planImport(input: {
       continue
     }
 
-    const chosen =
-      data.asset_type === 'future' ? 'USD' : data.currency || input.defaultCurrency
-    // Import stays on USD or EUR. USDT and USDC are not written from a CSV row.
-    const currency: 'USD' | 'EUR' = chosen === 'EUR' ? 'EUR' : 'USD'
     const row = saveRowFromForm(data, currency, `import:${item.index}`)
     if (row.asset_type === 'cash' && !isStableCash(currency)) {
       row.amount = frozenFiatUsd(currency, row.quantity, row.unit_price, input.usdToEurRate)

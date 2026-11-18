@@ -18,7 +18,11 @@ import {
   finishAgentRun,
 } from '@/lib/agentObservability/recordRun'
 import { toolRecordsFromStepResults } from '@/lib/agentObservability'
-import type { AgentToolRecord } from '@/lib/agentObservability'
+import type { AgentRunMeta, AgentToolRecord } from '@/lib/agentObservability'
+import {
+  buildOrchestratorRoute,
+  clipOrchestratorUserText,
+} from '@/lib/agentObservability/routeMeta'
 import {
   buildUserContext,
   formatUserContextForPrompt,
@@ -31,6 +35,21 @@ export const maxDuration = 180
 
 const MODEL_ID = 'grok-4.3'
 const FEATURE = 'portfolio_orchestrator'
+
+function orchestratorRunMeta(args: {
+  dryRun: boolean
+  lastUserText: string
+  tools: AgentToolRecord[]
+}): AgentRunMeta {
+  const userText = clipOrchestratorUserText(args.lastUserText)
+  return {
+    agent_role: 'orchestrator',
+    invoked_agents: args.tools.map((t) => t.name),
+    route: buildOrchestratorRoute(args.tools),
+    ...(args.dryRun ? { dry_run: true } : {}),
+    ...(userText ? { user_text: userText } : {}),
+  }
+}
 
 export async function POST(req: Request) {
   try {
@@ -181,11 +200,11 @@ export async function POST(req: Request) {
           durationMs: Date.now() - startedAt,
           stepCount,
           agentRole: 'orchestrator',
-          meta: {
-            agent_role: 'orchestrator',
-            invoked_agents: collectedTools.map((t) => t.name),
-            ...(dryRun ? { dry_run: true } : {}),
-          },
+          meta: orchestratorRunMeta({
+            dryRun,
+            lastUserText: sanitized.lastUserText,
+            tools: collectedTools,
+          }),
         })
       },
       onError: ({ error }) => {
@@ -202,7 +221,11 @@ export async function POST(req: Request) {
             stepCount,
             errorSummary: `${name}: ${msg}`.slice(0, 500),
             agentRole: 'orchestrator',
-            meta: dryRun ? { dry_run: true } : undefined,
+            meta: orchestratorRunMeta({
+              dryRun,
+              lastUserText: sanitized.lastUserText,
+              tools: collectedTools,
+            }),
           })
         }
       },

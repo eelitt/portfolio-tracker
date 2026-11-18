@@ -26,6 +26,17 @@ describe('detectCurrencyFromText', () => {
   it('returns ambiguous when both present', () => {
     expect(detectCurrencyFromText('paid $100 or €90')).toBe('ambiguous')
   })
+
+  it('detects USDT, tether, and USDC', () => {
+    expect(detectCurrencyFromText('deposit 50 USDT')).toBe('USDT')
+    expect(detectCurrencyFromText('deposit 50 tether')).toBe('USDT')
+    expect(detectCurrencyFromText('deposit 50 USDC')).toBe('USDC')
+  })
+
+  it('is ambiguous when a stable sits next to a fiat marker', () => {
+    expect(detectCurrencyFromText('deposit 50 USDT or $40')).toBe('ambiguous')
+    expect(detectCurrencyFromText('Bought 50 USDT at $1')).toBe('ambiguous')
+  })
 })
 
 describe('resolveCatalogSymbol', () => {
@@ -144,6 +155,81 @@ describe('validateTransactionDraft', () => {
     })
     expect(r.status).toBe('ready')
     expect(r.warnings.some((w) => w.toLowerCase().includes('date'))).toBe(true)
+  })
+
+  it('accepts an Available Cash USDT inflow', () => {
+    const r = validateTransactionDraft({
+      sourceText: 'deposited 50 USDT cash',
+      asset_type: 'cash',
+      action: 'inflow',
+      quantity: 50,
+      unit_price: 1,
+    })
+    expect(r.status).toBe('ready')
+    expect(r.draft?.currency).toBe('USDT')
+    expect(r.draft?.symbol).toBe('Available Cash')
+    expect(r.draft?.unit_price).toBe(1)
+    expect(r.summary).toBe(`INFLOW 50.00 USDT cash at ${r.draft?.executed_at}`)
+    expect(r.summary?.includes('$')).toBe(false)
+  })
+
+  it('treats tether as USDT cash and USDC as its own cash denomination', () => {
+    const tether = validateTransactionDraft({
+      sourceText: 'add 25 tether to available cash',
+      asset_type: 'cash',
+      action: 'inflow',
+      quantity: 25,
+    })
+    expect(tether.status).toBe('ready')
+    expect(tether.draft?.currency).toBe('USDT')
+    expect(tether.draft?.asset_type).toBe('cash')
+
+    const usdc = validateTransactionDraft({
+      sourceText: 'outflow 10 USDC',
+      asset_type: 'cash',
+      action: 'outflow',
+      quantity: 10,
+    })
+    expect(usdc.draft?.currency).toBe('USDC')
+  })
+
+  it('rejects mixed fiat and stable wording on cash', () => {
+    const r = validateTransactionDraft({
+      sourceText: 'deposit $50 or 50 USDT',
+      asset_type: 'cash',
+      action: 'inflow',
+      quantity: 50,
+    })
+    expect(r.status).toBe('invalid')
+    expect(r.errors.some((e) => e.toLowerCase().includes('only one currency'))).toBe(true)
+  })
+
+  it('keeps a catalog USDT buy in dollars when the price says $', () => {
+    const r = validateTransactionDraft({
+      sourceText: 'Bought 50 USDT at $1',
+      symbol: 'USDT',
+      asset_type: 'crypto',
+      action: 'buy',
+      quantity: 50,
+      unit_price: 1,
+    })
+    expect(r.status).toBe('ready')
+    expect(r.draft?.symbol).toBe('USDT')
+    expect(r.draft?.currency).toBe('USD')
+    expect(r.draft?.asset_type).toBe('crypto')
+  })
+
+  it('does not treat a stable ticker as the price currency of a coin', () => {
+    const r = validateTransactionDraft({
+      sourceText: 'Bought 1 ETH in USDT',
+      symbol: 'ETH',
+      asset_type: 'crypto',
+      action: 'buy',
+      quantity: 1,
+      unit_price: 3180,
+    })
+    expect(r.status).toBe('incomplete')
+    expect(r.missing).toContain('currency')
   })
 
   it('currency from text overrides wrong model currency', () => {

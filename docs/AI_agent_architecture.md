@@ -104,7 +104,7 @@ Dry-run does not call the action's write path. The agent reads the stored row an
 
 **How it is built.** `generateObject` on xAI (`grok-4.3` in that file) over a truncated CSV (50_000 characters). The prompt tells it to keep clock times, uppercase symbols, map a USD-M pair onto the catalog coin, and mark perpetuals, funding, fees, and margin as `future`. It must not invent prices, sizes, or margin. Liquidations, inverse contracts, and options are skips. The client counts rows before the call. The server counts again. The same 60-second `last_ai_call_at` cooldown as insights applies. Admins skip it.
 
-The user reviews the parsed rows. Persistence is `importTransactions` in `app/actions/transactions.ts`, after the normal transaction validation. A parsed row is not a booked row.
+The user reviews the parsed rows. A cash row can be USD, EUR, USDT, or USDC. The preview Held as select shows that denomination and can change it before save. Any other non-EUR currency is stored as USD. Persistence is `importTransactions` in `app/actions/transactions.ts`, after the normal transaction validation. A parsed row is not a booked row.
 
 ## Shared storage
 
@@ -123,9 +123,9 @@ The user reviews the parsed rows. Persistence is `importTransactions` in `app/ac
 
 ## Observability and eval
 
-`lib/agentObservability/` records runs, redacts tool payloads, prices tokens in `cost.ts`, and scores eval cases. Admin reads go through `app/actions/agentObservability.ts`. The parent orchestrator row lists invoked specialists. Child rows point at `parent_run_id`.
+`lib/agentObservability/` records runs, redacts tool payloads, prices tokens in `cost.ts`, and scores eval cases. Admin reads go through `app/actions/agentObservability.ts`. The parent orchestrator row lists invoked specialists and stores `meta.user_text` plus `meta.route`. The admin detail shows those as Asked and Route. Child rows point at `parent_run_id`.
 
-The live eval suite is `lib/agentEval/runSuite.ts`, started from `app/api/admin/agent-eval/route.ts` for an admin. It calls the Portfolio Analyst prompt and tools directly, not the orchestrator. Ea ch fixture injects a portfolio (`evalMode`). Confirm does not require a stored draft and does not write a real transaction. Dry-run fixtures set `dryRun`. Scores are pure checks in `lib/agentObservability/score.ts` over the tool trace. Fixtures livein `lib/agentEval/fixtures/`.
+The live eval suite is `lib/agentEval/runSuite.ts`, started from `app/api/admin/agent-eval/route.ts` for an admin. It calls the Portfolio Analyst prompt and tools directly, not the orchestrator. Each fixture injects a portfolio (`evalMode`). Confirm does not require a stored draft and does not write a real transaction. Dry-run fixtures set `dryRun`. Scores are pure checks in `lib/agentObservability/score.ts` over the tool trace. Fixtures live in `lib/agentEval/fixtures/`.
 
 ## Failure shape
 

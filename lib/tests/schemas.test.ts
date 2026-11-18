@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   changePasswordSchema,
+  csvAiRowSchema,
   csvParsedTransactionsSchema,
   goalSchema,
   transactionSchema,
@@ -112,6 +113,29 @@ describe('transactionSchema', () => {
         executed_at: '2026-01-02T00:00:00Z',
       }).success
     ).toBe(false)
+  })
+
+  it('lets the CSV model name USDT on cash and on a stock row', () => {
+    const cash = csvAiRowSchema.safeParse({
+      symbol: 'Available Cash',
+      asset_type: 'cash',
+      action: 'inflow',
+      quantity: 50,
+      unit_price: 1,
+      executed_at: '2026-01-02T00:00:00Z',
+      currency: 'USDT',
+    })
+    expect(cash.success).toBe(true)
+    const stock = csvAiRowSchema.safeParse({
+      symbol: 'AAPL',
+      asset_type: 'stock',
+      action: 'buy',
+      quantity: 1,
+      unit_price: 10,
+      executed_at: '2026-01-02T00:00:00Z',
+      currency: 'USDC',
+    })
+    expect(stock.success).toBe(true)
   })
 
   it('accepts USDT cash and rejects USDT on a stock', () => {

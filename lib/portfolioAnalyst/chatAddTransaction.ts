@@ -15,24 +15,47 @@ import type {
 const CASH_SYMBOL = 'Available Cash'
 
 // ---------------------------------------------------------------------------
-// Currency (from user text — € / $ / USD / EUR)
+// Currency (from user text — € / $ / USD / EUR / USDT / USDC)
 // ---------------------------------------------------------------------------
 
 const EUR_RE = /(?:€|\beur\b|\beuro\b|\beuros\b)/i
 const USD_RE = /(?:\$|\busd\b|\bdollar\b|\bdollars\b)/i
+const USDT_RE = /(?:\busdt\b|\btether\b)/i
+const USDC_RE = /\busdc\b/i
+
+function markersIn(text: string): CurrencyCode[] {
+  const found: CurrencyCode[] = []
+  if (EUR_RE.test(text)) found.push('EUR')
+  if (USD_RE.test(text)) found.push('USD')
+  if (USDT_RE.test(text)) found.push('USDT')
+  if (USDC_RE.test(text)) found.push('USDC')
+  return found
+}
 
 /**
- * Detect explicit fiat currency markers in free text.
- * Returns null if none; 'ambiguous' if both euro and dollar markers appear.
+ * Detect an explicit currency in free text.
+ * Returns null if none; 'ambiguous' if more than one marker appears.
+ * USDT includes the word tether. A ticker next to € or $ is ambiguous here.
  */
 export function detectCurrencyFromText(text: string): CurrencyCode | 'ambiguous' | null {
   if (!text || !text.trim()) return null
-  const hasEur = EUR_RE.test(text)
-  const hasUsd = USD_RE.test(text)
-  if (hasEur && hasUsd) return 'ambiguous'
-  if (hasEur) return 'EUR'
-  if (hasUsd) return 'USD'
-  return null
+  const found = markersIn(text)
+  if (found.length > 1) return 'ambiguous'
+  return found[0] ?? null
+}
+
+/**
+ * Cash may be USDT or USDC. A stock, ETF, or crypto price still needs € or $.
+ * A stable ticker in that sentence is the symbol, not a second currency.
+ */
+function currencyForDraft(
+  text: string,
+  cash: boolean
+): CurrencyCode | 'ambiguous' | null {
+  const found = markersIn(text)
+  const relevant = cash ? found : found.filter((code) => code === 'USD' || code === 'EUR')
+  if (relevant.length > 1) return 'ambiguous'
+  return relevant[0] ?? null
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +141,9 @@ function isValidDate(iso: string): boolean {
 }
 
 function buildSummary(d: ValidatedTxDraft): string {
+  if (d.asset_type === 'cash' && (d.currency === 'USDT' || d.currency === 'USDC')) {
+    return `${d.action.toUpperCase()} ${d.quantity.toFixed(2)} ${d.currency} cash at ${d.executed_at}`
+  }
   const cur = d.currency === 'EUR' ? '€' : '$'
   if (d.asset_type === 'cash') {
     return `${d.action.toUpperCase()} ${cur}${d.quantity.toFixed(2)} cash (${d.currency}) at ${d.executed_at}`
@@ -127,7 +153,8 @@ function buildSummary(d: ValidatedTxDraft): string {
 
 /**
  * Validate a chat add-transaction draft. Ready drafts are safe to pass to confirm.
- * Currency must appear explicitly in sourceText (€/$/USD/EUR/…); no preferred-currency default.
+ * Currency must appear explicitly in sourceText. Cash may say USDT or USDC.
+ * A stock, ETF, or crypto price still needs € or $. No preferred-currency default.
  */
 export function validateTransactionDraft(
   input: ChatAddTransactionInput
@@ -151,15 +178,15 @@ export function validateTransactionDraft(
   let assetType: AssetType | null = input.asset_type ?? null
   const action: SpotAction | null = input.action ?? null
   let symbolRaw = input.symbol?.trim() || ''
+  const cashDraft =
+    assetType === 'cash' || symbolRaw.toLowerCase() === CASH_SYMBOL.toLowerCase()
 
   // --- Currency (text is authoritative) ---
-  const detected = detectCurrencyFromText(sourceText)
+  const detected = currencyForDraft(sourceText, cashDraft)
   let currency: CurrencyCode | null = null
   if (detected === 'ambiguous') {
-    errors.push(
-      'Both euro (€) and dollar ($) markers appear in your text. Use only one currency.'
-    )
-  } else if (detected === 'USD' || detected === 'EUR') {
+    errors.push('Both currencies appear in your text. Use only one currency.')
+  } else if (detected) {
     currency = detected
   }
 
@@ -210,7 +237,7 @@ export function validateTransactionDraft(
     if (!currency && detected !== 'ambiguous') {
       missing.push('currency')
       errors.push(
-        'Cash amount needs an explicit currency in your text (€, $, USD, or EUR). Preferred currency is not assumed for chat entry.'
+        'Cash amount needs an explicit currency in your text (€, $, USD, EUR, USDT, or USDC). Preferred currency is not assumed for chat entry.'
       )
     }
   } else if (assetType) {
@@ -269,7 +296,7 @@ export function validateTransactionDraft(
       lower.includes('buy/sell') ||
       lower.includes('greater than 0') ||
       lower.includes('invalid date') ||
-      lower.includes('both euro') ||
+      lower.includes('only one currency') ||
       (lower.includes('is a ') && lower.includes('not '))
     )
   })

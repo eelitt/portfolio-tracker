@@ -113,7 +113,7 @@ Unpriced names stay in the holdings list and in **cost**; they drop out of MV, a
 
 ### Form
 
-`transactionSchema` (Zod) → `createTransaction` / update / delete. The cash form sends Held as: USD, EUR, USDT, or USDC. USDT and USDC are rejected on any other asset type. If currency is omitted, store the preferred currency. Cash quantities rounded to 2 dp. CSV import still writes USD or EUR only. RLS still requires `user_id = auth.uid()`. Current behavior and open questions: [cash_denominations.md](./cash_denominations.md).
+`transactionSchema` (Zod) → `createTransaction` / update / delete. The cash form sends Held as: USD, EUR, USDT, or USDC. USDT and USDC are rejected on any other asset type. If currency is omitted, store the preferred currency. Cash quantities rounded to 2 dp. CSV import stores USDT and USDC on cash and stores any other non-EUR currency as USD. The import preview Held as select shows and edits that denomination. RLS still requires `user_id = auth.uid()`. Behavior: [cash_denominations.md](./cash_denominations.md).
 
 The schema currently allows `cash` + `buy`. Chat validation rejects that combo (`inflow`/`outflow` only). Forms should not rely on chat rules.
 
@@ -123,7 +123,7 @@ Pending drafts are **not** a first-class table. They are a `user_ai_insights` ro
 
 ```
 user text
-  → validateTransactionDraft (catalog, €/$, cash actions)
+  → validateTransactionDraft (catalog, €/$ or USDT/USDC on cash, cash actions)
   → prepare_transaction     staging; stores draft; confirmLevel hard | elevated_hard
   → user new message        "yes" / "confirm"  or  "confirm sell" if warned
   → assertWriteAllowed      not same HTTP turn as prepare; draft must exist
@@ -164,7 +164,7 @@ News handoff is a parsed slim payload (`parseNewsContextHandoff`). The analyst m
 
 Chat history is **one rolling thread per user** in `user_ai_insights` (`feature_type = portfolio_analyst_chat`): last 20 user/assistant text messages (same cap as request sanitizer). Tool payloads are not stored. The sidebar hydrates on open; **New chat** clears the blob. `buildUserContext` does not duplicate this thread.
 
-Admin: `agent_runs` (tokens, cost, confirm flags, parent/child). Eval fixtures inject a portfolio and must not write real txs (`evalMode` / dry-run).
+Admin: `agent_runs` (tokens, cost, confirm flags, parent/child). The orchestrator parent also stores `meta.user_text` and `meta.route`. Eval fixtures inject a portfolio and must not write real txs (`evalMode` / dry-run).
 
 ---
 

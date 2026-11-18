@@ -160,7 +160,7 @@ export const TOOL_REGISTRY: Record<string, ToolMeta> = {
     id: 'prepare_transaction',
     name: 'Prepare transaction draft',
     description:
-      'Parse/validate a natural-language spot or cash trade into a draft. Does NOT write to the database. ALWAYS call this when the user describes a buy/sell/deposit of stock, ETF, crypto, or cash. Do not call it for a future, funding, a fee, or a margin change. On status=ready, stores a pending draft for confirm_transaction. Pass sourceText with the user’s words (must include € or $). European decimals: pass unit_price as 7.76 when they write 7,76.',
+      'Parse/validate a natural-language spot or cash trade into a draft. Does NOT write to the database. ALWAYS call this when the user describes a buy/sell/deposit of stock, ETF, crypto, or cash. Do not call it for a future, funding, a fee, or a margin change. On status=ready, stores a pending draft for confirm_transaction. Pass sourceText with the user’s words. A stock, ETF, or crypto price must include € or $. Available Cash may say USDT, USDC, or tether instead. Set asset_type cash for that deposit. European decimals: pass unit_price as 7.76 when they write 7,76.',
     owner: 'portfolio_analyst',
     sideEffect: 'staging',
     requiresConfirmation: false,

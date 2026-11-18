@@ -100,7 +100,7 @@ export type PriceShockResult =
 // Chat “add transaction” (prepare → confirm)
 // ---------------------------------------------------------------------------
 
-export type CurrencyCode = 'USD' | 'EUR'
+export type CurrencyCode = 'USD' | 'EUR' | 'USDT' | 'USDC'
 
 /** Structured fields extracted from chat for validation before insert. */
 export type ChatAddTransactionInput = {

@@ -69,7 +69,6 @@ export type UserContextPack = {
     asOf: string | null
     symbolCount: number
   } | null
-  portfolioOneLiner: string | null
   investorOneLiner: string | null
   targetOneLiner: string | null
 }
