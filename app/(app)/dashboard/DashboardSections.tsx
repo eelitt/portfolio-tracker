@@ -106,8 +106,11 @@ export default function DashboardSections({
       if (frame) return
       frame = window.requestAnimationFrame(apply)
     }
+    // After the saved tab is restored, match the highlight to the section on screen.
+    const initial = window.setTimeout(apply, 0)
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => {
+      window.clearTimeout(initial)
       window.removeEventListener('scroll', onScroll)
       if (frame) window.cancelAnimationFrame(frame)
     }
@@ -127,8 +130,8 @@ export default function DashboardSections({
   if (layout === 'all') {
     return (
       <>
-        {summary}
         <SectionControl options={options} onPick={(next) => pick(next, true)} />
+        {summary}
         {holdings}
         {perps}
         {charts}
@@ -140,13 +143,11 @@ export default function DashboardSections({
 
   return (
     <>
-      {summary}
       <SectionControl options={options} onPick={(next) => pick(next, false)} />
-      <div hidden={tab !== 'holdings'}>
-        {holdings}
-        {charts}
-      </div>
+      <div hidden={tab !== 'summary'}>{summary}</div>
+      <div hidden={tab !== 'holdings'}>{holdings}</div>
       <div hidden={tab !== 'perps'}>{perps}</div>
+      <div hidden={tab !== 'charts'}>{charts}</div>
       <div hidden={tab !== 'watchlist'}>{watchlist}</div>
       <div hidden={tab !== 'transactions'}>{transactions}</div>
     </>

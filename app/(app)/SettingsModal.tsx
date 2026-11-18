@@ -44,12 +44,14 @@ const LAYOUTS: {
   {
     id: 'all',
     title: 'All sections',
-    description: 'Summary, holdings, watchlist, and transactions on one page.',
+    description:
+      'Summary, holdings, charts, watchlist, and transactions on one page.',
   },
   {
     id: 'focus',
     title: 'Focus one section',
-    description: 'Summary stays up top. Tabs switch holdings, watchlist, or transactions.',
+    description:
+      'Tabs switch summary, holdings, charts, watchlist, or transactions.',
   },
 ]
 

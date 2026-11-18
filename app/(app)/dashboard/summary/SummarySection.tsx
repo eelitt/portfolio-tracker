@@ -16,14 +16,18 @@ export default async function SummarySection() {
   const valueLabel = summaryLabelText(profile?.summaryLabel)
 
   if (data.error) {
-    return <div className="alert-error mb-6">{data.error}</div>
+    return (
+      <div id="summary" className="alert-error mb-6 scroll-mt-20">
+        {data.error}
+      </div>
+    )
   }
 
   const showPartialPriceWarning =
     data.assetCount > 0 && data.pricedAssetCount < data.assetCount
 
   return (
-    <section className="mb-8">
+    <section id="summary" className="mb-8 scroll-mt-20">
       <PortfolioValueSync
         value={data.totalMarketValue}
         currency={data.preferredCurrency}

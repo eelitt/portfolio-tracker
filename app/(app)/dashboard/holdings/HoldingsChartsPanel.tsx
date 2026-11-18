@@ -100,7 +100,7 @@ export default function HoldingsChartsPanel({
   }, [])
 
   return (
-    <section className="mb-8">
+    <section id="charts" className="mb-8 scroll-mt-20">
       <h2 className="section-title mb-4">
         <span className="section-title-accent">Charts</span>
       </h2>
