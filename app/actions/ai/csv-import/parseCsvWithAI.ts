@@ -9,10 +9,7 @@
  */
 
 import { getCurrentUser, isCurrentUserAdmin } from '@/lib/user'
-import {
-  getLastAICallTime,
-  updateLastAICallTime,
-} from '@/app/actions/ai/storage'
+import { tryConsumeAiCooldown } from '@/app/actions/ai/storage'
 import { normalizeCsvImport } from '@/lib/csvImport'
 import { csvAiParseSchema, type CsvParsedTransactions } from '@/lib/schemas'
 
@@ -43,12 +40,10 @@ export async function parseCsvWithAI(
 
   // Rate limit (same 60s cooldown as other AI features; admins skip for testing)
   if (!(await isCurrentUserAdmin())) {
-    const lastCall = await getLastAICallTime(user.id)
-    if (lastCall) {
-      const secondsSince = (Date.now() - lastCall.getTime()) / 1000
-      if (secondsSince < 60) {
-        const wait = Math.ceil(60 - secondsSince)
-        return { error: `Please wait ${wait} seconds before using AI import again.` }
+    const slot = await tryConsumeAiCooldown(user.id)
+    if (!slot.allowed) {
+      return {
+        error: `Please wait ${slot.retryAfterSeconds} seconds before using AI import again.`,
       }
     }
   }
@@ -81,8 +76,6 @@ CSV content:
 ${safeContent}`,
       maxTokens: 2000,
     })
-
-    await updateLastAICallTime(user.id)
 
     return { data: normalizeCsvImport(object) }
   } catch (e) {

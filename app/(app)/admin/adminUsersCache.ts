@@ -1,21 +1,34 @@
 import {
   listUsersForAdmin,
+  type AdminAccessEventRow,
   type AdminUserRow,
 } from '@/app/actions/admin'
 
+type AdminListResult = {
+  data?: AdminUserRow[]
+  events?: AdminAccessEventRow[]
+  error?: string
+}
+
 /** In-memory session cache for admin user list (cleared on full page reload). */
 let cachedUsers: AdminUserRow[] | null = null
-let inflight: Promise<{ data?: AdminUserRow[]; error?: string }> | null = null
+let cachedEvents: AdminAccessEventRow[] | null = null
+let inflight: Promise<AdminListResult> | null = null
 
 export function getCachedAdminUsers(): AdminUserRow[] | null {
   return cachedUsers
 }
 
-async function fetchAndCache(): Promise<{ data?: AdminUserRow[]; error?: string }> {
+export function getCachedAdminEvents(): AdminAccessEventRow[] | null {
+  return cachedEvents
+}
+
+async function fetchAndCache(): Promise<AdminListResult> {
   try {
     const result = await listUsersForAdmin()
     if (result.data) {
       cachedUsers = result.data
+      cachedEvents = result.events ?? []
     }
     return result
   } catch (err) {
@@ -33,12 +46,12 @@ async function fetchAndCache(): Promise<{ data?: AdminUserRow[]; error?: string 
  */
 export async function loadAdminUsers(options?: {
   force?: boolean
-}): Promise<{ data?: AdminUserRow[]; error?: string }> {
+}): Promise<AdminListResult> {
   const force = options?.force === true
 
   if (!force) {
     if (cachedUsers) {
-      return { data: cachedUsers }
+      return { data: cachedUsers, events: cachedEvents ?? [] }
     }
     if (inflight) {
       return inflight

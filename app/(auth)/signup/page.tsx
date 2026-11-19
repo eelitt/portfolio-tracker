@@ -2,6 +2,8 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { useState, useEffect } from 'react'
+import { AUTH_NETWORK_MESSAGE, authScreenMessage } from '@/lib/authErrors'
+import { MIN_PASSWORD_LENGTH } from '@/lib/schemas'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
@@ -35,6 +37,20 @@ export default function SignupPage() {
     setLoginError(null)
     setSuccessMessage(null)
 
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setLoginError(
+        `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`
+      )
+      setLoading(false)
+      return
+    }
+
+    if (!navigator.onLine) {
+      setLoginError(AUTH_NETWORK_MESSAGE)
+      setLoading(false)
+      return
+    }
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -42,13 +58,8 @@ export default function SignupPage() {
       })
 
       if (error) {
-        if (isSupabaseNetworkError(error)) {
-          setLoginError('Unable to connect to the service. Please check your internet connection and try again.')
-        } else if (error.message?.toLowerCase().includes('invalid api key') || error.message?.toLowerCase().includes('project not found')) {
-          setLoginError('There is a configuration error with the backend. Please contact support.')
-        } else {
-          setLoginError(error.message)
-        }
+        console.error('Signup error:', error.message)
+        setLoginError(authScreenMessage(error, 'signup'))
       } else {
         // Never leave an unapproved session active (email confirm may be off)
         if (data.session) {
@@ -60,31 +71,13 @@ export default function SignupPage() {
         setEmail('')
         setPassword('')
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Signup error:', err)
-      if (isSupabaseNetworkError(err)) {
-        setLoginError('Unable to connect to the service. Please check your internet connection and try again.')
-      } else if (err.message?.toLowerCase().includes('invalid api key') || err.message?.toLowerCase().includes('project not found')) {
-        setLoginError('There is a configuration error with the backend. Please contact support.')
-      } else {
-        setLoginError('An unexpected error occurred. Please try again.')
-      }
+      const message = err instanceof Error ? err.message : ''
+      setLoginError(authScreenMessage({ message }, 'signup'))
     } finally {
       setLoading(false)
     }
-  }
-
-  function isSupabaseNetworkError(error: any): boolean {
-    if (!error) return false
-    const message = (error.message || '').toLowerCase()
-    return (
-      message.includes('fetch') ||
-      message.includes('failed to fetch') ||
-      message.includes('network') ||
-      error.code === 'ENOTFOUND' ||
-      error.cause?.code === 'ENOTFOUND' ||
-      !navigator.onLine
-    )
   }
 
   const retryConnection = () => {
@@ -163,12 +156,12 @@ export default function SignupPage() {
       />
       <input
         type="password"
-        placeholder="Password (min 8 characters)"
+        placeholder={`Password (min ${MIN_PASSWORD_LENGTH} characters)`}
         value={password}
         onChange={handlePasswordChange}
         className="h-9 w-full rounded-lg border border-border/70 bg-card px-3 text-sm focus-visible:border-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/30"
         required
-        minLength={8}
+        minLength={MIN_PASSWORD_LENGTH}
         disabled={isFormDisabled}
       />
       <button

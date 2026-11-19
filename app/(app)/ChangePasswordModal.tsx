@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { changePassword } from '@/app/actions/users'
-import { changePasswordSchema } from '@/lib/schemas'
+import { MIN_PASSWORD_LENGTH, changePasswordSchema } from '@/lib/schemas'
 import { fieldClassName, labelClassName } from './dashboard/transactions/formStyles'
 
 interface ChangePasswordModalProps {
@@ -158,7 +158,7 @@ export default function ChangePasswordModal({
         <DialogHeader>
           <DialogTitle>Change password</DialogTitle>
           <DialogDescription>
-            Enter your current password and choose a new one (at least 8 characters).
+            Enter your current password and choose a new one (at least {MIN_PASSWORD_LENGTH} characters).
           </DialogDescription>
         </DialogHeader>
         <ChangePasswordForm

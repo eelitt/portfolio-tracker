@@ -1,7 +1,10 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { aiCooldownOrFilter } from '@/lib/aiCooldown'
 import { getCurrentUser } from '@/lib/user'
+
+const AI_COOLDOWN_MS = 60_000
 
 /**
  * AI-related Supabase database actions.
@@ -20,35 +23,48 @@ async function assertSessionUser(userId: string): Promise<boolean> {
 // RATE LIMITING (stored in profiles table)
 // ============================================
 
-export async function getLastAICallTime(userId: string): Promise<Date | null> {
-  if (!(await assertSessionUser(userId))) return null
+/**
+ * Take the shared 60s AI slot in one update.
+ * Zero rows means another request already took it, or the caller is not this user.
+ */
+export async function tryConsumeAiCooldown(userId: string): Promise<
+  { allowed: true } | { allowed: false; retryAfterSeconds: number }
+> {
+  if (!(await assertSessionUser(userId))) {
+    return { allowed: false, retryAfterSeconds: 60 }
+  }
 
   const supabase = await createClient()
+  const nowIso = new Date().toISOString()
+  const cutoff = new Date(Date.now() - AI_COOLDOWN_MS).toISOString()
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({
+      last_ai_call_at: nowIso,
+      updated_at: nowIso,
+    })
+    .eq('id', userId)
+    .or(aiCooldownOrFilter(cutoff))
+    .select('id')
+
+  if (error) {
+    console.error('AI cooldown update failed:', error.message)
+    return { allowed: false, retryAfterSeconds: 60 }
+  }
+  if (data && data.length > 0) return { allowed: true }
 
   const { data: profile } = await supabase
     .from('profiles')
     .select('last_ai_call_at')
     .eq('id', userId)
-    .single()
-
-  return profile?.last_ai_call_at ? new Date(profile.last_ai_call_at) : null
-}
-
-export async function updateLastAICallTime(userId: string): Promise<void> {
-  if (!(await assertSessionUser(userId))) return
-
-  const supabase = await createClient()
-
-  await supabase
-    .from('profiles')
-    .upsert(
-      {
-        id: userId,
-        last_ai_call_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'id' }
-    )
+    .maybeSingle()
+  const last = profile?.last_ai_call_at
+    ? new Date(profile.last_ai_call_at).getTime()
+    : NaN
+  const retryAfterSeconds = Number.isFinite(last)
+    ? Math.max(1, Math.ceil((AI_COOLDOWN_MS - (Date.now() - last)) / 1000))
+    : 60
+  return { allowed: false, retryAfterSeconds }
 }
 
 // ============================================

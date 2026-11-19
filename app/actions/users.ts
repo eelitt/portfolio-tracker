@@ -8,7 +8,12 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser, getCurrentUserProfile } from '@/lib/user'
-import { changePasswordSchema, futuresSettingsSchema, investorProfileSchema } from '@/lib/schemas'
+import {
+  MIN_PASSWORD_LENGTH,
+  changePasswordSchema,
+  futuresSettingsSchema,
+  investorProfileSchema,
+} from '@/lib/schemas'
 import {
   APP_ACCESS_DENIED_MESSAGE,
   type FuturesSettings,
@@ -185,7 +190,9 @@ export async function changePassword(input: {
       return { error: 'New password must be different from current password' }
     }
     if (msg.includes('at least') || msg.includes('weak') || msg.includes('password')) {
-      return { error: 'Password does not meet requirements. Use at least 8 characters.' }
+      return {
+        error: `Password does not meet requirements. Use at least ${MIN_PASSWORD_LENGTH} characters.`,
+      }
     }
     console.error('changePassword updateUser error:', updateError.message)
     return { error: 'Could not update password. Try again.' }

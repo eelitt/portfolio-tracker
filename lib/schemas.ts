@@ -345,15 +345,22 @@ export const csvAiParseSchema = z.object({
 
 export type CsvAiParse = z.infer<typeof csvAiParseSchema>
 
+/** Signup and change-password share this length. Match it in the Supabase Auth settings. */
+export const MIN_PASSWORD_LENGTH = 12
+
 /**
  * Zod schema for authenticated password change.
  * Used by changePassword Server Action (and client-side pre-checks).
- * Min length matches signup (Supabase default).
  */
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1, 'Current password is required'),
-    newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+    newPassword: z
+      .string()
+      .min(
+        MIN_PASSWORD_LENGTH,
+        `Password must be at least ${MIN_PASSWORD_LENGTH} characters`
+      ),
     confirmPassword: z.string().min(1, 'Please confirm your new password'),
   })
   .refine((d) => d.newPassword === d.confirmPassword, {

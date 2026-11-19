@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
+import { buildAdminAccessEvent } from '@/lib/adminAccessEvent'
 import { getCurrentUser } from '@/lib/user'
 
 export interface AdminUserRow {
@@ -10,6 +11,17 @@ export interface AdminUserRow {
   admin: boolean
   accessToApp: boolean
   createdAt: string | null
+}
+
+export interface AdminAccessEventRow {
+  id: string
+  createdAt: string
+  actorId: string
+  targetUserId: string
+  previousAdmin: boolean
+  nextAdmin: boolean
+  previousAccess: boolean
+  nextAccess: boolean
 }
 
 async function requireAdmin(): Promise<
@@ -39,6 +51,7 @@ async function requireAdmin(): Promise<
  */
 export async function listUsersForAdmin(): Promise<{
   data?: AdminUserRow[]
+  events?: AdminAccessEventRow[]
   error?: string
 }> {
   const gate = await requireAdmin()
@@ -102,7 +115,30 @@ export async function listUsersForAdmin(): Promise<{
       })
       .sort((a, b) => a.email.localeCompare(b.email))
 
-    return { data: rows }
+    const { data: eventRows, error: eventsError } = await service
+      .from('admin_access_events')
+      .select(
+        'id, created_at, actor_id, target_user_id, previous_admin, next_admin, previous_access, next_access'
+      )
+      .order('created_at', { ascending: false })
+      .limit(20)
+
+    if (eventsError) {
+      console.error('admin_access_events read failed:', eventsError.message)
+    }
+
+    const events: AdminAccessEventRow[] = (eventRows ?? []).map((row) => ({
+      id: row.id as string,
+      createdAt: row.created_at as string,
+      actorId: row.actor_id as string,
+      targetUserId: row.target_user_id as string,
+      previousAdmin: row.previous_admin === true,
+      nextAdmin: row.next_admin === true,
+      previousAccess: row.previous_access === true,
+      nextAccess: row.next_access === true,
+    }))
+
+    return { data: rows, events }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to list users'
     return { error: message }
@@ -156,6 +192,25 @@ export async function updateUserAccessFlags(input: {
 
     if (upsertError) {
       return { error: upsertError.message }
+    }
+
+    const { error: auditError } = await service.from('admin_access_events').insert(
+      buildAdminAccessEvent({
+        actorId: gate.user.id,
+        targetUserId: userId,
+        previousAdmin: existing?.admin === true,
+        nextAdmin: nextAdmin,
+        previousAccess: existing?.access_to_app === true,
+        nextAccess,
+      })
+    )
+
+    if (auditError) {
+      console.error('admin_access_events insert failed:', auditError.message)
+      return {
+        error:
+          'Access flags were saved, but the audit row was not. Apply the admin_access_events migration.',
+      }
     }
 
     // Resolve email for response (optional convenience)

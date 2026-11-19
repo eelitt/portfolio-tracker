@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/client'
 import { useState, useEffect } from 'react'
 import { ensureAppAccess } from '@/app/actions/users'
+import { AUTH_NETWORK_MESSAGE, authScreenMessage } from '@/lib/authErrors'
 import { APP_ACCESS_DENIED_MESSAGE } from '@/lib/userTypes'
 
 export default function LoginPage() {
@@ -43,6 +44,12 @@ export default function LoginPage() {
     setLoading(true)
     setLoginError(null)
 
+    if (!navigator.onLine) {
+      setLoginError(AUTH_NETWORK_MESSAGE)
+      setLoading(false)
+      return
+    }
+
     try {
       const { error } = await supabase.auth.signInWithPassword({
         email,
@@ -50,15 +57,8 @@ export default function LoginPage() {
       })
 
       if (error) {
-        if (isSupabaseNetworkError(error)) {
-          setLoginError('Unable to connect to the service. Please check your internet connection and try again.')
-        } else if (error.message?.toLowerCase().includes('invalid api key') || error.message?.toLowerCase().includes('project not found')) {
-          setLoginError('There is a configuration error with the backend. Please contact support.')
-        } else if (error.message?.toLowerCase().includes('invalid login') || error.message?.toLowerCase().includes('credentials')) {
-          setLoginError('Invalid email or password.')
-        } else {
-          setLoginError(error.message)
-        }
+        console.error('Login error:', error.message)
+        setLoginError(authScreenMessage(error, 'login'))
       } else {
         const access = await ensureAppAccess()
         if (!access.ok) {
@@ -67,31 +67,13 @@ export default function LoginPage() {
         }
         window.location.href = '/dashboard'
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Login error:', err)
-      if (isSupabaseNetworkError(err)) {
-        setLoginError('Unable to connect to the service. Please check your internet connection and try again.')
-      } else if (err.message?.toLowerCase().includes('invalid api key') || err.message?.toLowerCase().includes('project not found')) {
-        setLoginError('There is a configuration error with the backend. Please contact support.')
-      } else {
-        setLoginError('An unexpected error occurred. Please try again.')
-      }
+      const message = err instanceof Error ? err.message : ''
+      setLoginError(authScreenMessage({ message }, 'login'))
     } finally {
       setLoading(false)
     }
-  }
-
-  function isSupabaseNetworkError(error: any): boolean {
-    if (!error) return false
-    const message = (error.message || '').toLowerCase()
-    return (
-      message.includes('fetch') ||
-      message.includes('failed to fetch') ||
-      message.includes('network') ||
-      error.code === 'ENOTFOUND' ||
-      error.cause?.code === 'ENOTFOUND' ||
-      !navigator.onLine
-    )
   }
 
   const retryConnection = () => {

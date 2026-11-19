@@ -241,25 +241,32 @@ describe('changePasswordSchema', () => {
     ).toBe(false)
     expect(
       changePasswordSchema.safeParse({
-        currentPassword: 'oldpass12',
-        newPassword: 'newpass12',
-        confirmPassword: 'otherpass',
+        currentPassword: 'oldpassword1',
+        newPassword: 'newpassword1',
+        confirmPassword: 'otherpassword',
       }).success
     ).toBe(false)
     expect(
       changePasswordSchema.safeParse({
-        currentPassword: 'samepass1',
-        newPassword: 'samepass1',
-        confirmPassword: 'samepass1',
+        currentPassword: 'samepassword',
+        newPassword: 'samepassword',
+        confirmPassword: 'samepassword',
+      }).success
+    ).toBe(false)
+    expect(
+      changePasswordSchema.safeParse({
+        currentPassword: 'oldpassword1',
+        newPassword: 'elevenchars',
+        confirmPassword: 'elevenchars',
       }).success
     ).toBe(false)
   })
 
   it('accepts a valid change', () => {
     const r = changePasswordSchema.safeParse({
-      currentPassword: 'oldpass12',
-      newPassword: 'newpass12',
-      confirmPassword: 'newpass12',
+      currentPassword: 'oldpassword1',
+      newPassword: 'newpassword1',
+      confirmPassword: 'newpassword1',
     })
     expect(r.success).toBe(true)
   })

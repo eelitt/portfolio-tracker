@@ -9,14 +9,17 @@
  * Stocks/ETFs: Finnhub.
  * Book math: ./book.ts. Older snapshot rows are not rewritten.
  *
- * Invoke with:
- *   Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>
+ * Invoke with either header set to SNAPSHOT_CRON_SECRET:
+ *   x-cron-secret: <secret>
+ *   Authorization: Bearer <secret>
+ * Verify JWT stays off. A user JWT is not enough.
  *
- * Secrets: FINNHUB_API_KEY, optional SNAPSHOT_CONCURRENCY (default 5), ACTIVE_DAYS (90),
- * optional BINANCE_API_BASE (default https://api.binance.com)
+ * Secrets: SNAPSHOT_CRON_SECRET, FINNHUB_API_KEY, optional SNAPSHOT_CONCURRENCY (default 5),
+ * ACTIVE_DAYS (90), optional BINANCE_API_BASE (default https://api.binance.com)
  */
 
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1'
+import { snapshotCallerAllowed } from './authorize.ts'
 import {
   buildUserSnapshot,
   snapshotFetchPlan,
@@ -335,11 +338,14 @@ async function snapshotUser(
 }
 
 Deno.serve(async (req) => {
+  const allowed = await snapshotCallerAllowed(Deno.env.get('SNAPSHOT_CRON_SECRET') ?? '', {
+    cronSecret: req.headers.get('x-cron-secret'),
+    authorization: req.headers.get('authorization'),
+  })
+  if (!allowed) return json({ error: 'Unauthorized' }, 401)
 
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-  if (!serviceKey) {
-    return json({ error: 'Unauthorized' }, 401)
-  }
+  if (!serviceKey) return json({ error: 'Missing service configuration' }, 500)
 
   if (req.method !== 'POST' && req.method !== 'GET') {
     return json({ error: 'Method not allowed' }, 405)

@@ -139,6 +139,9 @@ async function persistRow(row: {
   planning_rate: number
   source: 'yahoo' | 'short_window'
 }) {
+  const user = await getCurrentUser()
+  if (!user) return
+
   try {
     const admin = createServiceClient()
     const { error } = await admin.from('market_return_assumptions').upsert({

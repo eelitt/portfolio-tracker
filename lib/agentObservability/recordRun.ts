@@ -8,6 +8,7 @@
 import 'server-only'
 
 import { createServiceClient } from '@/lib/supabase/admin'
+import { getCurrentUser } from '@/lib/user'
 import { estimateCostUsd } from './cost'
 import { deriveConfirmMeta } from './score'
 import {
@@ -36,6 +37,12 @@ export async function startAgentRun(
   input: StartAgentRunInput
 ): Promise<string | null> {
   try {
+    const sessionUser = await getCurrentUser()
+    if (!sessionUser || sessionUser.id !== input.userId) {
+      console.error('startAgentRun refused: user does not match session')
+      return null
+    }
+
     const service = createServiceClient()
     const row: Record<string, unknown> = {
       user_id: input.userId,

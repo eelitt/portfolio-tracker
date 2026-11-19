@@ -10,6 +10,8 @@ import {
   getLatestAIInsight,
   saveAIInsight,
 } from '@/app/actions/ai/storage'
+import { analystRateLimitError } from '@/lib/analystRateCopy'
+import { consumeUserSlot } from '@/lib/consumeUserSlot'
 import { isCurrentUserAdmin } from '@/lib/user'
 
 const FEATURE_TYPE = 'portfolio_analyst_rate'
@@ -59,6 +61,27 @@ export async function checkAndConsumeAnalystRateLimit(
     return { allowed: true }
   }
 
+  const slot = await consumeUserSlot({
+    slot: 'portfolio_analyst_rate',
+    windowMs: ANALYST_WINDOW_MS,
+    max: ANALYST_MAX_MESSAGES,
+    minGapMs: ANALYST_MIN_GAP_MS,
+  })
+  if (slot.status === 'allowed') return { allowed: true }
+  if (slot.status === 'denied') {
+    return {
+      allowed: false,
+      error: analystRateLimitError(slot.reason, slot.retryAfterMs),
+    }
+  }
+
+  return consumeAnalystRateLimitFallback(userId)
+}
+
+/** Used only when consume_user_slot is not in the database yet. */
+async function consumeAnalystRateLimitFallback(
+  userId: string
+): Promise<AnalystRateLimitResult> {
   const now = Date.now()
   const cached = await getLatestAIInsight(userId, FEATURE_TYPE)
   const prev = parseState(cached?.result)
@@ -68,10 +91,9 @@ export async function checkAndConsumeAnalystRateLimit(
     if (Number.isFinite(lastAt)) {
       const gap = now - lastAt
       if (gap < ANALYST_MIN_GAP_MS) {
-        const wait = Math.ceil((ANALYST_MIN_GAP_MS - gap) / 1000)
         return {
           allowed: false,
-          error: `Please wait ${wait} second${wait === 1 ? '' : 's'} before sending another message.`,
+          error: analystRateLimitError('gap', ANALYST_MIN_GAP_MS - gap),
         }
       }
     }
@@ -81,12 +103,12 @@ export async function checkAndConsumeAnalystRateLimit(
       Number.isFinite(windowStartMs) && now - windowStartMs < ANALYST_WINDOW_MS
 
     if (inWindow && prev.messageCount >= ANALYST_MAX_MESSAGES) {
-      const resetIn = Math.ceil(
-        (ANALYST_WINDOW_MS - (now - windowStartMs)) / 60000
-      )
       return {
         allowed: false,
-        error: `Rate limit reached (${ANALYST_MAX_MESSAGES} messages / 15 min). Try again in about ${Math.max(resetIn, 1)} minute(s).`,
+        error: analystRateLimitError(
+          'window',
+          ANALYST_WINDOW_MS - (now - windowStartMs)
+        ),
       }
     }
 

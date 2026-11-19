@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { format } from 'date-fns'
 import {
   Dialog,
   DialogContent,
@@ -10,8 +11,10 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { RefreshCw } from 'lucide-react'
-import type { AdminUserRow } from '@/app/actions/admin'
+import type { AdminAccessEventRow, AdminUserRow } from '@/app/actions/admin'
+import { describeAdminAccessChange } from '@/lib/adminAccessEvent'
 import {
+  getCachedAdminEvents,
   getCachedAdminUsers,
   loadAdminUsers,
 } from './adminUsersCache'
@@ -29,6 +32,9 @@ export default function UserManagementModal({
   currentUserId,
 }: UserManagementModalProps) {
   const [users, setUsers] = useState<AdminUserRow[]>(() => getCachedAdminUsers() ?? [])
+  const [events, setEvents] = useState<AdminAccessEventRow[]>(
+    () => getCachedAdminEvents() ?? []
+  )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -37,6 +43,7 @@ export default function UserManagementModal({
       const cached = getCachedAdminUsers()
       if (cached) {
         setUsers(cached)
+        setEvents(getCachedAdminEvents() ?? [])
         setError(null)
         setLoading(false)
         return
@@ -55,6 +62,7 @@ export default function UserManagementModal({
       }
     } else {
       setUsers(result.data ?? [])
+      setEvents(result.events ?? [])
       setError(null)
     }
     setLoading(false)
@@ -118,6 +126,30 @@ export default function UserManagementModal({
               onReload={handleReload}
               disabled={loading}
             />
+          )}
+
+          {events.length > 0 && (
+            <div className="mt-4 space-y-2 border-t border-border pt-3">
+              <h2 className="text-sm font-medium">Recent access changes</h2>
+              <ul className="space-y-1 text-xs text-muted-foreground">
+                {events.map((event) => {
+                  const change = describeAdminAccessChange(event)
+                  if (!change) return null
+                  const actor =
+                    users.find((user) => user.id === event.actorId)?.email ??
+                    'unknown user'
+                  const target =
+                    users.find((user) => user.id === event.targetUserId)?.email ??
+                    'unknown user'
+                  const when = format(new Date(event.createdAt), 'yyyy-MM-dd HH:mm')
+                  return (
+                    <li key={event.id}>
+                      {when} — {actor} set {target} — {change}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
           )}
         </div>
       </DialogContent>

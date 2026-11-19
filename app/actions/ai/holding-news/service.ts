@@ -12,7 +12,7 @@ import { isCurrentUserAdmin } from '@/lib/user'
 import { getPortfolioData } from '@/lib/portfolioData'
 import { getWatchlist } from '@/app/actions/watchlist'
 import {
-  updateLastAICallTime,
+  tryConsumeAiCooldown,
   getLatestAIInsight,
 } from '@/app/actions/ai/storage'
 import type { HoldingNewsImpactEntry } from '@/lib/schemas'
@@ -227,7 +227,8 @@ export async function runHoldingNews(
       cached,
       stored,
       featureType,
-      universe === 'watchlist'
+      universe === 'watchlist',
+      admin
     )
     if ('error' in live && live.error) {
       return { ...live, fromCache: false, updatedCache: false }
@@ -294,10 +295,20 @@ async function runLiveHoldingNewsFetch(
   previousRow: CachedInsight | null,
   previousStored: ReturnType<typeof parseHoldingNewsStored>,
   featureType: string,
-  replacePackage: boolean
+  replacePackage: boolean,
+  skipAiCooldown: boolean
 ): Promise<HoldingNewsResult> {
   if (holdings.length === 0) {
     return { error: 'No non-cash holdings to fetch news for.' }
+  }
+
+  if (!skipAiCooldown) {
+    const slot = await tryConsumeAiCooldown(userId)
+    if (!slot.allowed) {
+      return {
+        error: `Please wait ${slot.retryAfterSeconds} seconds before requesting news again.`,
+      }
+    }
   }
 
   const symbols = holdings.map((h) => h.symbol)
@@ -403,7 +414,6 @@ async function runLiveHoldingNewsFetch(
     },
     featureType
   )
-  await updateLastAICallTime(userId)
 
   // Return only requested holdings' slice
   const outNews: Record<string, string[]> = {}

@@ -7,9 +7,9 @@
  *  1. Auth + non-empty portfolio + XAI_API_KEY
  *  2. Load cached user_ai_insights (feature_type portfolio_insights)
  *  3. If stored portfolioHash matches current transactions → return cache (no LLM)
- *  4. Else enforce global 60s AI cooldown (profiles.last_ai_call_at)
+ *  4. Else take the global 60s AI slot (one conditional update of last_ai_call_at)
  *  5. Build a compact text summary → generateObject (≤6 insight bullets)
- *  6. Upsert { insights, portfolioHash } and bump last_ai_call_at
+ *  6. Upsert { insights, portfolioHash }
  *
  * Unlike Holding News: no live search, no 24h gate — regeneration is driven by
  * portfolio content change (hash) + shared 60s rate limit across AI features.
@@ -18,8 +18,7 @@
 import { getCurrentUser, getCurrentUserProfile, isCurrentUserAdmin } from '@/lib/user'
 import { getPortfolioData, type PortfolioData } from '@/lib/portfolioData'
 import {
-  getLastAICallTime,
-  updateLastAICallTime,
+  tryConsumeAiCooldown,
   saveAIInsight,
   getLatestAIInsight,
 } from '@/app/actions/ai/storage'
@@ -90,22 +89,20 @@ export async function generatePortfolioInsights(): Promise<PortfolioInsightsResu
       }
     }
 
-    // Shared with CSV import / other AI that update last_ai_call_at (admins skip)
+    // Shared with CSV import and holding news (admins skip). The update is the gate.
     if (!(await isCurrentUserAdmin())) {
-      const lastCall = await getLastAICallTime(user.id)
-      if (lastCall) {
-        const secondsSince = (Date.now() - lastCall.getTime()) / 1000
-        if (secondsSince < 60) {
-          if (cached) {
-            return {
-              insights: normalizeInsights(cached.result.insights),
-              cachedAt: cached.createdAt,
-              message: 'Please wait a moment before requesting a new analysis.',
-              packageUpdated: false,
-            }
+      const slot = await tryConsumeAiCooldown(user.id)
+      if (!slot.allowed) {
+        if (cached) {
+          return {
+            insights: normalizeInsights(cached.result.insights),
+            cachedAt: cached.createdAt,
+            message: 'Please wait a moment before requesting a new analysis.',
+            packageUpdated: false,
           }
-          const wait = Math.ceil(60 - secondsSince)
-          return { error: `Please wait ${wait} seconds before requesting new insights.` }
+        }
+        return {
+          error: `Please wait ${slot.retryAfterSeconds} seconds before requesting new insights.`,
         }
       }
     }
@@ -146,7 +143,6 @@ Focus on risks, concentration, and potential improvements.`,
       insights: object.insights,
       portfolioHash: currentHash,
     })
-    await updateLastAICallTime(user.id)
 
     return {
       insights: object.insights,
