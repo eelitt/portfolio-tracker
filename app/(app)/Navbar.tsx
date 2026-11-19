@@ -94,11 +94,38 @@ export default function Navbar({
     router.refresh()
   }
 
+  const [planOpen, setPlanOpen] = useState(false)
+  const [assistantOpen, setAssistantOpen] = useState(false)
   const [currentCurrency, setCurrentCurrency] = useState<PreferredCurrency>(
     preferredCurrency || 'USD'
   )
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [taxEstimatorOpen, setTaxEstimatorOpen] = useState(false)
+
+  useEffect(() => {
+    const readPlan = () => {
+      const stored = localStorage.getItem('planSidebarOpen')
+      setPlanOpen(
+        stored !== null
+          ? stored === 'true'
+          : localStorage.getItem('goalsSidebarOpen') === 'true'
+      )
+    }
+    const readAssistant = () => {
+      setAssistantOpen(localStorage.getItem('aiInsightsSidebarOpen') === 'true')
+    }
+
+    readPlan()
+    readAssistant()
+    window.addEventListener('plan-sidebar-toggle', readPlan)
+    window.addEventListener('goals-sidebar-toggle', readPlan)
+    window.addEventListener('ai-insights-toggle', readAssistant)
+    return () => {
+      window.removeEventListener('plan-sidebar-toggle', readPlan)
+      window.removeEventListener('goals-sidebar-toggle', readPlan)
+      window.removeEventListener('ai-insights-toggle', readAssistant)
+    }
+  }, [])
 
   // Sync local state when the server prop changes (e.g. after refresh or currency update)
   useEffect(() => {
@@ -163,13 +190,13 @@ export default function Navbar({
             variant="ghost"
             size="icon"
             onClick={toggleTheme}
-            className="h-9 w-9"
+            className="group h-9 w-9"
             aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           >
             {theme === 'dark' ? (
-              <Sun className="h-4 w-4" />
+              <Sun className="h-4 w-4 transition-transform duration-200 ease-out group-hover:scale-110 group-hover:text-gold group-active:scale-95 motion-reduce:transform-none" />
             ) : (
-              <Moon className="h-4 w-4" />
+              <Moon className="h-4 w-4 transition-transform duration-200 ease-out group-hover:scale-110 group-hover:text-gold group-active:scale-95 motion-reduce:transform-none" />
             )}
           </Button>
 
@@ -182,11 +209,12 @@ export default function Navbar({
               variant="ghost"
               size="sm"
               onClick={toggleAIInsights}
-              className="flex items-center gap-2"
+              className={`group flex items-center gap-2 ${assistantOpen ? 'border-gold' : ''}`}
+              aria-expanded={assistantOpen}
               aria-label="Toggle assistant chat"
               title="Assistant"
             >
-              <Orbit className="h-4 w-4" />
+              <Orbit className="h-4 w-4 transition-transform duration-200 ease-out group-hover:scale-110 group-hover:text-gold group-active:scale-95 motion-reduce:transform-none" />
               Assistant
             </Button>
           )}
@@ -195,23 +223,24 @@ export default function Navbar({
             variant="ghost"
             size="sm"
             onClick={togglePlanSidebar}
-            className="flex items-center gap-2"
+            className={`group flex items-center gap-2 ${planOpen ? 'border-gold' : ''}`}
+            aria-expanded={planOpen}
             aria-label="Toggle plan sidebar"
           >
-            <Target className="h-4 w-4" />
+            <Target className="h-4 w-4 transition-transform duration-200 ease-out group-hover:scale-110 group-hover:text-gold group-active:scale-95 motion-reduce:transform-none" />
             Plan
           </Button>
 
           {/* User Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="flex items-center gap-2 px-2 h-9 hover:bg-accent">
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-muted text-muted-foreground text-sm">
+              <Button variant="ghost" className="group flex h-9 items-center gap-2 px-2 hover:bg-accent data-[state=open]:border-gold">
+                <Avatar className="h-8 w-8 transition-transform duration-200 ease-out after:border-gold after:mix-blend-normal group-hover:scale-110 group-data-[state=open]:scale-110 motion-reduce:transform-none dark:after:mix-blend-normal">
+                  <AvatarFallback className="bg-accent text-sm text-accent-foreground">
                     {userInitials}
                   </AvatarFallback>
                 </Avatar>
-                <span className="hidden md:block text-sm font-medium pr-1">
+                <span className="hidden pr-1 font-display text-base tracking-tight transition-colors group-hover:text-gold group-data-[state=open]:text-gold md:block">
                   {userName}
                 </span>
               </Button>

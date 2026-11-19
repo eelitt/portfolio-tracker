@@ -98,6 +98,7 @@ export default function PlanSidebar({
   const closeSidebar = () => {
     localStorage.setItem(OPEN_KEY, 'false')
     setIsOpen(false)
+    window.dispatchEvent(new CustomEvent(TOGGLE_EVENT))
   }
 
   useEffect(() => {

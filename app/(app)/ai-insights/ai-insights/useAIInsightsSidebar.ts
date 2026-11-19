@@ -21,6 +21,7 @@ export function useAIInsightsSidebar() {
   const close = () => {
     localStorage.setItem('aiInsightsSidebarOpen', 'false')
     setIsOpen(false)
+    window.dispatchEvent(new CustomEvent('ai-insights-toggle'))
   }
 
   const resetOnOpen = () => {

@@ -32,11 +32,11 @@ export default function AdminMenu({ currentUserId }: AdminMenuProps) {
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9"
+            className="group h-9 w-9"
             aria-label="Admin tools"
             title="Admin tools"
           >
-            <Shield className="h-4 w-4" />
+            <Shield className="h-4 w-4 transition-transform duration-200 ease-out group-hover:scale-110 group-hover:text-gold group-active:scale-95 motion-reduce:transform-none" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52 shadow-lg rounded-md border">
