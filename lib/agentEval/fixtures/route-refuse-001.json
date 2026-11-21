@@ -1,0 +1,15 @@
+{
+  "id": "route-refuse-001",
+  "feature": "portfolio_orchestrator",
+  "description": "An off-topic request calls no specialist",
+  "prompt": "Write me a poem",
+  "seed": { "transactions": [], "prices": {} },
+  "expect": {
+    "forbiddenTools": [
+      "invoke_news_agent",
+      "invoke_portfolio_analyst",
+      "invoke_tax_agent",
+      "invoke_portfolio_analysis_agent"
+    ]
+  }
+}

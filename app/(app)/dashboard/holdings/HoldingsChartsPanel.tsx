@@ -1,12 +1,13 @@
 'use client'
 
 /**
- * Charts section shell: Allocation | Performance | Price.
+ * Charts section shell: Allocation | Performance | Price | Cost basis.
  */
 
 import { useCallback, useEffect, useState } from 'react'
 import AllocationPie from './AllocationPie'
 import PerformanceTab from './PerformanceTab'
+import CostBasisTab from './CostBasisTab'
 import PriceChartTab from './PriceChartTab'
 import { SegmentedControl } from './SegmentedControl'
 import {
@@ -30,6 +31,7 @@ const MAIN_TABS: { value: ChartTab; label: string }[] = [
   { value: 'allocation', label: 'Allocation' },
   { value: 'performance', label: 'Performance' },
   { value: 'price', label: 'Price' },
+  { value: 'cost', label: 'Cost basis' },
 ]
 
 const PERF_RANGES: { value: SnapshotRangeMode; label: string }[] = [
@@ -76,6 +78,7 @@ export default function HoldingsChartsPanel({
   const [scaleMode, setScaleMode] = useState<PerformanceScaleMode>('absolute')
   const [priceVisited, setPriceVisited] = useState(false)
   const [perfVisited, setPerfVisited] = useState(false)
+  const [costVisited, setCostVisited] = useState(false)
 
   useEffect(() => {
     setScaleMode(readScaleMode())
@@ -84,6 +87,7 @@ export default function HoldingsChartsPanel({
       setTab(stored)
       if (stored === 'price') setPriceVisited(true)
       if (stored === 'performance') setPerfVisited(true)
+      if (stored === 'cost') setCostVisited(true)
     }
   }, [])
 
@@ -91,6 +95,7 @@ export default function HoldingsChartsPanel({
     setTab(next)
     if (next === 'price') setPriceVisited(true)
     if (next === 'performance') setPerfVisited(true)
+    if (next === 'cost') setCostVisited(true)
     writeChartTab(next)
   }, [])
 
@@ -170,6 +175,15 @@ export default function HoldingsChartsPanel({
               transactions={transactions}
               priceData={priceData}
               usdToEurRate={usdToEurRate}
+            />
+          </div>
+        ) : null}
+        {costVisited ? (
+          <div hidden={tab !== 'cost'}>
+            <CostBasisTab
+              holdings={enrichedHoldings}
+              preferredCurrency={preferredCurrency}
+              active={tab === 'cost'}
             />
           </div>
         ) : null}

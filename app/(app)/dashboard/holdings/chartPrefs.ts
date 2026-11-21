@@ -3,7 +3,7 @@ import type {
 } from '@/lib/aggregateSnapshots'
 import { BENCHMARK_PRESETS, type BenchmarkId } from '@/lib/benchmarks'
 
-export type ChartTab = 'allocation' | 'performance' | 'price'
+export type ChartTab = 'allocation' | 'performance' | 'price' | 'cost'
 export type AllocPieMode = 'holding' | 'type'
 
 const LS_VISIBLE = 'perfChartVisibleSeries'
@@ -82,7 +82,8 @@ export function readChartTab(): ChartTab | null {
     if (
       stored === 'allocation' ||
       stored === 'performance' ||
-      stored === 'price'
+      stored === 'price' ||
+      stored === 'cost'
     ) {
       return stored
     }

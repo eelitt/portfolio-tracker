@@ -95,6 +95,18 @@ export type EvalExpect = {
   mustIncludeWarning?: boolean
   /** At least one tool result has dryRun: true */
   expectDryRun?: boolean
+  /** First call of `tool` must have this arg path, and it must equal the value. */
+  argsEquals?: Array<{
+    tool: string
+    path: string
+    equals: string | number | boolean
+  }>
+  /** Fail only when `tool` was called and that arg path is present and equals the value. */
+  argsNot?: Array<{
+    tool: string
+    path: string
+    equals: string | number | boolean
+  }>
 }
 
 /** JSON fixture shape under lib/agentEval/fixtures/. */

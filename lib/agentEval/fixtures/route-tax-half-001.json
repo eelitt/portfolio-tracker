@@ -1,0 +1,14 @@
+{
+  "id": "route-tax-half-001",
+  "feature": "portfolio_orchestrator",
+  "description": "A half-sell tax question routes to the tax agent with sellFraction 0.5",
+  "prompt": "What's the tax if I sell half of AAPL?",
+  "seed": { "transactions": [], "prices": {} },
+  "expect": {
+    "toolsAnyOf": [["invoke_tax_agent"]],
+    "forbiddenTools": ["invoke_portfolio_analyst"],
+    "argsEquals": [
+      { "tool": "invoke_tax_agent", "path": "sellFraction", "equals": 0.5 }
+    ]
+  }
+}

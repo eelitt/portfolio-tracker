@@ -164,7 +164,7 @@ News handoff is a parsed slim payload (`parseNewsContextHandoff`). The analyst m
 
 Chat history is **one rolling thread per user** in `user_ai_insights` (`feature_type = portfolio_analyst_chat`): last 20 user/assistant text messages (same cap as request sanitizer). Tool payloads are not stored. The sidebar hydrates on open; **New chat** clears the blob. `buildUserContext` does not duplicate this thread.
 
-Admin: `agent_runs` (tokens, cost, confirm flags, parent/child). The orchestrator parent also stores `meta.user_text` and `meta.route`. Eval fixtures inject a portfolio and must not write real txs (`evalMode` / dry-run).
+Admin: `agent_runs` (tokens, cost, confirm flags, parent/child). The orchestrator parent also stores `meta.user_text` and `meta.route`. Overview is the last 30 days, or the latest rows when that window is empty. Analyst eval fixtures inject a portfolio. Orchestrator eval fixtures only check routing. Neither writes real txs (`evalMode` / dry-run). The eval route streams per-case progress.
 
 ---
 
@@ -188,6 +188,8 @@ Goals persist name, target, optional `target_date` / `planned_monthly` / `assign
 
 Daily USD snapshots: Edge Function `portfolio-snapshots` → `portfolio_snapshots` (RLS read). Performance chart: `getPortfolioSnapshots` + `lib/aggregateSnapshots.ts` (daily 90d / monthly 24m / yearly). That series is **not** rebuilt from transactions + historical marks on each page load.
 
+Cost basis chart: `getInvestedVsCashSeries` pages `holding_snapshots` and `lib/investedVsCash.ts` sums priced stock, ETF, and crypto rows into market value versus cost basis. Cash, futures, and the portfolio totals are not that pair. The series is not rebuilt before the first snapshot.
+
 From the day futures shipped, a new `portfolio_snapshots` total is spot market value plus the cash total plus open perp equity. Each open side is a `holding_snapshots` row valued at equity, with `position_side` set. Spot and cash rows store `''`. Notional is not stored. A flat side writes no row. Older days are not rewritten. The job's math is a second copy in `supabase/functions/portfolio-snapshots/book.ts`. An open future uses the USD-M mark, not the spot ticker.
 
 Chart / Price-tab history uses the same catalog routing as live marks: `yahoo_chart` funds (e.g. OP Amerikka) load Yahoo daily bars, not Finnhub. Bars are stored USD (EUR NAV ÷ USD/EUR).
@@ -200,7 +202,7 @@ Optional benchmarks (SPY, URTH, BTC) overlay that chart as **price** series from
 
 Unit tests under `lib/tests/` are the architecture’s proof for **money and gates**, not for CSS.
 
-They are supposed to fail if: weighted-average / remaining basis / oversell cap changes; a future row joins the spot average or a future fill writes Available Cash; a snapshot stores notional instead of equity; a transaction row's P&L diverges from that holding; missing quote invents −100% P&L; mixed-currency P&L is scaled; cash nets raw faces; HMO applies to a loss; confirm accepts a jailbreak sentence; type weights do not sum to 100; excess/TE uses fill-forward or a single overlapping point; contribution % is shown when book Δ is 0; a cash deposit is treated as TWR; TWR invents a return when base MV is 0.
+They are supposed to fail if: weighted-average / remaining basis / oversell cap changes; a future row joins the spot average or a future fill writes Available Cash; a snapshot stores notional instead of equity; a transaction row's P&L diverges from that holding; missing quote invents −100% P&L; mixed-currency P&L is scaled; cash nets raw faces; HMO applies to a loss; confirm accepts a jailbreak sentence; type weights do not sum to 100; excess/TE uses fill-forward or a single overlapping point; contribution % is shown when book Δ is 0; a cash deposit is treated as TWR; TWR invents a return when base MV is 0; an unpriced spot snapshot is drawn as a loss on the cost-basis chart, or cash or a future joins that sum.
 
 They are **not** supposed to prove RLS. User A vs user B is a policy + integration concern.
 
@@ -227,6 +229,7 @@ They are **not** supposed to prove RLS. User A vs user B is a policy + integrati
 | Benchmarks / TE / contribution | `lib/benchmarks/` |
 | TWR / vol / drawdown | `lib/performance/` |
 | Snapshots | `app/actions/snapshots.ts`, `supabase/functions/portfolio-snapshots/` |
+| Invested versus cash | `lib/investedVsCash.ts` |
 | Formula sheet | `calculation_logic.md` |
 | Cash denominations | `cash_denominations.md` |
 | Tax engine and tax README | `lib/tax/` |

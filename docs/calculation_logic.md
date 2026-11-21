@@ -92,6 +92,17 @@ Change a formula → update this file in the same change. Do not document UI her
 
 ---
 
+## Invested versus cash
+
+**Inputs:** `holding_snapshots` for stock, ETF, and crypto, stored in USD. The chart converts each point with the same current display-currency rate as the other snapshot charts.  
+**Lines:** Market value is the sum of priced spot market values that day. Cost basis is the cost basis of those same rows. The cost line is that capital if it had stayed cash.  
+**Partial day:** An unpriced spot row (`is_partial`, or market value not positive) is left out of both sums, and the day is partial. If every spot row that day is unpriced, the day is omitted.  
+**Excluded:** cash rows, future rows, and `portfolio_snapshots` totals. A closed name leaves both lines on later days. History starts at the first priced spot snapshot. It is not rebuilt from trades and past prices. The last point is the latest snapshot, not a live mark.  
+**Gap:** market value minus cost basis on that snapshot point. Not time-weighted return, not the live holding-card unrealized P&L, and not Finnish tax.  
+**Code:** `buildInvestedVsCashSeries` in `lib/investedVsCash.ts`. `getInvestedVsCashSeries` in `app/actions/snapshots.ts`.
+
+---
+
 ## Goal / DCA projection
 
 **Inputs:** assigned PV (or full book MV if `assigned_amount` is null), target amount, optional target date, planned monthly contribution, nominal annual `r`.

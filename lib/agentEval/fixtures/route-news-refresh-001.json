@@ -1,0 +1,13 @@
+{
+  "id": "route-news-refresh-001",
+  "feature": "portfolio_orchestrator",
+  "description": "An explicit fetch sets forceRefresh",
+  "prompt": "Fetch the latest news",
+  "seed": { "transactions": [], "prices": {} },
+  "expect": {
+    "toolsAnyOf": [["invoke_news_agent"]],
+    "argsEquals": [
+      { "tool": "invoke_news_agent", "path": "forceRefresh", "equals": true }
+    ]
+  }
+}

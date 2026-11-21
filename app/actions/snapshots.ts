@@ -4,7 +4,16 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentUserProfile } from '@/lib/user'
 import { convertAmount, getUsdToEurRate } from '@/lib/currency'
 import { holdingSeriesId, type SnapshotPoint } from '@/lib/aggregateSnapshots'
+import {
+  buildInvestedVsCashSeries,
+  type InvestedSnapshotRow,
+  type InvestedVsCashSeries,
+} from '@/lib/investedVsCash'
 import type { PreferredCurrency } from '@/lib/userTypes'
+
+/** PostgREST returns at most 1000 rows unless the query pages. */
+const HOLDING_SNAPSHOT_PAGE = 1000
+const HOLDING_SNAPSHOT_MAX_PAGES = 40
 
 export type GetPortfolioSnapshotsResult = {
   data?: SnapshotPoint[]
@@ -213,5 +222,103 @@ export async function getHoldingSnapshotsBatch(
   } catch (e) {
     console.error('getHoldingSnapshotsBatch error:', e)
     return { error: 'Failed to load holding history.' }
+  }
+}
+
+export type GetInvestedVsCashResult = {
+  data?: InvestedVsCashSeries
+  error?: string
+}
+
+function convertSeries(
+  points: SnapshotPoint[],
+  preferred: PreferredCurrency,
+  usdToEurRate: number
+): SnapshotPoint[] {
+  return points.map((point) => ({
+    ...point,
+    marketValue: convertAmount(point.marketValue, preferred, usdToEurRate),
+    costBasis: convertAmount(point.costBasis, preferred, usdToEurRate),
+  }))
+}
+
+/**
+ * Priced stock, ETF, and crypto snapshot rows as market value versus cost basis.
+ * Pages holding_snapshots so a long history is not cut at 1000 rows.
+ * Amounts are converted to the preferred currency the same way as portfolio snapshots.
+ */
+export async function getInvestedVsCashSeries(): Promise<GetInvestedVsCashResult> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      return { error: 'Not authenticated' }
+    }
+
+    const profile = await getCurrentUserProfile()
+    const preferred = profile?.preferredCurrency || 'USD'
+    const usdToEurRate = await getUsdToEurRate()
+
+    const raw: InvestedSnapshotRow[] = []
+    for (let page = 0; page < HOLDING_SNAPSHOT_MAX_PAGES; page++) {
+      const start = page * HOLDING_SNAPSHOT_PAGE
+      const end = start + HOLDING_SNAPSHOT_PAGE - 1
+      const { data, error } = await supabase
+        .from('holding_snapshots')
+        .select(
+          'snapshot_date, symbol, asset_type, market_value, cost_basis, is_partial'
+        )
+        .eq('user_id', user.id)
+        .in('asset_type', ['stock', 'etf', 'crypto'])
+        .order('snapshot_date', { ascending: true })
+        .order('symbol', { ascending: true })
+        .order('asset_type', { ascending: true })
+        .range(start, end)
+
+      if (error) {
+        console.error('invested vs cash snapshot fetch error:', error)
+        return { error: 'Failed to load portfolio history.' }
+      }
+
+      const batch = data ?? []
+      for (const row of batch) {
+        const date = normalizeSnapshotDate(row.snapshot_date)
+        const symbol = typeof row.symbol === 'string' ? row.symbol : ''
+        const assetType = typeof row.asset_type === 'string' ? row.asset_type : ''
+        if (!date || !symbol || !assetType) continue
+        raw.push({
+          snapshotDate: date,
+          symbol,
+          assetType,
+          marketValue: Number(row.market_value),
+          costBasis: Number(row.cost_basis),
+          isPartial: Boolean(row.is_partial),
+        })
+      }
+
+      if (batch.length < HOLDING_SNAPSHOT_PAGE) break
+      if (page === HOLDING_SNAPSHOT_MAX_PAGES - 1) {
+        console.error('invested vs cash snapshot fetch stopped at page cap')
+        return { error: 'Failed to load portfolio history.' }
+      }
+    }
+
+    const built = buildInvestedVsCashSeries(raw)
+    const byHolding: Record<string, SnapshotPoint[]> = {}
+    for (const [id, points] of Object.entries(built.byHolding)) {
+      byHolding[id] = convertSeries(points, preferred, usdToEurRate)
+    }
+
+    return {
+      data: {
+        portfolio: convertSeries(built.portfolio, preferred, usdToEurRate),
+        byHolding,
+      },
+    }
+  } catch (e) {
+    console.error('getInvestedVsCashSeries error:', e)
+    return { error: 'Failed to load portfolio history.' }
   }
 }

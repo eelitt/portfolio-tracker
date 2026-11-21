@@ -4,6 +4,7 @@
 
 'use client'
 
+import { format } from 'date-fns'
 import type { AgentOverviewStats } from '@/app/actions/agentObservability'
 
 function pct(n: number) {
@@ -21,18 +22,33 @@ function fmtCost(n: number | null) {
   return `≈ $${n.toFixed(4)}`
 }
 
+function fmtDay(iso: string | null) {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return format(d, 'MMM d')
+}
+
 export default function AgentOverviewTab({
   stats,
   loading,
+  error,
 }: {
   stats: AgentOverviewStats | null
   loading: boolean
+  error?: string | null
 }) {
   if (loading && !stats) {
     return (
       <p className="text-sm text-muted-foreground py-6 text-center">
         Loading overview…
       </p>
+    )
+  }
+
+  if (error) {
+    return (
+      <p className="text-sm text-destructive py-6 text-center">{error}</p>
     )
   }
 
@@ -66,8 +82,16 @@ export default function AgentOverviewTab({
   return (
     <div className="space-y-4 overflow-y-auto min-h-0 flex-1 pr-1">
       <p className="text-xs text-muted-foreground">
-        Last {stats.windowDays} days · success {stats.successCount} · error{' '}
-        {stats.errorCount} · partial {stats.partialCount}
+        {stats.outsideWindow
+          ? `No runs in the last ${stats.windowDays} days. Figures are the latest ${stats.totalRuns} runs${
+              fmtDay(stats.oldestAt) && fmtDay(stats.newestAt)
+                ? `, ${fmtDay(stats.oldestAt)} – ${fmtDay(stats.newestAt)}`
+                : ''
+            }`
+          : `Last ${stats.windowDays} days`}
+        {' · '}
+        success {stats.successCount} · error {stats.errorCount} · partial{' '}
+        {stats.partialCount}
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {cards.map((c) => (

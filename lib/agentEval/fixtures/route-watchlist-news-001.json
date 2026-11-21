@@ -1,0 +1,13 @@
+{
+  "id": "route-watchlist-news-001",
+  "feature": "portfolio_orchestrator",
+  "description": "Watchlist news sets universe to watchlist",
+  "prompt": "News on my watchlist",
+  "seed": { "transactions": [], "prices": {} },
+  "expect": {
+    "toolsAnyOf": [["invoke_news_agent"]],
+    "argsEquals": [
+      { "tool": "invoke_news_agent", "path": "universe", "equals": "watchlist" }
+    ]
+  }
+}

@@ -29,8 +29,42 @@ import type { AgentRunRow } from '@/lib/agentObservability'
 import AgentOverviewTab from './AgentOverviewTab'
 import AgentRunsTable, { AgentRunDetail } from './AgentRunsTable'
 import AgentEvalTab from './AgentEvalTab'
+import { parseEvalProgressLine, type EvalProgressEvent } from '@/lib/agentEval/progress'
 
 type Tab = 'overview' | 'runs' | 'eval'
+type EvalFeature = 'portfolio_analyst' | 'portfolio_orchestrator'
+
+type EvalRunProgress = {
+  feature: EvalFeature
+  completed: number
+  total: number
+  passed: number
+  failed: number
+  caseId: string | null
+}
+
+async function readEvalProgress(
+  res: Response,
+  onEvent: (event: EvalProgressEvent) => void
+) {
+  const reader = res.body?.getReader()
+  if (!reader) throw new Error('Eval response had no body')
+  const decoder = new TextDecoder()
+  let buf = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    const lines = buf.split('\n')
+    buf = lines.pop() ?? ''
+    for (const line of lines) {
+      const event = parseEvalProgressLine(line)
+      if (event) onEvent(event)
+    }
+  }
+  const tail = parseEvalProgressLine(buf)
+  if (tail) onEvent(tail)
+}
 
 interface AgentObservabilityModalProps {
   open: boolean
@@ -44,6 +78,7 @@ export default function AgentObservabilityModal({
   const [tab, setTab] = useState<Tab>('overview')
   const [loading, setLoading] = useState(false)
   const [overview, setOverview] = useState<AgentOverviewStats | null>(null)
+  const [overviewError, setOverviewError] = useState<string | null>(null)
   const [runs, setRuns] = useState<AgentRunRow[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedRun, setSelectedRun] = useState<AgentRunRow | null>(null)
@@ -54,7 +89,8 @@ export default function AgentObservabilityModal({
   const [latestEval, setLatestEval] = useState<Awaited<
     ReturnType<typeof getLatestEvalRun>
   >['data']>(null)
-  const [evalRunning, setEvalRunning] = useState(false)
+  const [runningFeature, setRunningFeature] = useState<EvalFeature | null>(null)
+  const [evalProgress, setEvalProgress] = useState<EvalRunProgress | null>(null)
 
   const loadAll = useCallback(async () => {
     setLoading(true)
@@ -65,8 +101,14 @@ export default function AgentObservabilityModal({
       getLatestEvalRun(),
     ])
 
-    if (ov.error) toast.error(ov.error)
-    else setOverview(ov.data ?? null)
+    if (ov.error) {
+      toast.error(ov.error)
+      setOverviewError(ov.error)
+      setOverview(null)
+    } else {
+      setOverviewError(null)
+      setOverview(ov.data ?? null)
+    }
 
     if (list.error) toast.error(list.error)
     else setRuns(list.data ?? [])
@@ -102,35 +144,77 @@ export default function AgentObservabilityModal({
   }, [selectedId, runs])
 
   /** Live suite — API route holds the long timeout budget. */
-  const handleRunSuite = useCallback(async () => {
-    setEvalRunning(true)
+  const handleRunSuite = useCallback(async (feature: EvalFeature) => {
+    const total = fixtures.filter((f) => f.feature === feature).length
+    setRunningFeature(feature)
+    setEvalProgress({
+      feature,
+      completed: 0,
+      total,
+      passed: 0,
+      failed: 0,
+      caseId: null,
+    })
     try {
-      const res = await fetch('/api/admin/agent-eval', { method: 'POST' })
-      const body = (await res.json()) as {
-        error?: string
-        data?: {
-          passed: number
-          failed: number
-          total: number
-          durationMs: number
-        }
-      }
-      if (!res.ok || body.error) {
-        toast.error(body.error || `Eval failed (${res.status})`)
+      const res = await fetch('/api/admin/agent-eval', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feature }),
+      })
+      const contentType = res.headers.get('content-type') || ''
+      if (!contentType.includes('ndjson')) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null
+        toast.error(body?.error || `Eval failed (${res.status})`)
         return
       }
-      const d = body.data!
+
+      const outcome: {
+        done: Extract<EvalProgressEvent, { type: 'done' }> | null
+        error: string | null
+      } = { done: null, error: null }
+      await readEvalProgress(res, (event) => {
+        if (event.type === 'start') {
+          setEvalProgress((prev) => (prev ? { ...prev, total: event.total } : prev))
+        } else if (event.type === 'case') {
+          setEvalProgress((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  completed: event.index,
+                  total: event.total,
+                  caseId: event.caseId,
+                  passed: prev.passed + (event.passed ? 1 : 0),
+                  failed: prev.failed + (event.passed ? 0 : 1),
+                }
+              : prev
+          )
+        } else if (event.type === 'done') {
+          outcome.done = event
+        } else {
+          outcome.error = event.error
+        }
+      })
+
+      if (outcome.error) {
+        toast.error(outcome.error)
+        return
+      }
+      if (!outcome.done) {
+        toast.error('Eval ended before a result')
+        return
+      }
       toast.success(
-        `Eval done: ${d.passed}/${d.total} passed (${(d.durationMs / 1000).toFixed(1)}s)`
+        `Eval done: ${outcome.done.passed}/${outcome.done.total} passed (${(outcome.done.durationMs / 1000).toFixed(1)}s)`
       )
       await loadAll()
       setTab('eval')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Eval request failed')
     } finally {
-      setEvalRunning(false)
+      setRunningFeature(null)
+      setEvalProgress(null)
     }
-  }, [loadAll])
+  }, [fixtures, loadAll])
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
@@ -155,7 +239,7 @@ export default function AgentObservabilityModal({
               size="icon-sm"
               className="shrink-0"
               onClick={() => void loadAll()}
-              disabled={loading || evalRunning}
+              disabled={loading || runningFeature != null}
               aria-label="Refresh"
               title="Refresh"
             >
@@ -185,7 +269,11 @@ export default function AgentObservabilityModal({
 
         <div className="flex flex-col min-h-[20rem] max-h-[60vh] overflow-hidden flex-1">
           {tab === 'overview' && (
-            <AgentOverviewTab stats={overview} loading={loading} />
+            <AgentOverviewTab
+              stats={overview}
+              loading={loading}
+              error={overviewError}
+            />
           )}
           {tab === 'runs' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-h-0 flex-1 overflow-hidden">
@@ -208,8 +296,9 @@ export default function AgentObservabilityModal({
               fixtures={fixtures}
               latest={latestEval ?? null}
               loading={loading}
-              running={evalRunning}
-              onRunSuite={() => void handleRunSuite()}
+              runningFeature={runningFeature}
+              progress={evalProgress}
+              onRunSuite={(feature) => void handleRunSuite(feature)}
             />
           )}
         </div>

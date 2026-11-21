@@ -20,6 +20,8 @@ export type OrchestratorToolContext = {
   lastUserText: string
   /** No writes / no live news refresh */
   dryRun?: boolean
+  /** Eval only: return a stub and do not call specialists. */
+  evalMode?: boolean
 }
 
 /**
@@ -30,6 +32,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
   /** Only news from a successful invoke_news_agent in THIS request may be handed off. */
   let newsOkThisRequest = false
   let lastNewsHandoff: NewsAgentOutput | null = null
+  const evalStub = () => redactForStorage({ ok: true, brief: 'eval' })
 
   return {
     invoke_news_agent: tool({
@@ -59,6 +62,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           .describe('Short hint from the user question for ranking focus.'),
       }),
       execute: async (args) => {
+        if (ctx.evalMode) return evalStub()
         const out = await runNewsAgent(childCtx, {
           symbols: args.symbols,
           universe: args.universe,
@@ -116,6 +120,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           ),
       }),
       execute: async (args) => {
+        if (ctx.evalMode) return evalStub()
         let newsContext: NewsAgentOutput | undefined
         if (args.newsContext !== undefined && args.newsContext !== null) {
           if (!newsOkThisRequest || !lastNewsHandoff) {
@@ -187,6 +192,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
         questionHint: z.string().optional(),
       }),
       execute: async (args) => {
+        if (ctx.evalMode) return evalStub()
         const out = await runTaxAgent(childCtx, {
           mode: args.mode,
           taxYear: args.taxYear,
@@ -217,6 +223,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           .describe('Optional focus from the user question'),
       }),
       execute: async () => {
+        if (ctx.evalMode) return evalStub()
         const out = await runPortfolioAnalysisAgent(childCtx, {
           dryRun: ctx.dryRun === true,
         })

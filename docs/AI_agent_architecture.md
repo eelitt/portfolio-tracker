@@ -125,7 +125,9 @@ The user reviews the parsed rows. A cash row can be USD, EUR, USDT, or USDC. The
 
 `lib/agentObservability/` records runs, redacts tool payloads, prices tokens in `cost.ts`, and scores eval cases. Admin reads go through `app/actions/agentObservability.ts`. The parent orchestrator row lists invoked specialists and stores `meta.user_text` plus `meta.route`. The admin detail shows those as Asked and Route. Child rows point at `parent_run_id`.
 
-The live eval suite is `lib/agentEval/runSuite.ts`, started from `app/api/admin/agent-eval/route.ts` for an admin. It calls the Portfolio Analyst prompt and tools directly, not the orchestrator. Each fixture injects a portfolio (`evalMode`). Confirm does not require a stored draft and does not write a real transaction. Dry-run fixtures set `dryRun`. Scores are pure checks in `lib/agentObservability/score.ts` over the tool trace. Fixtures live in `lib/agentEval/fixtures/`.
+Overview counts every `agent_runs` row in the last 30 days, parents and children together. When that window is empty it uses the latest 500 rows and says the figures are older. The Runs list is parent rows only and has no date cutoff.
+
+The live eval suites are `lib/agentEval/runSuite.ts`, started from `app/api/admin/agent-eval/route.ts` for an admin. The analyst suite calls the Portfolio Analyst prompt and tools directly. Each fixture injects a portfolio (`evalMode`). Confirm does not require a stored draft and does not write a real transaction. Dry-run fixtures set `dryRun`. The orchestrator suite calls the orchestrator prompt with the real `invoke_*` tools in `evalMode`, so those tools return a stub and do not run specialists. Scores are pure checks in `lib/agentObservability/score.ts` over the tool trace, including arg checks for routing. Fixtures live in `lib/agentEval/fixtures/`. The route streams one progress line per finished case (`lib/agentEval/progress.ts`). One suite runs at a time.
 
 ## Failure shape
 

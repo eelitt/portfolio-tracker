@@ -9,6 +9,7 @@ import { scoreCase, deriveConfirmMeta, toolRecordsFromStepResults } from '../age
 import { redactForStorage, toolResultOk } from '../agentObservability/redact'
 import { estimateCostUsd } from '../agentObservability/cost'
 import { buildEvalPortfolioData } from '../agentEval/buildEvalPortfolio'
+import { loadEvalFixtures } from '../agentEval/loadFixtures'
 import type { AgentToolRecord, EvalExpect } from '../agentObservability/types'
 
 describe('scoreCase', () => {
@@ -188,6 +189,72 @@ describe('scoreCase', () => {
     expect(r.passed).toBe(false)
   })
 
+  it('argsEquals requires the arg on the first matching call', () => {
+    const called: AgentToolRecord[] = [
+      {
+        name: 'invoke_tax_agent',
+        args: { sellFraction: 0.5, symbol: 'AAPL' },
+        ok: true,
+      },
+    ]
+    expect(
+      scoreCase(
+        {
+          argsEquals: [
+            { tool: 'invoke_tax_agent', path: 'sellFraction', equals: 0.5 },
+          ],
+        },
+        called
+      ).passed
+    ).toBe(true)
+    expect(
+      scoreCase(
+        {
+          argsEquals: [
+            { tool: 'invoke_tax_agent', path: 'sellFraction', equals: 1 },
+          ],
+        },
+        called
+      ).passed
+    ).toBe(false)
+    expect(
+      scoreCase(
+        {
+          argsEquals: [
+            { tool: 'invoke_news_agent', path: 'universe', equals: 'watchlist' },
+          ],
+        },
+        called
+      ).passed
+    ).toBe(false)
+  })
+
+  it('argsNot fails only when the arg is present and equal', () => {
+    const called: AgentToolRecord[] = [
+      { name: 'invoke_news_agent', args: {}, ok: true },
+    ]
+    expect(
+      scoreCase(
+        {
+          argsNot: [
+            { tool: 'invoke_news_agent', path: 'forceRefresh', equals: true },
+          ],
+        },
+        called
+      ).passed
+    ).toBe(true)
+    expect(
+      scoreCase(
+        {
+          argsNot: [
+            { tool: 'invoke_news_agent', path: 'forceRefresh', equals: true },
+          ],
+        },
+        [{ name: 'invoke_news_agent', args: { forceRefresh: true }, ok: true }]
+      ).passed
+    ).toBe(false)
+  })
+
   it('failureModeOnTool fails on the wrong mode', () => {
     const r = scoreCase(
       {
@@ -267,6 +334,17 @@ describe('estimateCostUsd', () => {
       completionTokens: 1_000_000,
     })
     expect(c).toBeGreaterThan(0)
+  })
+})
+
+describe('loadEvalFixtures', () => {
+  it('keeps the analyst and orchestrator suites under the cap', () => {
+    const analyst = loadEvalFixtures('portfolio_analyst')
+    const orchestrator = loadEvalFixtures('portfolio_orchestrator')
+    expect(analyst).toHaveLength(10)
+    expect(orchestrator).toHaveLength(8)
+    expect(analyst.every((f) => f.feature === 'portfolio_analyst')).toBe(true)
+    expect(orchestrator.every((f) => f.feature === 'portfolio_orchestrator')).toBe(true)
   })
 })
 

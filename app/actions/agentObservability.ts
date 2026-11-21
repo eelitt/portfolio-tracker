@@ -12,6 +12,7 @@ import { getCurrentUser } from '@/lib/user'
 import type { AgentRunRow, AgentToolRecord, AgentRunMeta } from '@/lib/agentObservability'
 import { listEvalFixtureMeta } from '@/lib/agentEval/loadFixtures'
 import { runPortfolioAnalystEvalSuite } from '@/lib/agentEval/runSuite'
+import { pickOverviewRows } from '@/lib/agentObservability/overviewRows'
 
 async function requireAdmin(): Promise<
   { user: { id: string }; error?: undefined } | { user?: undefined; error: string }
@@ -158,6 +159,10 @@ export type AgentOverviewStats = {
   confirmAttempts: number
   confirmBlocked: number
   confirmSuccess: number
+  /** True when the 30-day window was empty and these figures are older rows. */
+  outsideWindow: boolean
+  oldestAt: string | null
+  newestAt: string | null
 }
 
 export async function getAgentOverview(
@@ -168,21 +173,40 @@ export async function getAgentOverview(
 
   const days = Math.min(Math.max(windowDays, 1), 90)
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
+  const columns =
+    'created_at, status, duration_ms, estimated_cost_usd, total_tokens, tools, meta'
 
   try {
     const service = createServiceClient()
-    const { data, error } = await service
+    const windowRes = await service
       .from('agent_runs')
-      .select(
-        'status, duration_ms, estimated_cost_usd, total_tokens, tools, meta'
-      )
+      .select(columns)
       .gte('created_at', since)
       .order('created_at', { ascending: false })
       .limit(500)
 
-    if (error) return { error: error.message }
+    if (windowRes.error) return { error: windowRes.error.message }
 
-    const rows = data || []
+    let latestRows: NonNullable<typeof windowRes.data> = []
+    if ((windowRes.data || []).length === 0) {
+      const latestRes = await service
+        .from('agent_runs')
+        .select(columns)
+        .order('created_at', { ascending: false })
+        .limit(500)
+      if (latestRes.error) return { error: latestRes.error.message }
+      latestRows = latestRes.data || []
+    }
+
+    const picked = pickOverviewRows(windowRes.data || [], latestRows)
+    const rows = picked.rows
+    let oldestAt: string | null = null
+    let newestAt: string | null = null
+    for (const row of rows) {
+      const at = row.created_at as string
+      if (!oldestAt || at < oldestAt) oldestAt = at
+      if (!newestAt || at > newestAt) newestAt = at
+    }
     const totalRuns = rows.length
     let successCount = 0
     let errorCount = 0
@@ -251,6 +275,9 @@ export async function getAgentOverview(
         confirmAttempts,
         confirmBlocked,
         confirmSuccess,
+        outsideWindow: picked.outsideWindow,
+        oldestAt,
+        newestAt,
       },
     }
   } catch (e) {
@@ -267,7 +294,12 @@ export async function listEvalCases(): Promise<{
 }> {
   const gate = await requireAdmin()
   if (gate.error) return { error: gate.error }
-  return { data: listEvalFixtureMeta('portfolio_analyst') }
+  return {
+    data: [
+      ...listEvalFixtureMeta('portfolio_analyst'),
+      ...listEvalFixtureMeta('portfolio_orchestrator'),
+    ],
+  }
 }
 
 export type EvalRunSummary = {

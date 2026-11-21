@@ -1,0 +1,15 @@
+{
+  "id": "route-log-001",
+  "feature": "portfolio_orchestrator",
+  "description": "A dictated buy routes to the portfolio analyst only",
+  "prompt": "I bought 10 AAPL at 180",
+  "seed": { "transactions": [], "prices": {} },
+  "expect": {
+    "toolsAnyOf": [["invoke_portfolio_analyst"]],
+    "forbiddenTools": [
+      "invoke_news_agent",
+      "invoke_tax_agent",
+      "invoke_portfolio_analysis_agent"
+    ]
+  }
+}

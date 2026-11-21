@@ -1,8 +1,8 @@
 /**
- * Live LLM eval suite for Portfolio Analyst (server-only).
+ * Live LLM eval suites (server-only).
  *
- * For each fixture: inject seed portfolio → generateText + tools (evalMode) →
- * pure scoreCase → persist agent_runs + agent_eval_results.
+ * Analyst: inject seed portfolio → generateText + tools (evalMode) → scoreCase.
+ * Orchestrator: same model call, invoke_* tools stubbed, score the route only.
  * Caller must already be admin (API route / server action gate).
  */
 
@@ -12,6 +12,8 @@ import { generateText } from 'ai'
 import { xai } from '@ai-sdk/xai'
 import { PORTFOLIO_ANALYST_SYSTEM_PROMPT } from '@/app/actions/ai/portfolio-analyst/prompt'
 import { createPortfolioAnalystTools } from '@/app/actions/ai/portfolio-analyst/tools'
+import { ORCHESTRATOR_SYSTEM_PROMPT } from '@/app/actions/ai/orchestrator/prompt'
+import { createOrchestratorTools } from '@/app/actions/ai/orchestrator/tools'
 import {
   finishAgentRun,
   startAgentRun,
@@ -26,9 +28,11 @@ import {
 import { createServiceClient } from '@/lib/supabase/admin'
 import { buildEvalPortfolioData } from './buildEvalPortfolio'
 import { loadEvalFixtures } from './loadFixtures'
+import type { EvalSuiteProgress } from './progress'
 
 const MODEL_ID = 'grok-4.3'
-const FEATURE = 'portfolio_analyst'
+const ANALYST_FEATURE = 'portfolio_analyst'
+const ORCHESTRATOR_FEATURE = 'portfolio_orchestrator'
 
 export type EvalCaseOutcome = {
   caseId: string
@@ -49,59 +53,56 @@ export type EvalSuiteOutcome = {
   results: EvalCaseOutcome[]
 }
 
+type ModelStep = {
+  toolResults?: Array<{ toolName: string; args?: unknown; result?: unknown }>
+}
+
+function recordsFromStep(step: ModelStep): AgentToolRecord[] {
+  return toolRecordsFromStepResults(
+    (step.toolResults || []).map((tr) => ({
+      toolName: tr.toolName,
+      args: tr.args,
+      result: tr.result,
+    }))
+  )
+}
+
 /** One fixture: model call + score + linked agent_run. */
-async function runOneCase(
+async function runModelCase(
   userId: string,
-  fixture: EvalCaseFixture
+  fixture: EvalCaseFixture,
+  feature: string,
+  callModel: (
+    runId: string | null,
+    onStepFinish: (step: ModelStep) => void
+  ) => Promise<{
+    usage?: {
+      promptTokens: number
+      completionTokens: number
+      totalTokens: number
+    }
+    steps?: ModelStep[]
+  }>
 ): Promise<EvalCaseOutcome> {
   const startedAt = Date.now()
-  const evalPortfolio = buildEvalPortfolioData(fixture.seed)
   const collected: AgentToolRecord[] = []
 
   const runId = await startAgentRun({
     userId,
-    feature: FEATURE,
+    feature,
     model: MODEL_ID,
     meta: { eval_case_id: fixture.id },
   })
 
   try {
-    const result = await generateText({
-      model: xai(MODEL_ID),
-      system: PORTFOLIO_ANALYST_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: fixture.prompt }],
-      tools: createPortfolioAnalystTools(userId, {
-        lastUserText: fixture.prompt,
-        evalPortfolio,
-        evalMode: true, // no pending drafts / no DB writes from confirm
-        dryRun: fixture.mode === 'dryRun',
-      }),
-      maxSteps: 5,
-      temperature: 0.1,
-      onStepFinish: (step) => {
-        const records = toolRecordsFromStepResults(
-          (step.toolResults || []).map((tr) => ({
-            toolName: tr.toolName,
-            args: tr.args,
-            result: tr.result,
-          }))
-        )
-        collected.push(...records)
-      },
+    const result = await callModel(runId, (step) => {
+      collected.push(...recordsFromStep(step))
     })
 
     // Fallback if step callback did not fire (SDK edge cases)
     if (collected.length === 0 && result.steps) {
       for (const step of result.steps) {
-        collected.push(
-          ...toolRecordsFromStepResults(
-            (step.toolResults || []).map((tr) => ({
-              toolName: tr.toolName,
-              args: tr.args,
-              result: tr.result,
-            }))
-          )
-        )
+        collected.push(...recordsFromStep(step))
       }
     }
 
@@ -160,18 +161,60 @@ async function runOneCase(
   }
 }
 
+function runAnalystCase(userId: string, fixture: EvalCaseFixture) {
+  const evalPortfolio = buildEvalPortfolioData(fixture.seed)
+  return runModelCase(userId, fixture, ANALYST_FEATURE, (_runId, onStepFinish) =>
+    generateText({
+      model: xai(MODEL_ID),
+      system: PORTFOLIO_ANALYST_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: fixture.prompt }],
+      tools: createPortfolioAnalystTools(userId, {
+        lastUserText: fixture.prompt,
+        evalPortfolio,
+        evalMode: true, // no pending drafts / no DB writes from confirm
+        dryRun: fixture.mode === 'dryRun',
+      }),
+      maxSteps: 5,
+      temperature: 0.1,
+      onStepFinish,
+    })
+  )
+}
+
+function runOrchestratorCase(userId: string, fixture: EvalCaseFixture) {
+  return runModelCase(userId, fixture, ORCHESTRATOR_FEATURE, (runId, onStepFinish) =>
+    generateText({
+      model: xai(MODEL_ID),
+      system: ORCHESTRATOR_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: fixture.prompt }],
+      tools: createOrchestratorTools({
+        userId,
+        parentRunId: runId,
+        lastUserText: fixture.prompt,
+        evalMode: true,
+      }),
+      maxSteps: 4,
+      temperature: 0.1,
+      onStepFinish,
+    })
+  )
+}
+
 /**
- * Execute all portfolio_analyst fixtures sequentially.
+ * Execute one feature's fixtures sequentially.
  * Writes agent_eval_runs / agent_eval_results; gaps between cases ease rate limits.
  */
-export async function runPortfolioAnalystEvalSuite(
-  adminUserId: string
+async function runEvalSuite(
+  adminUserId: string,
+  feature: string,
+  runCase: (userId: string, fixture: EvalCaseFixture) => Promise<EvalCaseOutcome>,
+  onProgress?: (event: EvalSuiteProgress) => void
 ): Promise<{ data?: EvalSuiteOutcome; error?: string }> {
   if (!process.env.XAI_API_KEY) {
     return { error: 'AI service is not configured (XAI_API_KEY).' }
   }
 
-  const fixtures = loadEvalFixtures(FEATURE)
+  const fixtures = loadEvalFixtures(feature)
   if (fixtures.length === 0) {
     return { error: 'No eval fixtures found.' }
   }
@@ -183,7 +226,7 @@ export async function runPortfolioAnalystEvalSuite(
     .from('agent_eval_runs')
     .insert({
       started_by: adminUserId,
-      feature: FEATURE,
+      feature,
       mode: 'live_llm',
       status: 'running',
       total_cases: fixtures.length,
@@ -199,10 +242,11 @@ export async function runPortfolioAnalystEvalSuite(
 
   const evalRunId = evalRun.id as string
   const results: EvalCaseOutcome[] = []
+  onProgress?.({ type: 'start', total: fixtures.length })
 
   try {
     for (const fixture of fixtures) {
-      const outcome = await runOneCase(adminUserId, fixture)
+      const outcome = await runCase(adminUserId, fixture)
       results.push(outcome)
 
       await service.from('agent_eval_results').insert({
@@ -212,6 +256,14 @@ export async function runPortfolioAnalystEvalSuite(
         scores: outcome.scores,
         agent_run_id: outcome.agentRunId,
         error_summary: outcome.errorSummary ?? null,
+      })
+
+      onProgress?.({
+        type: 'case',
+        index: results.length,
+        total: fixtures.length,
+        caseId: outcome.caseId,
+        passed: outcome.passed,
       })
 
       // Small gap to ease rate limits
@@ -262,4 +314,20 @@ export async function runPortfolioAnalystEvalSuite(
 
     return { error: msg }
   }
+}
+
+/** Analyst suite: injected book, real analyst tools, no ledger writes. */
+export function runPortfolioAnalystEvalSuite(
+  adminUserId: string,
+  onProgress?: (event: EvalSuiteProgress) => void
+) {
+  return runEvalSuite(adminUserId, ANALYST_FEATURE, runAnalystCase, onProgress)
+}
+
+/** Orchestrator suite: routing only. Specialists are not called. */
+export function runOrchestratorEvalSuite(
+  adminUserId: string,
+  onProgress?: (event: EvalSuiteProgress) => void
+) {
+  return runEvalSuite(adminUserId, ORCHESTRATOR_FEATURE, runOrchestratorCase, onProgress)
 }

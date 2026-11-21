@@ -1,0 +1,15 @@
+{
+  "id": "route-news-001",
+  "feature": "portfolio_orchestrator",
+  "description": "A casual holdings-news question does not force a refresh or the watchlist",
+  "prompt": "Any news on my holdings?",
+  "seed": { "transactions": [], "prices": {} },
+  "expect": {
+    "toolsAnyOf": [["invoke_news_agent"]],
+    "forbiddenTools": ["invoke_tax_agent", "invoke_portfolio_analysis_agent"],
+    "argsNot": [
+      { "tool": "invoke_news_agent", "path": "forceRefresh", "equals": true },
+      { "tool": "invoke_news_agent", "path": "universe", "equals": "watchlist" }
+    ]
+  }
+}

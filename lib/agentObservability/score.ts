@@ -23,6 +23,19 @@ function getPath(obj: unknown, path: string): unknown {
   return cur
 }
 
+/** Arg path on the first call of `tool`. Missing tool or path is undefined. */
+function findArg(
+  tools: AgentToolRecord[],
+  tool: string,
+  path: string
+): unknown {
+  for (const t of tools) {
+    if (t.name !== tool) continue
+    return getPath(t.args, path)
+  }
+  return undefined
+}
+
 /** First finite number found for path across tool results (optional tool filter). */
 function findNumeric(
   tools: AgentToolRecord[],
@@ -141,6 +154,36 @@ export function scoreCase(expect: EvalExpect, tools: AgentToolRecord[]): ScoreRe
       passed: hit,
       detail: hit ? 'warnings present on a tool result' : 'no warnings[] found',
     })
+  }
+
+  if (expect.argsEquals && expect.argsEquals.length > 0) {
+    for (const rule of expect.argsEquals) {
+      const actual = findArg(tools, rule.tool, rule.path)
+      const ok = actual === rule.equals
+      checks.push({
+        name: `argsEquals:${rule.tool}.${rule.path}`,
+        passed: ok,
+        detail: ok
+          ? `${rule.path}=${String(rule.equals)}`
+          : actual === undefined
+            ? `${rule.tool}.${rule.path} missing`
+            : `expected ${String(rule.equals)}, got ${String(actual)}`,
+      })
+    }
+  }
+
+  if (expect.argsNot && expect.argsNot.length > 0) {
+    for (const rule of expect.argsNot) {
+      const actual = findArg(tools, rule.tool, rule.path)
+      const hit = actual !== undefined && actual === rule.equals
+      checks.push({
+        name: `argsNot:${rule.tool}.${rule.path}`,
+        passed: !hit,
+        detail: hit
+          ? `${rule.path} was ${String(rule.equals)}`
+          : `${rule.path} was not ${String(rule.equals)}`,
+      })
+    }
   }
 
   if (expect.expectDryRun) {
