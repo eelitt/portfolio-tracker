@@ -57,7 +57,7 @@ Prompts are the policy the registry cannot express: when to call, what to refuse
 
 **Orchestrator** (`app/actions/ai/orchestrator/prompt.ts`): role, the four specialists, routing rules, trust boundary, answer style, disclaimers, refusal template. The route appends the user-context block from `formatUserContextForPrompt` (`lib/aiTools/formatUserContext.ts`), and a dry-run block when that mode is on. The block is currency, investor profile, target mix, goals, and whether a stored analysis or holding-news package exists. It has no market value, holding count, or top symbols. `buildUserContext` loads those rows and does not call `getPortfolioData`.
 
-**Analyst** (`app/actions/ai/portfolio-analyst/prompt.ts`): role, trust boundary, in-scope list, out-of-scope list, futures read rules, tool rules, the ten logging steps, watchlist steps, refusal template. `buildAnalystNewsContextBlock` is appended only when the server parsed a news handoff. It is empty otherwise.
+**Analyst** (`app/actions/ai/portfolio-analyst/prompt.ts`): role, trust boundary, in-scope list, out-of-scope list, futures read rules, tool rules, the ten logging steps, watchlist steps, refusal template. Logging step 1 does not apply to a future, a USD-M pair, funding, or a margin change. `buildAnalystNewsContextBlock` is appended only when the server parsed a news handoff. It is empty otherwise.
 
 **News** (`app/actions/ai/holding-news/prompts.ts`): the crypto search system prompt requires one search per ticker and JSON only. The user prompt is the date window plus the holdings list. The impact system prompt allows tone, outlook, and points, and forbids price targets and buy/sell lines. The impact user prompt is the bullets already collected.
 

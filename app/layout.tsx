@@ -24,6 +24,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Portfolio Tracker",
   description: "Track your portfolio",
+  icons: {
+    icon: "/brand/portfolio-tracker-icon.svg",
+  },
 };
 
 export default async function RootLayout({

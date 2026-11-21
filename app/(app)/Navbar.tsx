@@ -168,10 +168,19 @@ export default function Navbar({
         {/* Brand: Portfolio (gold) + Tracker (white/foreground) */}
         <Link
           href="/dashboard"
-          className="font-display text-2xl font-semibold tracking-tight"
+          className="flex items-center gap-2 font-display text-2xl font-semibold tracking-tight"
         >
-          <span className="text-gold">Portfolio</span>{' '}
-          <span className="text-foreground">Tracker</span>
+          <img
+            src="/brand/portfolio-tracker-icon.svg"
+            alt="Portfolio Tracker"
+            width={32}
+            height={32}
+            className="h-8 w-8"
+          />
+          <span>
+            <span className="text-gold">Portfolio</span>{' '}
+            <span className="text-foreground">Tracker</span>
+          </span>
         </Link>
 
         <div className="flex items-center gap-8 text-sm font-medium">

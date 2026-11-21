@@ -106,6 +106,8 @@ export type CurrencyCode = 'USD' | 'EUR' | 'USDT' | 'USDC'
 export type ChatAddTransactionInput = {
   /** User wording used for currency / ambiguity checks (required). */
   sourceText: string
+  /** Latest user message. Checked for a futures write. Not used for currency. */
+  userText?: string | null
   symbol?: string | null
   asset_type?: AssetType | null
   action?: SpotAction | null

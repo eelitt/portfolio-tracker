@@ -140,6 +140,26 @@ function isValidDate(iso: string): boolean {
   return Number.isFinite(Date.parse(iso))
 }
 
+export const CHAT_FUTURE_WRITE_ERROR =
+  'Futures, funding, fees, and margin changes are entered with Add transaction. Chat cannot log them.'
+
+const FUTURE_WORD_RE = /\b(?:perpetuals?|perps?|futures?)\b/i
+const USDT_PAIR_RE = /\b[a-z][a-z0-9]{1,14}usdt\b/i
+const FUNDING_RE = /\bfunding\b/i
+const MARGIN_PHRASE_RE =
+  /\b(?:margin[\s_-]*(?:add|remove)d?|(?:added|add|removed|remove)\s+margin)\b/i
+
+/** True when chat must not turn this wording into a spot or cash draft. */
+export function chatRefusesFutureWrite(text: string): boolean {
+  if (!text.trim()) return false
+  const withoutAside = text.replace(/\bin the future\b/gi, ' ')
+  if (FUTURE_WORD_RE.test(withoutAside)) return true
+  if (USDT_PAIR_RE.test(text)) return true
+  if (FUNDING_RE.test(text)) return true
+  if (MARGIN_PHRASE_RE.test(text)) return true
+  return false
+}
+
 function buildSummary(d: ValidatedTxDraft): string {
   if (d.asset_type === 'cash' && (d.currency === 'USDT' || d.currency === 'USDC')) {
     return `${d.action.toUpperCase()} ${d.quantity.toFixed(2)} ${d.currency} cash at ${d.executed_at}`
@@ -171,6 +191,16 @@ export function validateTransactionDraft(
       errors: [
         'sourceText is required so currency (€ or $) can be verified from your words.',
       ],
+      warnings: [],
+    }
+  }
+
+  const refusalText = [sourceText, input.userText ?? ''].filter(Boolean).join('\n')
+  if (chatRefusesFutureWrite(refusalText)) {
+    return {
+      status: 'invalid',
+      missing: [],
+      errors: [CHAT_FUTURE_WRITE_ERROR],
       warnings: [],
     }
   }

@@ -6,6 +6,10 @@
 import type { FinnishTaxEstimateResult } from './types'
 import { roundMoney } from './progressiveTax'
 
+/** Shown by the brief and the tax modal when the book has a future row. */
+export const FUTURES_OMITTED_SENTENCE =
+  'Open futures are not in this estimate. Funding, fees, and margin changes are not in it either.'
+
 function eur(n: number): string {
   return `€${roundMoney(n).toLocaleString('en-US', {
     minimumFractionDigits: 0,
@@ -54,6 +58,10 @@ export function buildTaxBrief(result: FinnishTaxEstimateResult): string {
 
   if (result.smallDisposal.mayBeTaxFree) {
     lines.push('', `Small-disposal note: ${result.smallDisposal.note}`)
+  }
+
+  if (result.omittedFutures) {
+    lines.push('', FUTURES_OMITTED_SENTENCE)
   }
 
   lines.push(

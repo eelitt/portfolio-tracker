@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="bar" x1="0" y1="16" x2="0" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f4dc96"/>
+      <stop offset="1" stop-color="#b07d30"/>
+    </linearGradient>
+    <linearGradient id="line" x1="6" y1="44" x2="56" y2="6" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#e7c56a"/>
+      <stop offset="1" stop-color="#f0d48a"/>
+    </linearGradient>
+    <linearGradient id="coinFace" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#f8e7b2"/>
+      <stop offset="1" stop-color="#e2b85a"/>
+    </linearGradient>
+    <linearGradient id="coinSide" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#d7a64e"/>
+      <stop offset="1" stop-color="#8d6428"/>
+    </linearGradient>
+    <marker id="arrow" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="12" refX="7" refY="6" orient="auto">
+      <path d="M0 0 L16 6 L0 12 Z" fill="#f0d48a"/>
+    </marker>
+  </defs>
+  <rect x="4" y="38" width="12" height="20" rx="3.5" fill="url(#bar)"/>
+  <rect x="18.5" y="27" width="12" height="31" rx="3.5" fill="url(#bar)"/>
+  <rect x="33" y="22" width="12" height="36" rx="3.5" fill="url(#bar)"/>
+  <path d="M7 44 C16 31 18 28 22.5 30.5 C28 33.5 26.5 38 32 34.5 C40 29 44 20 46 16" stroke="url(#line)" stroke-width="4.75" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <g transform="translate(47.5 46)">
+    <ellipse cx="0" cy="8.2" rx="13.2" ry="4.7" fill="url(#coinSide)"/>
+    <ellipse cx="0" cy="6.6" rx="13.2" ry="4.5" fill="url(#coinFace)"/>
+    <ellipse cx="0" cy="4.1" rx="13.2" ry="4.7" fill="url(#coinSide)"/>
+    <ellipse cx="0" cy="2.5" rx="13.2" ry="4.5" fill="url(#coinFace)"/>
+    <ellipse cx="0" cy="0" rx="13.2" ry="4.7" fill="url(#coinSide)"/>
+    <ellipse cx="0" cy="-1.6" rx="13.2" ry="4.5" fill="url(#coinFace)"/>
+  </g>
+</svg>

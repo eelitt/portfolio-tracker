@@ -341,10 +341,28 @@ describe('loadEvalFixtures', () => {
   it('keeps the analyst and orchestrator suites under the cap', () => {
     const analyst = loadEvalFixtures('portfolio_analyst')
     const orchestrator = loadEvalFixtures('portfolio_orchestrator')
-    expect(analyst).toHaveLength(10)
-    expect(orchestrator).toHaveLength(8)
+    expect(analyst).toHaveLength(11)
+    expect(orchestrator).toHaveLength(9)
     expect(analyst.every((f) => f.feature === 'portfolio_analyst')).toBe(true)
     expect(orchestrator.every((f) => f.feature === 'portfolio_orchestrator')).toBe(true)
+  })
+
+  it('refuse-future-log-001 allows an empty trace and a summary, and rejects a prepare', () => {
+    const fixture = loadEvalFixtures('portfolio_analyst').find(
+      (f) => f.id === 'refuse-future-log-001'
+    )
+    expect(fixture).toBeDefined()
+    expect(scoreCase(fixture!.expect, []).passed).toBe(true)
+    expect(
+      scoreCase(fixture!.expect, [
+        { name: 'get_portfolio_summary', args: {}, result: {}, ok: true },
+      ]).passed
+    ).toBe(true)
+    expect(
+      scoreCase(fixture!.expect, [
+        { name: 'prepare_transaction', args: {}, result: {}, ok: false },
+      ]).passed
+    ).toBe(false)
   })
 })
 

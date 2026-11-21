@@ -17,7 +17,7 @@ Pure, EUR-normalized capital-gains estimation for Finnish personal taxation (luo
 
 ### v1 adapter
 
-- `adapters/appTransactions.ts` — app `Transaction` buy/sell → acquisition/disposal (skips cash).
+- `adapters/appTransactions.ts` — app `Transaction` buy/sell → acquisition/disposal (skips cash and futures). Euro figures do not include those rows. `estimateFinnishTax` sets `omittedFutures` when the loaded book has a future row. The brief and the tax modal then say: "Open futures are not in this estimate. Funding, fees, and margin changes are not in it either."
 
 ### Future: wallet / chain (not implemented here)
 

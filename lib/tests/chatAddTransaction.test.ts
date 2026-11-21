@@ -4,6 +4,7 @@ import {
   resolveCatalogSymbol,
   validateTransactionDraft,
   sellExceedsHoldingWarning,
+  CHAT_FUTURE_WRITE_ERROR,
 } from '../portfolioAnalyst'
 
 describe('detectCurrencyFromText', () => {
@@ -230,6 +231,85 @@ describe('validateTransactionDraft', () => {
     })
     expect(r.status).toBe('incomplete')
     expect(r.missing).toContain('currency')
+  })
+
+  it('rejects a perpetual log before it can become a spot draft', () => {
+    const r = validateTransactionDraft({
+      ...base,
+      sourceText: 'Log a BTCUSDT perpetual long',
+      symbol: 'BTC',
+      quantity: 1,
+      unit_price: 100000,
+    })
+    expect(r.status).toBe('invalid')
+    expect(r.draft).toBeUndefined()
+    expect(r.errors).toEqual([CHAT_FUTURE_WRITE_ERROR])
+  })
+
+  it('rejects a rewritten source when the user message is a perpetual', () => {
+    const r = validateTransactionDraft({
+      ...base,
+      sourceText: 'Bought 1 BTC at $100000',
+      userText: 'Log a BTCUSDT perpetual long',
+      symbol: 'BTC',
+      quantity: 1,
+      unit_price: 100000,
+    })
+    expect(r.status).toBe('invalid')
+    expect(r.draft).toBeUndefined()
+  })
+
+  it('still prepares an ETH buy and a USDT deposit', () => {
+    expect(validateTransactionDraft(base).status).toBe('ready')
+    const cash = validateTransactionDraft({
+      sourceText: 'deposited 50 USDT cash',
+      asset_type: 'cash',
+      action: 'inflow',
+      quantity: 50,
+    })
+    expect(cash.status).toBe('ready')
+    expect(cash.draft?.currency).toBe('USDT')
+  })
+
+  it('allows a spot buy that only says in the future', () => {
+    const r = validateTransactionDraft({
+      ...base,
+      sourceText: 'In the future I might buy more, but today I bought 1.2 ETH at $3180',
+    })
+    expect(r.status).toBe('ready')
+    expect(r.draft?.symbol).toBe('ETH')
+  })
+
+  it('rejects funding and margin on a future', () => {
+    const funding = validateTransactionDraft({
+      ...base,
+      sourceText: 'log BTC funding +12',
+      symbol: 'BTC',
+    })
+    expect(funding.status).toBe('invalid')
+    expect(funding.draft).toBeUndefined()
+
+    const margin = validateTransactionDraft({
+      ...base,
+      sourceText: 'added $500 margin to my BTC future',
+      symbol: 'BTC',
+    })
+    expect(margin.status).toBe('invalid')
+    expect(margin.errors).toEqual([CHAT_FUTURE_WRITE_ERROR])
+  })
+
+  it('still prepares a spot buy that says the user is long', () => {
+    const r = validateTransactionDraft({
+      sourceText: 'I am long AAPL, log 10 at $180',
+      symbol: 'AAPL',
+      asset_type: 'stock',
+      action: 'buy',
+      quantity: 10,
+      unit_price: 180,
+    })
+    expect(r.status).toBe('ready')
+    expect(r.draft?.symbol).toBe('AAPL')
+    expect(r.draft?.asset_type).toBe('stock')
   })
 
   it('currency from text overrides wrong model currency', () => {

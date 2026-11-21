@@ -154,6 +154,8 @@ export type FinnishTaxEstimateResult = {
     sources: Array<TaxEventSource['kind']>
   }
   yearEndNotes: string[]
+  /** Set by estimateFinnishTax when the loaded book has a future row. The engine leaves this unset. */
+  omittedFutures?: boolean
   assumptions: string[]
   disclaimers: string[]
   openLotsAfter: {

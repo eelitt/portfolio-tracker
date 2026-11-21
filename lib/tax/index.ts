@@ -35,7 +35,7 @@ export {
 } from './finnishRates'
 
 export { estimateProgressiveCapitalTax, roundMoney } from './progressiveTax'
-export { buildTaxBrief, buildTaxSummary } from './buildTaxBrief'
+export { buildTaxBrief, buildTaxSummary, FUTURES_OMITTED_SENTENCE } from './buildTaxBrief'
 export {
   buildLotsAndMatchDisposals,
   hmoRateForConsumedLots,

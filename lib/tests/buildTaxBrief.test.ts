@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { buildTaxBrief, buildTaxSummary } from '../tax/buildTaxBrief'
+import { buildTaxBrief, buildTaxSummary, FUTURES_OMITTED_SENTENCE } from '../tax/buildTaxBrief'
 import type { FinnishTaxEstimateResult } from '../tax'
 
 function minimalResult(
@@ -92,6 +92,17 @@ describe('buildTaxBrief', () => {
     r.methods.weightedAverage.disposals = []
     const brief = buildTaxBrief(r)
     expect(brief).toMatch(/No disposals/i)
+  })
+
+  it('stays silent when futures were not omitted', () => {
+    const brief = buildTaxBrief(minimalResult({ omittedFutures: false }))
+    expect(brief).not.toContain(FUTURES_OMITTED_SENTENCE)
+  })
+
+  it('says futures were omitted when the flag is set', () => {
+    const brief = buildTaxBrief(minimalResult({ omittedFutures: true }))
+    expect(brief).toContain(FUTURES_OMITTED_SENTENCE)
+    expect(brief).toMatch(/€6,000/)
   })
 })
 

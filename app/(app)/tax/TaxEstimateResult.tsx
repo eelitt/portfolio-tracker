@@ -1,6 +1,6 @@
 'use client'
 
-import type { FinnishTaxEstimateResult } from '@/lib/tax'
+import { FUTURES_OMITTED_SENTENCE, type FinnishTaxEstimateResult } from '@/lib/tax'
 
 function eur(n: number) {
   return new Intl.NumberFormat('fi-FI', {
@@ -96,6 +96,10 @@ export default function TaxEstimateResult({ result }: { result: FinnishTaxEstima
           </p>
         ))}
       </div>
+
+      {result.omittedFutures && (
+        <p className="text-sm text-muted-foreground">{FUTURES_OMITTED_SENTENCE}</p>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <MethodCard title="FIFO" method={result.methods.fifo} />

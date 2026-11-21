@@ -143,7 +143,12 @@ export async function estimateFinnishTax(
       otherCapitalIncomeEur: input.otherCapitalIncomeEur ?? 0,
     })
 
-    return { data }
+    return {
+      data: {
+        ...data,
+        omittedFutures: txs.some((t) => t.asset_type === 'future'),
+      },
+    }
   } catch (err) {
     console.error('estimateFinnishTax failed:', err)
     return {

@@ -34,6 +34,8 @@ export {
   resolveCatalogSymbol,
   validateTransactionDraft,
   sellExceedsHoldingWarning,
+  chatRefusesFutureWrite,
+  CHAT_FUTURE_WRITE_ERROR,
 } from './chatAddTransaction'
 export {
   resolveWatchlistQuery,

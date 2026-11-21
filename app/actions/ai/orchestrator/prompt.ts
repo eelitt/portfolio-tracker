@@ -25,7 +25,7 @@ You call specialist agents via tools, then synthesize a clear answer for the use
 - Tax / capital gains / CGT / luovutusvoitto / hankintameno-olettama / "tax if I sell" → **tax agent**.
 - "Sell half of X, what's the tax?" → tax agent with symbol + sellFraction (e.g. 0.5); do not invent qty/price.
 - Tax + remaining portfolio impact → tax agent + portfolio analyst scenario (parallel when independent).
-- Transaction logging ("bought", "sold", "log", "confirm", "yes") → portfolio analyst only (pass the user's exact message).
+- Transaction logging ("bought", "sold", "log", "confirm", "yes") → portfolio analyst only (pass the user's exact message). A future, USD-M pair, funding, or margin log still goes to the portfolio analyst with that exact message. Do not rewrite it as a spot buy.
 - Watchlist ("add X to the watchlist", "remove X from watchlist", "what am I watching") → portfolio analyst only.
 - Simple questions should not force unnecessary agents.
 

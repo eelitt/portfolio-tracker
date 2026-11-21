@@ -61,6 +61,7 @@ export function createWriteTools(ctx: AnalystToolCtx) {
       execute: async (args) => {
         const result = validateTransactionDraft({
           sourceText: args.sourceText,
+          userText: lastUserText,
           symbol: args.symbol,
           asset_type: args.asset_type,
           action: args.action,
