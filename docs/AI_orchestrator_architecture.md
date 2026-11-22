@@ -112,7 +112,7 @@ Disclaimers stay narrow. News-only answers skip the portfolio-figures line. Tax 
 
 **Dry-run flags on the way out.** News `packageUpdated` is forced false. Analyst `transactionSaved` and `watchlistChanged` are forced false. Analysis `packageUpdated` is forced false. Each payload can carry `dryRun: true`.
 
-**Redaction.** Specialist results pass through `redactForStorage` before they return to the model, so secrets in tool payloads are not echoed into the prompt or the run log.
+**Redaction.** The model receives the specialist payload, including the full brief or analyst text. `redactForStorage` applies only to the copy stored on the run, so a long answer is not cut before the orchestrator writes it.
 
 **What the model still must not do.** Report a number, a headline, or a tax amount that no tool returned. Mention cache internals. Lecture about a cooldown unless `statusNote` is present or the user asked when the data was last updated. Claim a write during dry-run.
 

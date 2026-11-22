@@ -10,7 +10,6 @@ import { runTaxAgent } from '@/app/actions/ai/tax/agent'
 import { runPortfolioAnalysisAgent } from '@/app/actions/ai/portfolio-insights/agent'
 import type { NewsAgentOutput } from '@/lib/agents/types'
 import { parseNewsContextHandoff } from '@/lib/agents/newsContext'
-import { redactForStorage } from '@/lib/agentObservability'
 import { toolDescription } from '@/lib/aiTools'
 
 export type OrchestratorToolContext = {
@@ -32,7 +31,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
   /** Only news from a successful invoke_news_agent in THIS request may be handed off. */
   let newsOkThisRequest = false
   let lastNewsHandoff: NewsAgentOutput | null = null
-  const evalStub = () => redactForStorage({ ok: true, brief: 'eval' })
+  const evalStub = () => ({ ok: true, brief: 'eval' })
 
   return {
     invoke_news_agent: tool({
@@ -84,7 +83,8 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           }
         }
         // Content + optional statusNote. packageUpdated is for client dashboard sync only.
-        return redactForStorage({
+        // Full payload for the model. agent_runs truncates a copy in toolRecordsFromStepResults.
+        return {
           ok: out.ok,
           error: out.error,
           brief: out.brief,
@@ -93,7 +93,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           statusNote: out.statusNote,
           packageUpdated: ctx.dryRun ? false : out.updatedCache === true,
           dryRun: ctx.dryRun || undefined,
-        })
+        }
       },
     }),
 
@@ -124,11 +124,11 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
         let newsContext: NewsAgentOutput | undefined
         if (args.newsContext !== undefined && args.newsContext !== null) {
           if (!newsOkThisRequest || !lastNewsHandoff) {
-            return redactForStorage({
+            return {
               ok: false,
               error:
                 'newsContext is only allowed after a successful invoke_news_agent in this request. Call the news agent first, or omit newsContext.',
-            })
+            }
           }
           // Ignore model-shaped payload; only server-captured news from this request is trusted
           newsContext = lastNewsHandoff
@@ -145,7 +145,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           lastUserText: ctx.lastUserText,
           dryRun: ctx.dryRun,
         })
-        return redactForStorage({
+        return {
           ok: out.ok,
           text: out.text,
           error: out.error,
@@ -154,7 +154,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           transactionError: out.transactionError,
           watchlistChanged: ctx.dryRun ? false : out.watchlistChanged,
           dryRun: ctx.dryRun || undefined,
-        })
+        }
       },
     }),
 
@@ -205,12 +205,12 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           sellingCostsEur: args.sellingCostsEur,
           questionHint: args.questionHint,
         })
-        return redactForStorage({
+        return {
           ok: out.ok,
           error: out.error,
           brief: out.brief,
           summary: out.summary,
-        })
+        }
       },
     }),
 
@@ -227,7 +227,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
         const out = await runPortfolioAnalysisAgent(childCtx, {
           dryRun: ctx.dryRun === true,
         })
-        return redactForStorage({
+        return {
           ok: out.ok,
           error: out.error,
           brief: out.brief,
@@ -238,7 +238,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           failureMode: out.failureMode,
           recovery: out.recovery,
           dryRun: ctx.dryRun || out.dryRun || undefined,
-        })
+        }
       },
     }),
   }
