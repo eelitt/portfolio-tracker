@@ -24,6 +24,11 @@ import {
   clipOrchestratorUserText,
 } from '@/lib/agentObservability/routeMeta'
 import {
+  clipAssistantText,
+  policySignalsForOrchestrator,
+} from '@/lib/agentObservability/policySignals'
+import { attachFencedContext } from '@/lib/aiTools/promptFence'
+import {
   buildUserContext,
   formatUserContextForPrompt,
 } from '@/lib/aiTools/buildUserContext'
@@ -40,14 +45,22 @@ function orchestratorRunMeta(args: {
   dryRun: boolean
   lastUserText: string
   tools: AgentToolRecord[]
+  assistantText: string
+  invokeResults: Array<{ name: string; result: unknown }>
 }): AgentRunMeta {
   const userText = clipOrchestratorUserText(args.lastUserText)
+  const assistantText = clipAssistantText(args.assistantText)
   return {
     agent_role: 'orchestrator',
     invoked_agents: args.tools.map((t) => t.name),
     route: buildOrchestratorRoute(args.tools),
+    policy_signals: policySignalsForOrchestrator({
+      assistantText: args.assistantText,
+      invokeResults: args.invokeResults,
+    }),
     ...(args.dryRun ? { dry_run: true } : {}),
     ...(userText ? { user_text: userText } : {}),
+    ...(assistantText ? { assistant_text: assistantText } : {}),
   }
 }
 
@@ -114,12 +127,13 @@ export async function POST(req: Request) {
     })
 
     const collectedTools: AgentToolRecord[] = []
+    const invokeResults: Array<{ name: string; result: unknown }> = []
     let stepCount = 0
 
-    let contextBlock = ''
+    let packText = ''
     try {
       const pack = await buildUserContext(user.id)
-      contextBlock = '\n\n' + formatUserContextForPrompt(pack)
+      packText = formatUserContextForPrompt(pack)
     } catch (e) {
       console.error(
         'User context pack failed:',
@@ -127,15 +141,18 @@ export async function POST(req: Request) {
       )
     }
 
+    let system = ORCHESTRATOR_SYSTEM_PROMPT
     if (dryRun) {
-      contextBlock +=
+      system +=
         '\n\n## Dry-run mode (active)\nPreview only: do not claim anything was saved or that live news was refreshed. Prefer tool results marked dryRun / wouldHave. Narrate what would happen after a real confirm.'
     }
 
+    const modelMessages = attachFencedContext(sanitized.messages, packText)
+
     const result = streamText({
       model: xai(MODEL_ID),
-      system: ORCHESTRATOR_SYSTEM_PROMPT + contextBlock,
-      messages: convertToCoreMessages(sanitized.messages as Parameters<
+      system,
+      messages: convertToCoreMessages(modelMessages as Parameters<
         typeof convertToCoreMessages
       >[0]),
       tools: createOrchestratorTools({
@@ -149,8 +166,14 @@ export async function POST(req: Request) {
       onStepFinish: async (step) => {
         stepCount += 1
         try {
+          const rawResults = step.toolResults || []
+          for (const tr of rawResults) {
+            if (tr.toolName.startsWith('invoke_')) {
+              invokeResults.push({ name: tr.toolName, result: tr.result })
+            }
+          }
           const records = toolRecordsFromStepResults(
-            (step.toolResults || []).map((tr) => ({
+            rawResults.map((tr) => ({
               toolName: tr.toolName,
               args: tr.args,
               result: tr.result,
@@ -204,6 +227,8 @@ export async function POST(req: Request) {
             dryRun,
             lastUserText: sanitized.lastUserText,
             tools: collectedTools,
+            assistantText: typeof text === 'string' ? text : '',
+            invokeResults,
           }),
         })
       },
@@ -225,6 +250,8 @@ export async function POST(req: Request) {
               dryRun,
               lastUserText: sanitized.lastUserText,
               tools: collectedTools,
+              assistantText: '',
+              invokeResults,
             }),
           })
         }

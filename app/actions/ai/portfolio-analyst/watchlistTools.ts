@@ -11,8 +11,34 @@ import {
   withRecovery,
   toolFailure,
   dryRunNote,
+  watchlistMutationRequested,
+  watchlistTargetNamedInMessage,
+  type WatchlistMutation,
 } from '@/lib/aiTools'
 import type { AnalystToolCtx } from './toolContext'
+
+function watchlistWriteIntent(lastUserText: string, kind: WatchlistMutation) {
+  if (watchlistMutationRequested(lastUserText, kind)) return null
+  return toolFailure(
+    'watchlist_not_requested',
+    'This message is not a watchlist change. Say "add … to my watchlist" or "remove … from my watchlist".'
+  )
+}
+
+function watchlistTargetNamed(
+  lastUserText: string,
+  query: string,
+  symbol: string,
+  name: string
+) {
+  if (watchlistTargetNamedInMessage(lastUserText, { query, symbol, name })) {
+    return null
+  }
+  return toolFailure(
+    'watchlist_not_requested',
+    'Name the symbol in this message (for example "add AAPL to my watchlist").'
+  )
+}
 
 export function createWatchlistTools(ctx: AnalystToolCtx) {
   const { evalMode, noPersist } = ctx
@@ -52,6 +78,9 @@ export function createWatchlistTools(ctx: AnalystToolCtx) {
           .describe('User’s symbol or name (e.g. apple, BNB, AAPL)'),
       }),
       execute: async (args) => {
+        const intent = watchlistWriteIntent(ctx.lastUserText, 'add')
+        if (intent) return intent
+
         const resolved = resolveWatchlistQuery(args.query)
         if (!resolved.ok) {
           return withRecovery({
@@ -61,6 +90,14 @@ export function createWatchlistTools(ctx: AnalystToolCtx) {
             candidates: resolved.candidates,
           })
         }
+
+        const named = watchlistTargetNamed(
+          ctx.lastUserText,
+          args.query,
+          resolved.symbol,
+          resolved.name
+        )
+        if (named) return named
 
         const label = `${resolved.symbol} (${resolved.name}, ${resolved.assetType})`
         if (noPersist) {
@@ -108,6 +145,9 @@ export function createWatchlistTools(ctx: AnalystToolCtx) {
           .describe('User’s symbol or name to remove from the watchlist'),
       }),
       execute: async (args) => {
+        const intent = watchlistWriteIntent(ctx.lastUserText, 'remove')
+        if (intent) return intent
+
         const resolved = resolveWatchlistQuery(args.query)
         if (!resolved.ok) {
           return withRecovery({
@@ -117,6 +157,14 @@ export function createWatchlistTools(ctx: AnalystToolCtx) {
             candidates: resolved.candidates,
           })
         }
+
+        const named = watchlistTargetNamed(
+          ctx.lastUserText,
+          args.query,
+          resolved.symbol,
+          resolved.name
+        )
+        if (named) return named
 
         const label = `${resolved.symbol} (${resolved.name}, ${resolved.assetType})`
         if (noPersist) {

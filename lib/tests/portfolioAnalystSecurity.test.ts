@@ -50,17 +50,29 @@ describe('sanitizeAnalystMessages', () => {
     expect(asst.content.length).toBe(ANALYST_MAX_FIELD_CHARS)
   })
 
-  it('keeps tool role for multi-step history', () => {
+  it('drops tool roles and keeps only assistant text', () => {
     const result = sanitizeAnalystMessages([
       { role: 'user', content: 'summary' },
-      { role: 'assistant', content: '' },
+      {
+        role: 'assistant',
+        content: '',
+        toolInvocations: [{ toolName: 'invoke_portfolio_analyst', result: { total: 1 } }],
+        parts: [
+          { type: 'text', text: 'You have 1 unit.' },
+          { type: 'tool-invocation', toolInvocation: { result: { total: 999 } } },
+        ],
+      },
       { role: 'tool', content: JSON.stringify({ total: 1 }) },
       { role: 'user', content: 'thanks' },
     ])
     expect(result.ok).toBe(true)
     if (!result.ok) return
     const roles = result.messages.map((m) => (m as { role: string }).role)
-    expect(roles).toContain('tool')
+    expect(roles).toEqual(['user', 'assistant', 'user'])
+    const assistant = result.messages[1] as { content: string; toolInvocations?: unknown }
+    expect(assistant.content).toBe('You have 1 unit.')
+    expect(assistant.toolInvocations).toBeUndefined()
+    expect(JSON.stringify(result.messages)).not.toContain('999')
   })
 })
 

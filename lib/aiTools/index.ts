@@ -46,4 +46,10 @@ export {
   messageSatisfiesConfirmLevel,
 } from './confirmGate'
 
+export {
+  watchlistMutationRequested,
+  watchlistTargetNamedInMessage,
+} from './watchlistIntent'
+export type { WatchlistMutation } from './watchlistIntent'
+
 export { resolveDryRun, dryRunNote } from './dryRun'

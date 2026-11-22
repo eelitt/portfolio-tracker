@@ -5,8 +5,8 @@
 
 import type { AgentToolRecord } from './types'
 
-/** Same string cap as redactForStorage. */
-export const ORCHESTRATOR_USER_TEXT_MAX = 500
+/** Same cap as the sanitized last user message (ANALYST_MAX_LAST_USER_CHARS). */
+export const ORCHESTRATOR_USER_TEXT_MAX = 4_000
 
 export type OrchestratorRouteEntry = {
   name: string

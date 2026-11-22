@@ -13,12 +13,17 @@ import { createPortfolioAnalystTools } from './tools'
 import {
   PORTFOLIO_ANALYST_SYSTEM_PROMPT,
   buildAnalystNewsContextBlock,
+  focusSymbolHint,
 } from './prompt'
 import {
   finishChildAgentRun,
   startChildAgentRun,
 } from '@/lib/agents/runChildAgent'
 import { toolRecordsFromStepResults } from '@/lib/agentObservability'
+import {
+  clipAssistantText,
+  policySignalsForAnalyst,
+} from '@/lib/agentObservability/policySignals'
 import type { AgentToolRecord } from '@/lib/agentObservability'
 import type {
   ChildAgentContext,
@@ -45,11 +50,8 @@ export async function runPortfolioAnalystAgent(
   const collected: AgentToolRecord[] = []
   const lastUserText = input.lastUserText ?? input.userMessage
 
-  let system = PORTFOLIO_ANALYST_SYSTEM_PROMPT
+  const system = PORTFOLIO_ANALYST_SYSTEM_PROMPT
   const newsBlock = buildAnalystNewsContextBlock(input.newsContext)
-  if (newsBlock) {
-    system = `${system}\n\n${newsBlock}`
-  }
 
   // Task-oriented wrapper so the specialist stays focused
   const taskHint =
@@ -59,13 +61,16 @@ export async function runPortfolioAnalystAgent(
         ? 'Task: handle transaction logging (prepare/confirm) per tool rules.'
         : 'Task: answer the user using tools. Be concise.'
 
-  const symbolHint = input.symbols?.length
-    ? `Focus symbols: ${input.symbols.map((s) => s.toUpperCase()).join(', ')}.`
-    : ''
+  const symbolHint = focusSymbolHint(input.symbols)
 
-  const userContent = [taskHint, symbolHint, input.userMessage]
+  const userContent = [
+    taskHint,
+    symbolHint,
+    newsBlock,
+    `<user_message>\n${input.userMessage}\n</user_message>`,
+  ]
     .filter(Boolean)
-    .join('\n')
+    .join('\n\n')
 
   try {
     if (!process.env.XAI_API_KEY) {
@@ -120,24 +125,6 @@ export async function runPortfolioAnalystAgent(
       }
     }
 
-    await finishChildAgentRun({
-      runId,
-      status: 'success',
-      tools: collected,
-      usage: result.usage
-        ? {
-            promptTokens: result.usage.promptTokens,
-            completionTokens: result.usage.completionTokens,
-            totalTokens: result.usage.totalTokens,
-          }
-        : null,
-      model: MODEL_ID,
-      durationMs: Date.now() - startedAt,
-      stepCount: result.steps?.length ?? collected.length,
-      parentRunId: ctx.parentRunId,
-      agentRole: 'portfolio_analyst',
-    })
-
     // Surface confirm outcomes for the orchestrator + client toast bridge
     const confirmTool = [...collected]
       .reverse()
@@ -162,9 +149,37 @@ export async function runPortfolioAnalystAgent(
       return true
     })
 
+    const reply = result.text?.trim() || ''
+    await finishChildAgentRun({
+      runId,
+      status: 'success',
+      tools: collected,
+      usage: result.usage
+        ? {
+            promptTokens: result.usage.promptTokens,
+            completionTokens: result.usage.completionTokens,
+            totalTokens: result.usage.totalTokens,
+          }
+        : null,
+      model: MODEL_ID,
+      durationMs: Date.now() - startedAt,
+      stepCount: result.steps?.length ?? collected.length,
+      parentRunId: ctx.parentRunId,
+      agentRole: 'portfolio_analyst',
+      meta: {
+        ...(reply ? { assistant_text: clipAssistantText(reply) } : {}),
+        policy_signals: policySignalsForAnalyst({
+          assistantText: reply,
+          toolNames: collected.map((t) => t.name),
+          watchlistChanged,
+          prepareRan: collected.some((t) => t.name === 'prepare_transaction'),
+        }),
+      },
+    })
+
     return {
       ok: true,
-      text: result.text?.trim() || undefined,
+      text: reply || undefined,
       toolTrace: collected,
       transactionSaved: transactionSaved || undefined,
       transactionError,

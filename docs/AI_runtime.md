@@ -10,8 +10,8 @@ Every model id is a constant next to the call. Today those constants are `grok-4
 
 | Path | API | Tools | What the model receives |
 |---|---|---|---|
-| Chat orchestrator | `streamText` → `toDataStreamResponse()` | Four `invoke_*` tools | System prompt, user-context block, sanitized chat messages |
-| Portfolio Analyst | Nested `generateText` | The sixteen analyst tools | System prompt, optional news block, one constructed user message |
+| Chat orchestrator | `streamText` → `toDataStreamResponse()` | Four `invoke_*` tools | System prompt, sanitized chat text, user-context fence on the last user message |
+| Portfolio Analyst | Nested `generateText` | The sixteen analyst tools | System prompt, one constructed user message, optional news fence |
 | Portfolio insights, news impact, CSV parse | `generateObject` | None. A Zod schema is the contract | A short system string and one user payload |
 | Crypto news search | Raw HTTP, not the AI SDK | Provider tools `web_search` and `x_search` | One combined user message on `/v1/responses` |
 | Tax | No model | `estimateFinnishTax` | Nothing |
@@ -20,8 +20,8 @@ Every model id is a constant next to the call. Today those constants are `grok-4
 
 `app/api/portfolio-analyst/route.ts`:
 
-- `system`: `ORCHESTRATOR_SYSTEM_PROMPT` plus the string from `formatUserContextForPrompt`. In dry-run, a third block is appended that forbids claims of a save or a live refresh.
-- `messages`: `convertToCoreMessages` on the sanitized client thread. System and developer roles are already dropped. The cap is the last 20 user and assistant texts.
+- `system`: `ORCHESTRATOR_SYSTEM_PROMPT`. In dry-run, a block is appended that forbids claims of a save or a live refresh. The user-context pack is not on this string.
+- `messages`: `convertToCoreMessages` on the sanitized client thread. System, developer, and tool roles are dropped. Each kept message is user or assistant text only. The cap is the last 20 messages. The last user message carries a `<user_context>` fence around `formatUserContextForPrompt`, then the original question in `<user_message>`. Confirm and dry-run still use the unwrapped question.
 - `tools`: `createOrchestratorTools({ userId, parentRunId, lastUserText, dryRun })`.
 - `maxSteps`: 6. One user message can call more than one specialist.
 - `temperature`: 0.2.
@@ -35,11 +35,14 @@ The browser uses `useChat` against this route. Specialist work is not streamed t
 
 ```
 Task: <answer | position snapshot | prepare/confirm>
-Focus symbols: <optional>
+Focus symbols: <optional, at most 8>
+<news_context>…</news_context>   (only when this request has a news handoff)
+<user_message>
 <the real last user message>
+</user_message>
 ```
 
-The task line and the symbol line are hints. Confirm and logging still see `lastUserText` from the sanitizer, which the orchestrator forces as `userMessage`. The model does not get a second system prompt for the task.
+The task line and the symbol line are hints. The news fence is pipeline data. Confirm and logging still see `lastUserText` from the sanitizer, which the orchestrator forces as `userMessage`. The model does not get a second system prompt for the task. News text is not appended to the system prompt.
 
 `maxSteps` is 5. Temperature is 0.2. The result returned to the orchestrator is the final text plus flags (`transactionSaved`, `watchlistChanged`), not the step stream.
 
@@ -55,9 +58,9 @@ Insights (`generatePortfolioInsights`) and CSV import (`parseCsvWithAI`) call `g
 
 Prompts are the policy the registry cannot express: when to call, what to refuse, and how to phrase the answer. They are not pasted here. The headings below are the sections in source order.
 
-**Orchestrator** (`app/actions/ai/orchestrator/prompt.ts`): role, the four specialists, routing rules, trust boundary, answer style, disclaimers, refusal template. The route appends the user-context block from `formatUserContextForPrompt` (`lib/aiTools/formatUserContext.ts`), and a dry-run block when that mode is on. The block is currency, investor profile, target mix, goals, and whether a stored analysis or holding-news package exists. It has no market value, holding count, or top symbols. `buildUserContext` loads those rows and does not call `getPortfolioData`.
+**Orchestrator** (`app/actions/ai/orchestrator/prompt.ts`): role, the four specialists, routing rules, trust boundary, answer style, disclaimers, refusal template. A dry-run block is appended to this string when that mode is on. The user-context block from `formatUserContextForPrompt` (`lib/aiTools/formatUserContext.ts`) is fenced onto the last user message. The block is currency, investor profile, target mix, goals, and whether a stored analysis or holding-news package exists. It has no market value, holding count, or top symbols. Goal names are capped and flattened before interpolation. `buildUserContext` loads those rows and does not call `getPortfolioData`. Both this prompt and the analyst prompt contain a private policy token. That token is stripped from the fences.
 
-**Analyst** (`app/actions/ai/portfolio-analyst/prompt.ts`): role, trust boundary, in-scope list, out-of-scope list, futures read rules, tool rules, the ten logging steps, watchlist steps, refusal template. Logging step 1 does not apply to a future, a USD-M pair, funding, or a margin change. `buildAnalystNewsContextBlock` is appended only when the server parsed a news handoff. It is empty otherwise.
+**Analyst** (`app/actions/ai/portfolio-analyst/prompt.ts`): role, trust boundary, in-scope list, out-of-scope list, futures read rules, tool rules, the ten logging steps, watchlist steps, refusal template. Logging step 1 does not apply to a future, a USD-M pair, funding, or a margin change. `buildAnalystNewsContextBlock` is placed in the user message only when the server parsed a news handoff. It is empty otherwise. Watchlist add and remove run only when `lastUserText` asks for that change and names the symbol.
 
 **News** (`app/actions/ai/holding-news/prompts.ts`): the crypto search system prompt requires one search per ticker and JSON only. The user prompt is the date window plus the holdings list. The impact system prompt allows tone, outlook, and points, and forbids price targets and buy/sell lines. The impact user prompt is the bullets already collected.
 
@@ -111,7 +114,7 @@ Auth is the route: `getUser()`, `profiles.access_to_app`, and the user-scoped Su
 
 **Redaction.** The orchestrator model receives the specialist payload, including the full `text` or `brief`. `redactForStorage` runs only when that result is copied onto an `agent_runs` row, in `toolRecordsFromStepResults`. Stored strings stop at 500 characters, depth at 4, arrays at 20. Keys `notes`, `sourceText`, `email`, `password`, `token`, and `authorization` are removed from the stored row. Draft notes are not on the orchestrator tool result.
 
-**Runs.** `startChildAgentRun` and `finishChildAgentRun` write the child row and swallow their own errors. The parent row is the orchestrator `streamText` in the route. That finish also stores `meta.user_text` (the question, 500 characters) and `meta.route` (which `invoke_*` ran, in order, with task or universe). The admin Runs detail shows both. Each eval case starts its own `agent_runs` row, feature `portfolio_analyst` or `portfolio_orchestrator`, and does not go through the chat route.
+**Runs.** `startChildAgentRun` and `finishChildAgentRun` write the child row and swallow their own errors. The parent row is the orchestrator `streamText` in the route. That finish stores `meta.user_text` (the question, 4,000 characters), `meta.assistant_text` (the reply, 2,000 characters), `meta.route` (which `invoke_*` ran, in order, with task or universe), and `meta.policy_signals`. Those signals are code flags: `prompt_leak` when the private policy token appears in the reply or in a specialist `text` or `brief`, `no_specialist` when the reply is non-empty and no `invoke_*` ran, `watchlist_write`, `prepare_ran`, and `answered_without_tools`. The analyst child stores its own clipped reply and the signals that apply to that call. The admin Runs detail shows Asked, Reply, Route, and any true signal. Each eval case starts its own `agent_runs` row, feature `portfolio_analyst` or `portfolio_orchestrator`, and does not go through the chat route.
 
 **Eval.** `lib/agentEval/runSuite.ts` has two live suites. The analyst suite calls `generateText` with the analyst system prompt, the fixture prompt as the only user message, and `createPortfolioAnalystTools` in `evalMode`. Temperature is 0.1. `maxSteps` is 5. The portfolio is the fixture, not the admin's book. Confirm is scored without a stored draft and without an insert. The orchestrator suite uses the orchestrator prompt and the real `invoke_*` schemas, with `evalMode` on `OrchestratorToolContext`. Each tool returns `{ ok: true, brief: "eval" }` and does not call a specialist. `maxSteps` is 4. `scoreCase` grades tool names and, for routing, `argsEquals` / `argsNot` on the recorded args. It does not grade the reply text. The admin Eval tab runs either suite through `POST /api/admin/agent-eval`. A successful response is newline-delimited JSON: `start` with the fixture count, one `case` line after each scored fixture (`index`, `total`, `caseId`, `passed`), then `done` or `error`. A rejected admin check is still one JSON error. The tab's bar follows those `case` lines. `runAgentEvalSuite` stays the analyst-only server action and still returns one object.
 

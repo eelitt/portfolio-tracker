@@ -130,7 +130,7 @@ user text
   → confirm_transaction     createTransactionRecord({ requireCurrency: true })
 ```
 
-`assertWriteAllowed` is the only confirm gate. Watchlist add/remove are writes **without** that gate (commanding turn). They must not be sent through `assertWriteAllowed` (registry: `requiresConfirmation: false`).
+`assertWriteAllowed` is the only confirm gate. Watchlist add/remove are writes **without** that gate. They must not be sent through `assertWriteAllowed` (registry: `requiresConfirmation: false`). Add runs only when the user message asks to add and names the symbol. Remove runs only when it asks to remove and names the symbol.
 
 Prepare and confirm stay on stock, ETF, crypto, and cash. The analyst can describe open futures and the cash total from `getPortfolioData`. It cannot write a future, a funding row, a fee, or a margin change.
 
@@ -164,7 +164,7 @@ News handoff is a parsed slim payload (`parseNewsContextHandoff`). The analyst m
 
 Chat history is **one rolling thread per user** in `user_ai_insights` (`feature_type = portfolio_analyst_chat`): last 20 user/assistant text messages (same cap as request sanitizer). Tool payloads are not stored. The sidebar hydrates on open; **New chat** clears the blob. `buildUserContext` does not duplicate this thread.
 
-Admin: `agent_runs` (tokens, cost, confirm flags, parent/child). The orchestrator parent also stores `meta.user_text` and `meta.route`. Overview is the last 30 days, or the latest rows when that window is empty. Analyst eval fixtures inject a portfolio. Orchestrator eval fixtures only check routing. Neither writes real txs (`evalMode` / dry-run). The eval route streams per-case progress.
+Admin: `agent_runs` (tokens, cost, confirm flags, parent/child). The orchestrator parent also stores `meta.user_text`, `meta.assistant_text`, `meta.route`, and `meta.policy_signals`. Overview is the last 30 days, or the latest rows when that window is empty. Analyst eval fixtures inject a portfolio. Orchestrator eval fixtures only check routing. Neither writes real txs (`evalMode` / dry-run). The eval route streams per-case progress.
 
 ---
 

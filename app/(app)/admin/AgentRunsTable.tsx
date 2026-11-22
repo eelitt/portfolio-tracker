@@ -8,6 +8,29 @@ import type { AgentRunRow } from '@/lib/agentObservability'
 import { readOrchestratorRoute } from '@/lib/agentObservability/routeMeta'
 import { format } from 'date-fns'
 
+const SIGNAL_LABELS: Record<string, string> = {
+  prompt_leak: 'prompt leak',
+  no_specialist: 'no specialist',
+  watchlist_write: 'watchlist write',
+  prepare_ran: 'prepare ran',
+  answered_without_tools: 'answer without tools',
+}
+
+function metaText(meta: AgentRunRow['meta'], key: string): string {
+  const value = meta?.[key]
+  return typeof value === 'string' ? value : ''
+}
+
+function trueSignals(meta: AgentRunRow['meta']): string[] {
+  const signals = meta?.policy_signals
+  if (!signals || typeof signals !== 'object' || Array.isArray(signals)) {
+    return []
+  }
+  return Object.entries(signals as Record<string, unknown>)
+    .filter(([, on]) => on === true)
+    .map(([key]) => SIGNAL_LABELS[key] ?? key)
+}
+
 function statusClass(status: string) {
   switch (status) {
     case 'success':
@@ -109,8 +132,9 @@ export function AgentRunDetail({
   }
 
   const route = readOrchestratorRoute(run.meta?.route)
-  const asked =
-    typeof run.meta?.user_text === 'string' ? run.meta.user_text : ''
+  const asked = metaText(run.meta, 'user_text')
+  const reply = metaText(run.meta, 'assistant_text')
+  const signals = trueSignals(run.meta)
 
   return (
     <div className="space-y-2 text-xs overflow-y-auto min-h-0 flex-1 p-1">
@@ -152,6 +176,19 @@ export function AgentRunDetail({
         </div>
       ) : null}
 
+      {reply ? (
+        <div>
+          <h4 className="font-medium text-muted-foreground pt-1">Reply</h4>
+          <p className="break-words whitespace-pre-wrap">{reply}</p>
+        </div>
+      ) : null}
+
+      {signals.length > 0 ? (
+        <p className="text-amber-400 break-words">
+          Signals: {signals.join(', ')}
+        </p>
+      ) : null}
+
       {route.length > 0 ? (
         <div>
           <h4 className="font-medium text-muted-foreground pt-1">Route</h4>
@@ -186,23 +223,39 @@ export function AgentRunDetail({
         <div>
           <h4 className="font-medium text-muted-foreground pt-1">Child agents</h4>
           <ul className="space-y-1 mt-1">
-            {childrenRuns.map((c) => (
-              <li
-                key={c.id}
-                className="flex justify-between gap-2 border-b border-border/40 py-1"
-              >
-                <span className="font-mono truncate">
-                  {c.agent_role ?? c.feature}
-                </span>
-                <span className="tabular-nums text-muted-foreground shrink-0">
-                  {c.status}
-                  {c.duration_ms != null ? ` · ${c.duration_ms}ms` : ''}
-                  {c.estimated_cost_usd != null
-                    ? ` · ≈$${Number(c.estimated_cost_usd).toFixed(4)}`
-                    : ''}
-                </span>
-              </li>
-            ))}
+            {childrenRuns.map((c) => {
+              const childReply = metaText(c.meta, 'assistant_text')
+              const childSignals = trueSignals(c.meta)
+              return (
+                <li
+                  key={c.id}
+                  className="border-b border-border/40 py-1 space-y-1"
+                >
+                  <div className="flex justify-between gap-2">
+                    <span className="font-mono truncate">
+                      {c.agent_role ?? c.feature}
+                    </span>
+                    <span className="tabular-nums text-muted-foreground shrink-0">
+                      {c.status}
+                      {c.duration_ms != null ? ` · ${c.duration_ms}ms` : ''}
+                      {c.estimated_cost_usd != null
+                        ? ` · ≈$${Number(c.estimated_cost_usd).toFixed(4)}`
+                        : ''}
+                    </span>
+                  </div>
+                  {childSignals.length > 0 ? (
+                    <p className="text-amber-400 break-words">
+                      Signals: {childSignals.join(', ')}
+                    </p>
+                  ) : null}
+                  {childReply ? (
+                    <p className="break-words whitespace-pre-wrap text-muted-foreground">
+                      {childReply}
+                    </p>
+                  ) : null}
+                </li>
+              )
+            })}
           </ul>
         </div>
       ) : null}

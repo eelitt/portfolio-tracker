@@ -35,7 +35,7 @@ POST /api/portfolio-analyst
   resolveDryRun                        body.dryRun or the user text
   checkAndConsumeAnalystRateLimit      also on dry-run
   startAgentRun                        parent row, feature portfolio_orchestrator
-  buildUserContext                     appended to the system prompt
+  buildUserContext                     fenced onto the last user message
   streamText
        invoke_news_agent
        invoke_portfolio_analyst
@@ -49,11 +49,11 @@ Auth uses `supabase.auth.getUser()` and the same `access_to_app` flag as the res
 
 ### Message sanitizer
 
-`app/actions/ai/portfolio-analyst/sanitizeMessages.ts` runs before `convertToCoreMessages`. It drops system and developer roles, keeps the last 20 user and assistant text messages, and caps field size and total size. The last user text is what later gates use for confirm and dry-run. User text is untrusted. The system prompt tells the model to ignore jailbreaks and persona switches. The sanitizer is the code check. The prompt is the instruction.
+`app/actions/ai/portfolio-analyst/sanitizeMessages.ts` runs before `convertToCoreMessages`. It drops system, developer, and tool roles. Each kept message is rebuilt as user or assistant text. Tool parts and other client fields are dropped. It keeps the last 20 messages and caps field size and total size. The last user text is what later gates use for confirm and dry-run, and it is taken before the context fence is attached. User text is untrusted. The system prompt tells the model to ignore jailbreaks and persona switches. The sanitizer is the code check. The prompt is the instruction.
 
 ### Dry-run
 
-`resolveDryRun` in `lib/aiTools/dryRun.ts` is true when the body sets `dryRun: true`, or when the last user text matches a dry-run phrase (`dry run` / `dry-run`) or "what would you do". The route appends a dry-run block to the system prompt and passes `dryRun` into every specialist.
+`resolveDryRun` in `lib/aiTools/dryRun.ts` is true when the body sets `dryRun: true`, or when the last user text matches a dry-run phrase (`dry run` / `dry-run`) or "what would you do". The route appends a dry-run block to the system prompt and passes `dryRun` into every specialist. The user-context pack stays on the user message.
 
 In that mode the news tool forces `forceRefresh` off, and the analyst and analysis tools must not report a saved transaction, a watchlist write, a regenerated analysis, or a live news refresh. The answer describes what a real turn would do.
 
@@ -63,7 +63,7 @@ In that mode the news tool forces `forceRefresh` off, and the analyst and analys
 
 ### User context pack
 
-`buildUserContext` in `lib/aiTools/buildUserContext.ts` loads the rows. `formatUserContextForPrompt` in `lib/aiTools/formatUserContext.ts` turns them into the system-prompt block:
+`buildUserContext` in `lib/aiTools/buildUserContext.ts` loads the rows. `formatUserContextForPrompt` in `lib/aiTools/formatUserContext.ts` turns them into an account-data block. The route fences that block onto the last user message. It is not part of the system prompt:
 
 - Preferred currency.
 - Investor profile bits already on `profiles` (age band, horizon, risk, contribution band).
@@ -76,7 +76,7 @@ The pack does not include the chat thread, a market value, a holding count, or t
 
 ### Parent run
 
-`startAgentRun` writes a parent `agent_runs` row before streaming. `onStepFinish` records each `invoke_*` result. `onFinish` stores token usage, duration, step count, and the invoked tool names. It also stores `meta.user_text` (the sanitized question, at most 500 characters) and `meta.route` (invoke order, with task, universe, mode, refresh, and symbols). Specialist briefs are not copied into `meta.route`. A stream error finishes the row as `error` and still writes those two fields. The admin run detail shows them as Asked and Route. Recording is best-effort and must not fail the user's answer. Child rows are started inside each specialist (`lib/agents/runChildAgent.ts`).
+`startAgentRun` writes a parent `agent_runs` row before streaming. `onStepFinish` records each `invoke_*` result. `onFinish` stores token usage, duration, step count, and the invoked tool names. It also stores `meta.user_text` (the sanitized question, at most 4,000 characters), `meta.assistant_text` (the reply, at most 2,000 characters), `meta.route` (invoke order, with task, universe, mode, refresh, and symbols), and `meta.policy_signals`. Those signals flag a policy-token leak, a reply with no specialist, a watchlist write, a prepare, and an analyst answer with an empty tool list. Specialist briefs are not copied into `meta.route`. The leak scan reads the specialist text and briefs before the stored tool copy is truncated. A stream error finishes the row as `error` and still writes the question, the route, and the signals gathered so far. The admin run detail shows Asked, Reply, Route, and any true signal. The analyst child row stores its reply and its own signals. Recording is best-effort and must not fail the user's answer. Child rows are started inside each specialist (`lib/agents/runChildAgent.ts`).
 
 ## Routing
 

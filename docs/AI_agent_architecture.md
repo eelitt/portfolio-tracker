@@ -21,7 +21,7 @@ CSV import is part of the AI layer and is not one of these four. It is below.
 
 **Why it is separate.** Those answers have to come from the ledger reduce and the live marks, not from the model's arithmetic. The tool loop can call code several times. News fetch and tax estimation are refused here so a position answer cannot quietly become a headline or a tax figure.
 
-**How it is built.** `generateText` on xAI. The model id is `MODEL_ID` in that file (currently `grok-4.3`). Temperature 0.2. `maxSteps` 5. The system prompt is `PORTFOLIO_ANALYST_SYSTEM_PROMPT`. A task hint (`answer`, `position_snapshot`, `prepare_trade`) and an optional symbol list are prepended to the user message. If the orchestrator passed news, `buildAnalystNewsContextBlock` appends only that structured handoff.
+**How it is built.** `generateText` on xAI. The model id is `MODEL_ID` in that file (currently `grok-4.3`). Temperature 0.2. `maxSteps` 5. The system prompt is `PORTFOLIO_ANALYST_SYSTEM_PROMPT`. A task hint (`answer`, `position_snapshot`, `prepare_trade`) and an optional symbol list are prepended to the user message. If the orchestrator passed news, `buildAnalystNewsContextBlock` puts that handoff in a `news_context` fence on the same user message. The system prompt does not receive the headlines.
 
 Tools are assembled in `app/actions/ai/portfolio-analyst/tools.ts`. Descriptions, owners, side effects, and failure modes live in `lib/aiTools/registry.ts`. That file is the contract. This list is the grouping:
 
@@ -38,7 +38,7 @@ Read tools load the book through `getPortfolioData` and shape it with `lib/portf
 
 **Writes.** Prepare and confirm are specified in the Chat section of [architecture.md](./architecture.md). `assertWriteAllowed` in `lib/aiTools/enforce.ts` is the only confirm gate. Confirm needs a later user message, a live draft, and phrasing that matches the confirm level (`yes` / `confirm`, or `confirm sell` / `confirm trade` when the prepare warned). A failed confirm leaves the draft. Chat prepare stays on stock, ETF, crypto, and cash. Prepare returns invalid and stores no draft when the user message or source text is a future, a USD-M pair, funding, or a margin change. The analyst can describe open futures and the cash total from `get_portfolio_summary`. It cannot write a future, a funding row, a fee, or a margin change.
 
-Watchlist add and remove are writes on the commanding turn. Their registry entries set `requiresConfirmation: false`. They must not go through `assertWriteAllowed`.
+Watchlist add and remove are writes on the commanding turn. Their registry entries set `requiresConfirmation: false`. They must not go through `assertWriteAllowed`. They do require `lastUserText` to ask for the add or the remove, and the query, symbol, or catalog name has to appear in that message. Otherwise the tool returns `watchlist_not_requested`. Listing the watchlist stays a read.
 
 **Dry-run.** The tool context carries `dryRun`. Prepare describes the draft and does not persist it. Confirm does not insert. Watchlist tools report what they would have done.
 
@@ -123,7 +123,7 @@ The user reviews the parsed rows. A cash row can be USD, EUR, USDT, or USDC. The
 
 ## Observability and eval
 
-`lib/agentObservability/` records runs, redacts tool payloads, prices tokens in `cost.ts`, and scores eval cases. Admin reads go through `app/actions/agentObservability.ts`. The parent orchestrator row lists invoked specialists and stores `meta.user_text` plus `meta.route`. The admin detail shows those as Asked and Route. Child rows point at `parent_run_id`.
+`lib/agentObservability/` records runs, redacts tool payloads, prices tokens in `cost.ts`, and scores eval cases. Admin reads go through `app/actions/agentObservability.ts`. The parent orchestrator row lists invoked specialists and stores `meta.user_text`, `meta.assistant_text`, `meta.route`, and `meta.policy_signals`. The admin detail shows those as Asked, Reply, Route, and any true signal. The analyst child stores its reply and signals. Child rows point at `parent_run_id`.
 
 Overview counts every `agent_runs` row in the last 30 days, parents and children together. When that window is empty it uses the latest 500 rows and says the figures are older. The Runs list is parent rows only and has no date cutoff.
 

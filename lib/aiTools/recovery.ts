@@ -61,6 +61,7 @@ const RECOVERY_BY_MODE: Record<
   watchlist_held: { recovery: 'ask_user', retryable: false },
   watchlist_not_found: { recovery: 'ask_user', retryable: false },
   watchlist_load_failed: { recovery: 'abort', retryable: false },
+  watchlist_not_requested: { recovery: 'ask_user', retryable: false },
   estimate_failed: { recovery: 'abort', retryable: false },
   dry_run_no_live_analysis: { recovery: 'fallback_simpler', retryable: false },
 }

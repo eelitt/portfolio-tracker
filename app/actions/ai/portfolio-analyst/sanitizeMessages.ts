@@ -5,7 +5,7 @@
  * Goals:
  * - Drop client "system" / unknown roles (server owns the real system prompt)
  * - Cap history length and string size (token / cost bomb)
- * - Keep user | assistant | tool shapes that useChat needs for multi-step history
+ * - Keep user and assistant text only. Drop tool payloads and other client fields.
  */
 
 /** Max messages kept (tail). */
@@ -17,11 +17,38 @@ export const ANALYST_MAX_LAST_USER_CHARS = 4_000
 /** Soft cap on total text chars across kept messages (truncate older first via tail slice). */
 export const ANALYST_MAX_TOTAL_CHARS = 40_000
 
-const ALLOWED_ROLES = new Set(['user', 'assistant', 'tool'])
+const ALLOWED_ROLES = new Set(['user', 'assistant'])
 
 function truncateStr(s: string, max: number): string {
   if (s.length <= max) return s
   return s.slice(0, max)
+}
+
+function textFromParts(parts: unknown): string {
+  if (!Array.isArray(parts)) return ''
+  const out: string[] = []
+  for (const part of parts) {
+    if (typeof part === 'string') {
+      out.push(part)
+      continue
+    }
+    if (!part || typeof part !== 'object') continue
+    const p = part as { type?: unknown; text?: unknown }
+    if (p.type === 'text' && typeof p.text === 'string') out.push(p.text)
+    else if (typeof p.text === 'string' && p.type == null) out.push(p.text)
+  }
+  return out.join('')
+}
+
+/** Plain text only. Tool parts and toolInvocations are ignored. */
+function textFromMessage(message: Record<string, unknown>): string {
+  const content = message.content
+  if (typeof content === 'string' && content.trim()) return content
+  if (Array.isArray(content)) {
+    const fromContent = textFromParts(content)
+    if (fromContent.trim()) return fromContent
+  }
+  return textFromParts(message.parts)
 }
 
 function textLenFromContent(content: unknown): number {
@@ -37,48 +64,16 @@ function textLenFromContent(content: unknown): number {
   return n
 }
 
-function sanitizeContent(content: unknown): unknown {
-  if (typeof content === 'string') {
-    return truncateStr(content, ANALYST_MAX_FIELD_CHARS)
-  }
-  if (!Array.isArray(content)) {
-    return content == null ? '' : truncateStr(String(content), ANALYST_MAX_FIELD_CHARS)
-  }
-  return content.map((part) => {
-    if (typeof part === 'string') {
-      return truncateStr(part, ANALYST_MAX_FIELD_CHARS)
-    }
-    if (part && typeof part === 'object') {
-      const p = part as Record<string, unknown>
-      if (typeof p.text === 'string') {
-        return { ...p, text: truncateStr(p.text, ANALYST_MAX_FIELD_CHARS) }
-      }
-    }
-    return part
-  })
-}
-
 /**
  * Extract plain text from the last user message (for confirm gate + size check).
  */
 export function extractLastUserText(messages: unknown[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i] as { role?: string; content?: unknown } | null
-    if (!m || m.role !== 'user') continue
-    const c = m.content
-    if (typeof c === 'string') return c
-    if (Array.isArray(c)) {
-      return c
-        .map((part) => {
-          if (typeof part === 'string') return part
-          if (part && typeof part === 'object' && 'text' in part) {
-            return String((part as { text?: unknown }).text ?? '')
-          }
-          return ''
-        })
-        .join('')
-    }
-    return String(c ?? '')
+    const m = messages[i]
+    if (!m || typeof m !== 'object') continue
+    const msg = m as Record<string, unknown>
+    if (msg.role !== 'user') continue
+    return textFromMessage(msg)
   }
   return ''
 }
@@ -136,14 +131,14 @@ export function sanitizeAnalystMessages(raw: unknown[]): SanitizeAnalystMessages
     content: unknown
   }
 
-  const truncated: SanitizedMessage[] = roleFiltered.map((item) => {
+  const truncated: SanitizedMessage[] = []
+  for (const item of roleFiltered) {
     const msg = item as Record<string, unknown>
-    return {
-      ...msg,
-      role: String(msg.role),
-      content: sanitizeContent(msg.content),
-    }
-  })
+    const role = String(msg.role)
+    const text = truncateStr(textFromMessage(msg), ANALYST_MAX_FIELD_CHARS)
+    if (role === 'assistant' && !text.trim()) continue
+    truncated.push({ role, content: text })
+  }
 
   // Keep tail first for recency, then enforce total char budget from the end.
   let kept: SanitizedMessage[] = truncated.slice(-ANALYST_MAX_MESSAGES)

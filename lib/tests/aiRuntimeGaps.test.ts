@@ -32,6 +32,8 @@ const pack: UserContextPack = {
 describe('formatUserContextForPrompt', () => {
   it('routes without a market-value figure', () => {
     const text = formatUserContextForPrompt(pack)
+    expect(text).toContain('account data')
+    expect(text).not.toMatch(/trusted/i)
     expect(text).toContain('Preferred currency: **EUR**')
     expect(text).toContain('House')
     expect(text).toContain('Concentrated in one stock worth 12345')
@@ -98,8 +100,11 @@ describe('buildOrchestratorRoute', () => {
     expect(dumped).not.toContain('3.5 BTC')
   })
 
-  it('clips the stored question to 500 characters', () => {
-    const clipped = clipOrchestratorUserText(`  ${'a'.repeat(800)}  `)
+  it('clips the stored question to the message cap', () => {
+    const clipped = clipOrchestratorUserText(
+      `  ${'a'.repeat(ORCHESTRATOR_USER_TEXT_MAX + 50)}  `
+    )
     expect(clipped.length).toBe(ORCHESTRATOR_USER_TEXT_MAX)
+    expect(ORCHESTRATOR_USER_TEXT_MAX).toBe(4_000)
   })
 })
