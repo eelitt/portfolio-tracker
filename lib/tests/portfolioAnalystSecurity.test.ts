@@ -73,6 +73,8 @@ describe('sanitizeAnalystMessages', () => {
     expect(assistant.content).toBe('You have 1 unit.')
     expect(assistant.toolInvocations).toBeUndefined()
     expect(JSON.stringify(result.messages)).not.toContain('999')
+    expect(result.priorUserText).toBe('summary')
+    expect(result.lastUserText).toBe('thanks')
   })
 })
 

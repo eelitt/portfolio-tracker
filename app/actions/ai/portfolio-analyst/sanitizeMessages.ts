@@ -78,8 +78,25 @@ export function extractLastUserText(messages: unknown[]): string {
   return ''
 }
 
+/** Plain text of the user message before the last one. Empty when there is none. */
+export function extractPriorUserText(messages: unknown[]): string {
+  let seenLast = false
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (!m || typeof m !== 'object') continue
+    const msg = m as Record<string, unknown>
+    if (msg.role !== 'user') continue
+    if (!seenLast) {
+      seenLast = true
+      continue
+    }
+    return textFromMessage(msg)
+  }
+  return ''
+}
+
 export type SanitizeAnalystMessagesResult =
-  | { ok: true; messages: unknown[]; lastUserText: string }
+  | { ok: true; messages: unknown[]; lastUserText: string; priorUserText: string }
   | { ok: false; error: string; status: 400 }
 
 /**
@@ -156,6 +173,7 @@ export function sanitizeAnalystMessages(raw: unknown[]): SanitizeAnalystMessages
 
   // Prefer original last-user text for confirm gate (not truncated mid-sentence)
   const lastUserText = extractLastUserText(kept) || lastUserTextRaw
+  const priorUserText = extractPriorUserText(kept)
 
-  return { ok: true, messages: kept, lastUserText }
+  return { ok: true, messages: kept, lastUserText, priorUserText }
 }

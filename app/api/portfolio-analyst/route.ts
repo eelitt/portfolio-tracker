@@ -159,6 +159,7 @@ export async function POST(req: Request) {
         userId: user.id,
         parentRunId,
         lastUserText: sanitized.lastUserText,
+        priorUserText: sanitized.priorUserText,
         dryRun,
       }),
       maxSteps: 6,

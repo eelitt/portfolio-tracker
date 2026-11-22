@@ -48,8 +48,12 @@ export {
 
 export {
   watchlistMutationRequested,
+  watchlistCommandSpan,
+  watchlistSpanAllowsSymbol,
+  watchlistFollowUpOpen,
   watchlistTargetNamedInMessage,
+  watchlistBareTarget,
 } from './watchlistIntent'
-export type { WatchlistMutation } from './watchlistIntent'
+export type { WatchlistMutation, PhraseHit, PhraseResolver } from './watchlistIntent'
 
 export { resolveDryRun, dryRunNote } from './dryRun'

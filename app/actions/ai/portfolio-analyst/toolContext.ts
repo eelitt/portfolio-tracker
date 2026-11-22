@@ -20,6 +20,8 @@ export function round2(n: number) {
 
 export type PortfolioAnalystToolOptions = {
   lastUserText?: string
+  /** User message before the last one. Watchlist follow-up only. */
+  priorUserText?: string
   evalPortfolio?: PortfolioData
   evalMode?: boolean
   dryRun?: boolean
@@ -65,6 +67,7 @@ export async function loadUserPortfolio(
 export type AnalystToolCtx = {
   userId: string
   lastUserText: string
+  priorUserText: string
   evalMode: boolean
   dryRun: boolean
   noPersist: boolean
@@ -83,6 +86,7 @@ export function createAnalystToolCtx(
   return {
     userId,
     lastUserText: options.lastUserText ?? '',
+    priorUserText: options.priorUserText ?? '',
     evalMode,
     dryRun,
     noPersist: evalMode || dryRun,

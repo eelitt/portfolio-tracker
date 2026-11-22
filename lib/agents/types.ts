@@ -81,6 +81,8 @@ export type PortfolioAnalystAgentInput = {
   /** Structured news from News Agent only — never free-form invented headlines. */
   newsContext?: NewsAgentOutput
   lastUserText?: string
+  /** User message before the last one. Watchlist follow-up only. */
+  priorUserText?: string
   /** Prepare/confirm without persistence */
   dryRun?: boolean
 }

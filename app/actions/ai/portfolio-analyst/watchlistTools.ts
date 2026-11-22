@@ -11,32 +11,60 @@ import {
   withRecovery,
   toolFailure,
   dryRunNote,
-  watchlistMutationRequested,
-  watchlistTargetNamedInMessage,
+  watchlistCommandSpan,
+  watchlistSpanAllowsSymbol,
+  watchlistFollowUpOpen,
+  watchlistBareTarget,
+  type PhraseHit,
   type WatchlistMutation,
 } from '@/lib/aiTools'
 import type { AnalystToolCtx } from './toolContext'
 
-function watchlistWriteIntent(lastUserText: string, kind: WatchlistMutation) {
-  if (watchlistMutationRequested(lastUserText, kind)) return null
-  return toolFailure(
-    'watchlist_not_requested',
-    'This message is not a watchlist change. Say "add … to my watchlist" or "remove … from my watchlist".'
-  )
+function watchlistTurnCanWrite(
+  lastUserText: string,
+  priorUserText: string,
+  kind: WatchlistMutation
+): boolean {
+  if (watchlistCommandSpan(lastUserText, kind) != null) return true
+  const prior = watchlistCommandSpan(priorUserText, kind)
+  return prior != null && watchlistFollowUpOpen(prior, phraseHit)
 }
 
-function watchlistTargetNamed(
+function phraseHit(phrase: string): PhraseHit {
+  const result = resolveWatchlistQuery(phrase)
+  if (result.ok) return { kind: 'unique', symbol: result.symbol }
+  if (result.failureMode === 'catalog_ambiguous') return { kind: 'ambiguous' }
+  return { kind: 'none' }
+}
+
+function watchlistWriteAllowed(
   lastUserText: string,
+  priorUserText: string,
+  kind: WatchlistMutation,
   query: string,
   symbol: string,
   name: string
 ) {
-  if (watchlistTargetNamedInMessage(lastUserText, { query, symbol, name })) {
+  const parts = { query, symbol, name }
+  const span = watchlistCommandSpan(lastUserText, kind)
+  if (span != null) {
+    if (watchlistSpanAllowsSymbol(span, symbol, phraseHit)) return null
+    return toolFailure(
+      'watchlist_not_requested',
+      'Name the symbol in this message (for example "add AAPL to my watchlist").'
+    )
+  }
+  const prior = watchlistCommandSpan(priorUserText, kind)
+  if (
+    prior != null &&
+    watchlistFollowUpOpen(prior, phraseHit) &&
+    watchlistBareTarget(lastUserText, parts)
+  ) {
     return null
   }
   return toolFailure(
     'watchlist_not_requested',
-    'Name the symbol in this message (for example "add AAPL to my watchlist").'
+    'This message is not a watchlist change. Say "add … to my watchlist" or "remove … from my watchlist".'
   )
 }
 
@@ -78,8 +106,12 @@ export function createWatchlistTools(ctx: AnalystToolCtx) {
           .describe('User’s symbol or name (e.g. apple, BNB, AAPL)'),
       }),
       execute: async (args) => {
-        const intent = watchlistWriteIntent(ctx.lastUserText, 'add')
-        if (intent) return intent
+        if (!watchlistTurnCanWrite(ctx.lastUserText, ctx.priorUserText, 'add')) {
+          return toolFailure(
+            'watchlist_not_requested',
+            'This message is not a watchlist change. Say "add … to my watchlist" or "remove … from my watchlist".'
+          )
+        }
 
         const resolved = resolveWatchlistQuery(args.query)
         if (!resolved.ok) {
@@ -91,13 +123,15 @@ export function createWatchlistTools(ctx: AnalystToolCtx) {
           })
         }
 
-        const named = watchlistTargetNamed(
+        const allowed = watchlistWriteAllowed(
           ctx.lastUserText,
+          ctx.priorUserText,
+          'add',
           args.query,
           resolved.symbol,
           resolved.name
         )
-        if (named) return named
+        if (allowed) return allowed
 
         const label = `${resolved.symbol} (${resolved.name}, ${resolved.assetType})`
         if (noPersist) {
@@ -145,8 +179,12 @@ export function createWatchlistTools(ctx: AnalystToolCtx) {
           .describe('User’s symbol or name to remove from the watchlist'),
       }),
       execute: async (args) => {
-        const intent = watchlistWriteIntent(ctx.lastUserText, 'remove')
-        if (intent) return intent
+        if (!watchlistTurnCanWrite(ctx.lastUserText, ctx.priorUserText, 'remove')) {
+          return toolFailure(
+            'watchlist_not_requested',
+            'This message is not a watchlist change. Say "add … to my watchlist" or "remove … from my watchlist".'
+          )
+        }
 
         const resolved = resolveWatchlistQuery(args.query)
         if (!resolved.ok) {
@@ -158,13 +196,15 @@ export function createWatchlistTools(ctx: AnalystToolCtx) {
           })
         }
 
-        const named = watchlistTargetNamed(
+        const allowed = watchlistWriteAllowed(
           ctx.lastUserText,
+          ctx.priorUserText,
+          'remove',
           args.query,
           resolved.symbol,
           resolved.name
         )
-        if (named) return named
+        if (allowed) return allowed
 
         const label = `${resolved.symbol} (${resolved.name}, ${resolved.assetType})`
         if (noPersist) {

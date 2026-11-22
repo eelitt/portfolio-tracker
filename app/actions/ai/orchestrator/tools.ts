@@ -17,6 +17,8 @@ export type OrchestratorToolContext = {
   parentRunId: string | null
   /** Latest user message text (confirm gate + analyst routing). */
   lastUserText: string
+  /** User message before the last one. Watchlist follow-up only. */
+  priorUserText?: string
   /** No writes / no live news refresh */
   dryRun?: boolean
   /** Eval only: return a stub and do not call specialists. */
@@ -143,6 +145,7 @@ export function createOrchestratorTools(ctx: OrchestratorToolContext) {
           symbols: args.symbols,
           newsContext,
           lastUserText: ctx.lastUserText,
+          priorUserText: ctx.priorUserText ?? '',
           dryRun: ctx.dryRun,
         })
         return {

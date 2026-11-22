@@ -15,6 +15,7 @@ import {
   buildAnalystNewsContextBlock,
   focusSymbolHint,
 } from './prompt'
+import { stripPromptDelimiters } from '@/lib/aiTools/promptFence'
 import {
   finishChildAgentRun,
   startChildAgentRun,
@@ -67,7 +68,7 @@ export async function runPortfolioAnalystAgent(
     taskHint,
     symbolHint,
     newsBlock,
-    `<user_message>\n${input.userMessage}\n</user_message>`,
+    `<user_message>\n${stripPromptDelimiters(input.userMessage)}\n</user_message>`,
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -94,6 +95,7 @@ export async function runPortfolioAnalystAgent(
       messages: [{ role: 'user', content: userContent }],
       tools: createPortfolioAnalystTools(ctx.userId, {
         lastUserText,
+        priorUserText: input.priorUserText ?? '',
         dryRun: input.dryRun === true,
       }),
       maxSteps: 5,

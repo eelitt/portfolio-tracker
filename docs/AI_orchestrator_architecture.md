@@ -108,7 +108,7 @@ Disclaimers stay narrow. News-only answers skip the portfolio-figures line. Tax 
 
 **News handoff.** A successful `invoke_news_agent` that returned holdings is parsed with `parseNewsContextHandoff` and kept on the server for this request only. If the analyst tool is called with `newsContext`, that payload is discarded. The analyst receives the server copy. If news has not succeeded in this request, the analyst call returns an error telling the model to call the news agent first or to omit `newsContext`. The analyst may cite those bullets. It may not invent headlines.
 
-**Analyst grounding.** Logging and confirm use `lastUserText` from the sanitizer. The model's optional `userMessage` is not the string the confirm gate sees. Task (`answer`, `position_snapshot`, `prepare_trade`) and symbol focus are hints. The specialist still answers the real user message.
+**Analyst grounding.** Logging and confirm use `lastUserText` from the sanitizer. The model's optional `userMessage` is not the string the confirm gate sees. `priorUserText` is the previous user message, passed on the server for a one-line watchlist follow-up while that command is still unfinished. Task (`answer`, `position_snapshot`, `prepare_trade`) and symbol focus are hints. The specialist still answers the real user message.
 
 **Dry-run flags on the way out.** News `packageUpdated` is forced false. Analyst `transactionSaved` and `watchlistChanged` are forced false. Analysis `packageUpdated` is forced false. Each payload can carry `dryRun: true`.
 

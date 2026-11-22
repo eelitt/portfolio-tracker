@@ -130,7 +130,7 @@ user text
   → confirm_transaction     createTransactionRecord({ requireCurrency: true })
 ```
 
-`assertWriteAllowed` is the only confirm gate. Watchlist add/remove are writes **without** that gate. They must not be sent through `assertWriteAllowed` (registry: `requiresConfirmation: false`). Add runs only when the user message asks to add and names the symbol. Remove runs only when it asks to remove and names the symbol.
+`assertWriteAllowed` is the only confirm gate. Watchlist add/remove are writes **without** that gate. They must not be sent through `assertWriteAllowed` (registry: `requiresConfirmation: false`). Add runs only when the user message is an add command and that command's phrase resolves to the symbol. Remove runs only when it is a remove command and the phrase resolves to the symbol. A list of tickers can add or remove each one. A follow-up that is only the ticker or name can finish a previous command that did not already name a unique symbol.
 
 Prepare and confirm stay on stock, ETF, crypto, and cash. The analyst can describe open futures and the cash total from `getPortfolioData`. It cannot write a future, a funding row, a fee, or a margin change.
 
