@@ -1,8 +1,12 @@
 # Portfolio Tracker
 
-A personal investment tracker where **transactions are the only source of truth** — holdings, cost basis, and P&L are derived, and the AI layer is not allowed to invent numbers.
+A personal investment platform where an orchestrator works with specialist agents to help you understand your portfolio, explore market news, analyze investments, and manage transactions.
 
-Built as a real product (auth, private data, live marks, deployable), not a chatbot with a table glued on.
+Each agent has a focused role and access to specific tools. The orchestrator brings their work together, while explicit permissions and user confirmations keep financial actions under control.
+
+The numbers are never up to AI. Transactions are the single source of truth. Holdings, cost basis, and P&L are calculated deterministically from your transaction history. AI can analyze the results, but it cannot invent or silently change them.
+
+Built as a real, deployable product — with private user data, live market prices, and visibility into how agents work together.
 
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
@@ -11,13 +15,15 @@ Built as a real product (auth, private data, live marks, deployable), not a chat
 ![AI](https://img.shields.io/badge/AI-xAI%20%2B%20Vercel%20AI%20SDK-purple)
 ![Vercel](https://img.shields.io/badge/Deploy-Vercel-black)
 
+See it in action:
+
 Dashboard:
 <img width="1802" height="927" alt="image" src="https://github.com/user-attachments/assets/0f562436-dd8a-412b-8fa6-7dbdb8c5703b" />
 
-Holding news:
+Holding intelligence & news:
 <img width="1895" height="920" alt="image" src="https://github.com/user-attachments/assets/e56d0992-9ae1-4534-87e1-43e41bc10efa" />
 
-Agent observability:
+Multi-agent orchestration & observability:
 <img width="1885" height="914" alt="image" src="https://github.com/user-attachments/assets/56a6e706-f781-43a4-8fe6-6e4fccb7bd15" />
 
 
