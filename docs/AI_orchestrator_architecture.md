@@ -98,7 +98,7 @@ The system prompt in `app/actions/ai/orchestrator/prompt.ts` is the routing poli
 
 A simple question should call one specialist. Off-topic requests are refused, with the short list of things the assistants can do.
 
-The prompt also sets answer style: lead with the specialist `brief` or summary, include `statusNote` when the tool sent one, and follow a tool's `recovery` (`ask_user`, `fallback_simpler`, `abort`). Recovery codes live in `lib/aiTools/recovery.ts`. The orchestrator does not invent a cooldown, a tax figure, or a headline to fill a gap.
+The prompt also sets answer style: lead with the specialist `brief` or summary, include `statusNote` when the tool sent one, and follow a tool's `recovery` (`ask_user`, `fallback_simpler`, `abort`). Recovery codes live in `lib/aiTools/recovery.ts`. The split between that field and a plain error string is [AI_recovery.md](./AI_recovery.md). The orchestrator does not invent a cooldown, a tax figure, or a headline to fill a gap.
 
 Disclaimers stay narrow. News-only answers skip the portfolio-figures line. Tax answers use the brief's own "estimate only" line. A figures disclaimer is for turns that actually reported calculated portfolio numbers. A successful log confirmation does not get one.
 

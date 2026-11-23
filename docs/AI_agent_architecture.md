@@ -131,4 +131,4 @@ The live eval suites are `lib/agentEval/runSuite.ts`, started from `app/api/admi
 
 ## Failure shape
 
-Tools that fail return `ok: false`, a stable `failureMode`, and a `recovery` from `lib/aiTools/recovery.ts`: `retry_same`, `fallback_simpler`, `ask_user`, or `abort`. The orchestrator prompt tells the model to follow that field. Examples: a missing confirm phrase is `ask_user`. A news cooldown that still has a stored package is `fallback_simpler`. An estimate that cannot run is `abort` or the tax agent's own error string. The model does not fill the gap with a number.
+Tools that fail return `ok: false`, a stable `failureMode`, and a `recovery` from `lib/aiTools/recovery.ts`: `retry_same`, `fallback_simpler`, `ask_user`, or `abort`. The orchestrator prompt tells the model to follow that field. Examples: a missing confirm phrase is `ask_user`. An estimate that cannot run is `abort` or the tax agent's own error string. A news cooldown that still has a stored package returns that package. It is not a failure envelope. The model does not fill the gap with a number. Which results actually carry `recovery` is [AI_recovery.md](./AI_recovery.md).
