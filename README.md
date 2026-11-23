@@ -12,14 +12,13 @@ Built as a real product (auth, private data, live marks, deployable), not a chat
 ![Vercel](https://img.shields.io/badge/Deploy-Vercel-black)
 
 Dashboard:
-<img width="1896" height="917" alt="git1" src="https://github.com/user-attachments/assets/9d47cc24-3001-4181-987d-287edcbe5219" />
-Holding news:
+<img width="1802" height="927" alt="image" src="https://github.com/user-attachments/assets/0f562436-dd8a-412b-8fa6-7dbdb8c5703b" />
 
-<img width="1899" height="920" alt="git4" src="https://github.com/user-attachments/assets/cdda1f88-e3d4-4f05-a41f-54b7bd1a01b4" />
-User menu, Watchlist and Transaction History:
-<img width="1909" height="920" alt="git3" src="https://github.com/user-attachments/assets/776fb231-eb79-4dfc-93da-6c14eb305714" />
-Charts:
-<img width="1905" height="922" alt="git2" src="https://github.com/user-attachments/assets/6a48b62e-892a-48b2-a67d-2543be6fab0b" />
+Holding news:
+<img width="1895" height="920" alt="image" src="https://github.com/user-attachments/assets/e56d0992-9ae1-4534-87e1-43e41bc10efa" />
+
+Agent observability:
+<img width="1885" height="914" alt="image" src="https://github.com/user-attachments/assets/56a6e706-f781-43a4-8fe6-6e4fccb7bd15" />
 
 
 ## Why this is different
