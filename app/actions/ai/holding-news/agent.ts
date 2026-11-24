@@ -84,6 +84,7 @@ export async function runNewsAgent(
       mode: forceRefresh ? 'ui' : 'auto',
       symbols: input.symbols,
       universe: input.universe,
+      logParentRunId: ctx.parentRunId,
     })
 
     toolTrace.push({

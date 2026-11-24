@@ -110,7 +110,9 @@ export async function runPortfolioAnalysisAgent(
       }
     }
 
-    const result = await generatePortfolioInsights()
+    const result = await generatePortfolioInsights(
+      ctx.parentRunId ? { logParentRunId: ctx.parentRunId } : undefined
+    )
 
     if ('error' in result && result.error) {
       const failureMode = /wait|rate/i.test(result.error)

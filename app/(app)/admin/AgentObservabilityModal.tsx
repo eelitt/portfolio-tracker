@@ -5,7 +5,7 @@
 
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -16,22 +16,51 @@ import {
 import { Button } from '@/components/ui/button'
 import { RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
+import { getAgentOverview } from '@/app/actions/agentOverview'
+import { getAgentRun, listAgentRuns, listChildAgentRuns } from '@/app/actions/agentRuns'
+import { getLatestEvalRun, listEvalCases } from '@/app/actions/agentEval'
+import { listAiUserStats, type AiUserStatRow } from '@/app/actions/aiUserStats'
+import type { AgentRunRow, AgentRunStatus } from '@/lib/agentObservability'
+import type { AgentOverviewStats } from '@/lib/agentObservability/overviewRows'
 import {
-  getAgentOverview,
-  getAgentRun,
-  getLatestEvalRun,
-  listAgentRuns,
-  listChildAgentRuns,
-  listEvalCases,
-  type AgentOverviewStats,
-} from '@/app/actions/agentObservability'
-import type { AgentRunRow } from '@/lib/agentObservability'
+  RUN_FILTER_FEATURES,
+  localDayBound,
+} from '@/lib/agentObservability/runListQuery'
 import AgentOverviewTab from './AgentOverviewTab'
 import AgentRunsTable, { AgentRunDetail } from './AgentRunsTable'
+import AgentUsersTab from './AgentUsersTab'
 import AgentEvalTab from './AgentEvalTab'
 import { parseEvalProgressLine, type EvalProgressEvent } from '@/lib/agentEval/progress'
 
-type Tab = 'overview' | 'runs' | 'eval'
+const filterControlClass =
+  'h-7 max-w-[14rem] rounded-md border border-border bg-background px-2 text-xs text-foreground'
+
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  children,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  children: ReactNode
+}) {
+  return (
+    <label className="flex items-center gap-1 text-xs text-muted-foreground">
+      {label}
+      <select
+        className={filterControlClass}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {children}
+      </select>
+    </label>
+  )
+}
+
+type Tab = 'overview' | 'runs' | 'users' | 'eval'
 type EvalFeature = 'portfolio_analyst' | 'portfolio_orchestrator'
 
 type EvalRunProgress = {
@@ -80,6 +109,14 @@ export default function AgentObservabilityModal({
   const [overview, setOverview] = useState<AgentOverviewStats | null>(null)
   const [overviewError, setOverviewError] = useState<string | null>(null)
   const [runs, setRuns] = useState<AgentRunRow[]>([])
+  const [runsLoading, setRunsLoading] = useState(false)
+  const [userStats, setUserStats] = useState<AiUserStatRow[]>([])
+  const [usersError, setUsersError] = useState<string | null>(null)
+  const [callerUserId, setCallerUserId] = useState('all')
+  const [featureFilter, setFeatureFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | AgentRunStatus>('all')
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedRun, setSelectedRun] = useState<AgentRunRow | null>(null)
   const [childRuns, setChildRuns] = useState<AgentRunRow[]>([])
@@ -92,13 +129,34 @@ export default function AgentObservabilityModal({
   const [runningFeature, setRunningFeature] = useState<EvalFeature | null>(null)
   const [evalProgress, setEvalProgress] = useState<EvalRunProgress | null>(null)
 
+  const runsRequest = useRef(0)
+  const loadRuns = useCallback(async () => {
+    const request = ++runsRequest.current
+    setRunsLoading(true)
+    try {
+      const list = await listAgentRuns({
+        limit: 50,
+        userId: callerUserId === 'all' ? undefined : callerUserId,
+        feature: featureFilter === 'all' ? undefined : featureFilter,
+        status: statusFilter === 'all' ? undefined : statusFilter,
+        from: fromDate ? localDayBound(fromDate, 'start') : undefined,
+        to: toDate ? localDayBound(toDate, 'end') : undefined,
+      })
+      if (request !== runsRequest.current) return
+      if (list.error) toast.error(list.error)
+      else setRuns(list.data ?? [])
+    } finally {
+      if (request === runsRequest.current) setRunsLoading(false)
+    }
+  }, [callerUserId, featureFilter, statusFilter, fromDate, toDate])
+
   const loadAll = useCallback(async () => {
     setLoading(true)
-    const [ov, list, cases, latest] = await Promise.all([
+    const [ov, cases, latest, users] = await Promise.all([
       getAgentOverview(30),
-      listAgentRuns({ limit: 50 }),
       listEvalCases(),
       getLatestEvalRun(),
+      listAiUserStats(),
     ])
 
     if (ov.error) {
@@ -110,14 +168,20 @@ export default function AgentObservabilityModal({
       setOverview(ov.data ?? null)
     }
 
-    if (list.error) toast.error(list.error)
-    else setRuns(list.data ?? [])
-
     if (cases.error) toast.error(cases.error)
     else setFixtures(cases.data ?? [])
 
     if (latest.error) toast.error(latest.error)
     else setLatestEval(latest.data ?? null)
+
+    if (users.error) {
+      toast.error(users.error)
+      setUsersError(users.error)
+      setUserStats([])
+    } else {
+      setUsersError(null)
+      setUserStats(users.data ?? [])
+    }
 
     setLoading(false)
   }, [])
@@ -128,19 +192,61 @@ export default function AgentObservabilityModal({
   }, [open, loadAll])
 
   useEffect(() => {
+    if (!open) return
+    void loadRuns()
+  }, [open, loadRuns])
+
+  const callerChoices = useMemo(() => {
+    const rows = userStats
+      .map((row) => ({ userId: row.userId, caller: row.caller }))
+      .sort((a, b) => a.caller.localeCompare(b.caller))
+    if (
+      callerUserId !== 'all' &&
+      !rows.some((row) => row.userId === callerUserId)
+    ) {
+      rows.push({ userId: callerUserId, caller: callerUserId })
+      rows.sort((a, b) => a.caller.localeCompare(b.caller))
+    }
+    return rows
+  }, [userStats, callerUserId])
+
+  const featureChoices = useMemo(() => {
+    const names = new Set<string>(RUN_FILTER_FEATURES)
+    for (const run of runs) names.add(run.feature)
+    if (featureFilter !== 'all') names.add(featureFilter)
+    return [...names].sort((a, b) => a.localeCompare(b))
+  }, [runs, featureFilter])
+
+  const filtersActive =
+    callerUserId !== 'all' ||
+    featureFilter !== 'all' ||
+    statusFilter !== 'all' ||
+    fromDate !== '' ||
+    toDate !== ''
+
+  useEffect(() => {
+    if (!selectedId) return
+    if (!runs.some((r) => r.id === selectedId)) setSelectedId(null)
+  }, [selectedId, runs])
+
+  useEffect(() => {
     if (!selectedId) {
       setSelectedRun(null)
       setChildRuns([])
       return
     }
+    let cancelled = false
     const cached = runs.find((r) => r.id === selectedId)
     if (cached) setSelectedRun(cached)
     void getAgentRun(selectedId).then((res) => {
-      if (res.data) setSelectedRun(res.data)
+      if (!cancelled && res.data) setSelectedRun(res.data)
     })
     void listChildAgentRuns(selectedId).then((res) => {
-      setChildRuns(res.data ?? [])
+      if (!cancelled) setChildRuns(res.data ?? [])
     })
+    return () => {
+      cancelled = true
+    }
   }, [selectedId, runs])
 
   /** Live suite — API route holds the long timeout budget. */
@@ -206,7 +312,7 @@ export default function AgentObservabilityModal({
       toast.success(
         `Eval done: ${outcome.done.passed}/${outcome.done.total} passed (${(outcome.done.durationMs / 1000).toFixed(1)}s)`
       )
-      await loadAll()
+      await Promise.all([loadAll(), loadRuns()])
       setTab('eval')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Eval request failed')
@@ -214,23 +320,24 @@ export default function AgentObservabilityModal({
       setRunningFeature(null)
       setEvalProgress(null)
     }
-  }, [fixtures, loadAll])
+  }, [fixtures, loadAll, loadRuns])
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'runs', label: 'Runs' },
+    { id: 'users', label: 'Users' },
     { id: 'eval', label: 'Eval' },
   ]
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col gap-3">
+      <DialogContent className="sm:max-w-5xl max-h-[90vh] flex flex-col gap-3">
         <DialogHeader>
           <div className="flex items-start justify-between gap-3 pr-8">
             <div className="space-y-1.5">
               <DialogTitle>Agent observability</DialogTitle>
               <DialogDescription>
-                Run logs, usage, and portfolio analyst eval suite (admin only).
+                Run logs, per-user usage, and the eval suite (admin only).
               </DialogDescription>
             </div>
             <Button
@@ -238,7 +345,10 @@ export default function AgentObservabilityModal({
               variant="ghost"
               size="icon-sm"
               className="shrink-0"
-              onClick={() => void loadAll()}
+              onClick={() => {
+                void loadAll()
+                void loadRuns()
+              }}
               disabled={loading || runningFeature != null}
               aria-label="Refresh"
               title="Refresh"
@@ -277,12 +387,77 @@ export default function AgentObservabilityModal({
           )}
           {tab === 'runs' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-h-0 flex-1 overflow-hidden">
-              <AgentRunsTable
-                runs={runs}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-                loading={loading}
-              />
+              <div className="min-h-0 flex flex-col gap-2 overflow-hidden">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 shrink-0">
+                  <FilterSelect
+                    label="Caller"
+                    value={callerUserId}
+                    onChange={setCallerUserId}
+                  >
+                    <option value="all">All</option>
+                    {callerChoices.map((row) => (
+                      <option key={row.userId} value={row.userId}>
+                        {row.caller}
+                      </option>
+                    ))}
+                  </FilterSelect>
+                  <FilterSelect
+                    label="Feature"
+                    value={featureFilter}
+                    onChange={setFeatureFilter}
+                  >
+                    <option value="all">All</option>
+                    {featureChoices.map((feature) => (
+                      <option key={feature} value={feature}>
+                        {feature}
+                      </option>
+                    ))}
+                  </FilterSelect>
+                  <FilterSelect
+                    label="Status"
+                    value={statusFilter}
+                    onChange={(value) =>
+                      setStatusFilter(value as 'all' | AgentRunStatus)
+                    }
+                  >
+                    <option value="all">All</option>
+                    <option value="running">running</option>
+                    <option value="success">success</option>
+                    <option value="error">error</option>
+                    <option value="partial">partial</option>
+                  </FilterSelect>
+                  <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                    From
+                    <input
+                      type="date"
+                      className={filterControlClass}
+                      value={fromDate}
+                      onChange={(e) => setFromDate(e.target.value)}
+                    />
+                  </label>
+                  <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                    To
+                    <input
+                      type="date"
+                      className={filterControlClass}
+                      value={toDate}
+                      onChange={(e) => setToDate(e.target.value)}
+                    />
+                  </label>
+                </div>
+                <p className="text-[11px] text-muted-foreground shrink-0">
+                  Newest 50 matching parent runs.
+                </p>
+                <AgentRunsTable
+                  runs={runs}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                  loading={loading || runsLoading}
+                  emptyLabel={
+                    filtersActive ? 'No runs match these filters.' : undefined
+                  }
+                />
+              </div>
               <div className="border border-border rounded-md min-h-0 flex flex-col overflow-hidden">
                 <div className="px-2 py-1.5 text-xs font-medium border-b border-border bg-muted/30">
                   Detail
@@ -290,6 +465,21 @@ export default function AgentObservabilityModal({
                 <AgentRunDetail run={selectedRun} childrenRuns={childRuns} />
               </div>
             </div>
+          )}
+          {tab === 'users' && (
+            <AgentUsersTab
+              rows={userStats}
+              loading={loading}
+              error={usersError}
+              onOpenRuns={(userId) => {
+                setCallerUserId(userId)
+                setFeatureFilter('all')
+                setStatusFilter('all')
+                setFromDate('')
+                setToDate('')
+                setTab('runs')
+              }}
+            />
           )}
           {tab === 'eval' && (
             <AgentEvalTab

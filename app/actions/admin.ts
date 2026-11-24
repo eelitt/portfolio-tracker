@@ -1,9 +1,13 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { buildAdminAccessEvent } from '@/lib/adminAccessEvent'
-import { getCurrentUser } from '@/lib/user'
+import { requireAdmin } from '@/lib/requireAdmin'
+import { readAiUsageSnapshot } from '@/lib/aiUsage/allowance'
+import {
+  DEFAULT_AI_ALLOWANCE_USD,
+  parseAllowanceUsd,
+} from '@/lib/aiUsage/decide'
 
 export interface AdminUserRow {
   id: string
@@ -11,6 +15,9 @@ export interface AdminUserRow {
   admin: boolean
   accessToApp: boolean
   createdAt: string | null
+  /** Estimated product spend in the current window. Null when the meter could not be read. */
+  windowSpentUsd: number | null
+  allowanceUsd: number
 }
 
 export interface AdminAccessEventRow {
@@ -22,28 +29,6 @@ export interface AdminAccessEventRow {
   nextAdmin: boolean
   previousAccess: boolean
   nextAccess: boolean
-}
-
-async function requireAdmin(): Promise<
-  { user: { id: string; email?: string }; error?: undefined } | { user?: undefined; error: string }
-> {
-  const user = await getCurrentUser()
-  if (!user) {
-    return { error: 'Not authenticated' }
-  }
-
-  const supabase = await createClient()
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('admin')
-    .eq('id', user.id)
-    .maybeSingle()
-
-  if (profile?.admin !== true) {
-    return { error: 'Admin access required' }
-  }
-
-  return { user: { id: user.id, email: user.email } }
 }
 
 /**
@@ -102,15 +87,25 @@ export async function listUsersForAdmin(): Promise<{
       ])
     )
 
+    const snapshots = await Promise.all(
+      authUsers.map((u) => readAiUsageSnapshot(u.id))
+    )
+    const spendById = new Map(
+      authUsers.map((u, i) => [u.id, snapshots[i]] as const)
+    )
+
     const rows: AdminUserRow[] = authUsers
       .map((u) => {
         const flags = flagsById.get(u.id)
+        const spend = spendById.get(u.id)
         return {
           id: u.id,
           email: u.email ?? '(no email)',
           admin: flags?.admin ?? false,
           accessToApp: flags?.accessToApp ?? false,
           createdAt: u.created_at ?? null,
+          windowSpentUsd: spend ? spend.window.estimatedUsd : null,
+          allowanceUsd: spend?.allowanceUsd ?? DEFAULT_AI_ALLOWANCE_USD,
         }
       })
       .sort((a, b) => a.email.localeCompare(b.email))
@@ -225,10 +220,95 @@ export async function updateUserAccessFlags(input: {
         admin: nextAdmin,
         accessToApp: nextAccess,
         createdAt,
+        windowSpentUsd: null,
+        allowanceUsd: DEFAULT_AI_ALLOWANCE_USD,
       },
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to update user'
+    return { error: message }
+  }
+}
+
+export async function updateUserAiAllowance(input: {
+  userId: string
+  allowanceUsd?: number
+  resetPeriod?: boolean
+}): Promise<{ error?: string }> {
+  const gate = await requireAdmin()
+  if (gate.error || !gate.user) return { error: gate.error ?? 'Not authenticated' }
+  if (!input.userId) return { error: 'User id is required' }
+
+  const nextAllowance =
+    input.allowanceUsd === undefined ? null : parseAllowanceUsd(input.allowanceUsd)
+  if (input.allowanceUsd !== undefined && nextAllowance == null) {
+    return { error: 'Allowance must be zero or greater.' }
+  }
+  if (nextAllowance == null && input.resetPeriod !== true) {
+    return { error: 'No changes provided' }
+  }
+
+  try {
+    const service = createServiceClient()
+    const { data: existing, error: readError } = await service
+      .from('profiles')
+      .select('admin, ai_allowance_usd, period_started_at')
+      .eq('id', input.userId)
+      .maybeSingle()
+
+    if (readError || !existing) {
+      return { error: readError?.message ?? 'User profile was not found.' }
+    }
+    if (existing.admin === true) {
+      return { error: 'Admins have no allowance cap.' }
+    }
+
+    const previousAllowance = Number(existing.ai_allowance_usd)
+    const previousPeriod = existing.period_started_at as string
+    const allowanceUsd = nextAllowance ?? previousAllowance
+    const periodStartedAt =
+      input.resetPeriod === true ? new Date().toISOString() : previousPeriod
+
+    if (
+      allowanceUsd === previousAllowance &&
+      periodStartedAt === previousPeriod
+    ) {
+      return { error: 'No changes provided' }
+    }
+
+    const { error: updateError } = await service
+      .from('profiles')
+      .update({
+        ai_allowance_usd: allowanceUsd,
+        period_started_at: periodStartedAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', input.userId)
+
+    if (updateError) return { error: updateError.message }
+
+    const { error: auditError } = await service
+      .from('admin_ai_allowance_events')
+      .insert({
+        actor_id: gate.user.id,
+        target_user_id: input.userId,
+        previous_allowance_usd: previousAllowance,
+        next_allowance_usd: allowanceUsd,
+        previous_period_started_at: previousPeriod,
+        next_period_started_at: periodStartedAt,
+      })
+
+    if (auditError) {
+      console.error('admin_ai_allowance_events insert failed:', auditError.message)
+      return {
+        error:
+          'Allowance was saved, but the audit row was not. Apply the AI allowance migration.',
+      }
+    }
+
+    return {}
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to update allowance'
     return { error: message }
   }
 }

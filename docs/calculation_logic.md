@@ -126,3 +126,12 @@ Change a formula → update this file in the same change. Do not document UI her
 **Caveat:** nominal, not real. 2014–now is not Bitcoin’s 2009 lifetime. Not a forecast.
 
 **Code:** `lib/projections/`
+
+---
+
+## AI allowance
+
+**Inputs:** `agent_runs` rows for one user (`prompt_tokens`, `completion_tokens`, `estimated_cost_usd`, `created_at`, `meta.eval_case_id`) and that profile's `ai_allowance_usd` and `period_started_at`.  
+**Formula:** dollars are `estimateCostUsd` in `lib/agentObservability/cost.ts`, stored on the row when the call finishes. The meter sums those stored dollars. It does not reprice old rows when the rate table changes. Prompt and completion tokens are summed beside the dollar. Eval rows (`meta.eval_case_id`) are a separate sum. The window is 30 days from `period_started_at`. What is left is `max(0, allowance − spent)`. The amount over is `max(0, spent − allowance)`.  
+**Caveat:** this dollar is a provider-token estimate in USD. It is not portfolio value, not a preferred-currency conversion, and not an amount owed. A call that starts under the allowance can finish over it. The next entry is refused once the stored sum is at or over the allowance.  
+**Code:** `lib/aiUsage/decide.ts`. The server read is `readAiUsageSnapshot` in `lib/aiUsage/allowance.ts`.

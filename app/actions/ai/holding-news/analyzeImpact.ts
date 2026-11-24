@@ -16,6 +16,7 @@ import {
   type HoldingNewsImpactEntry,
   type NewsImpactTone,
 } from '@/lib/schemas'
+import type { TokenUsage } from '@/lib/agentObservability'
 import { buildImpactSystemPrompt, buildImpactUserPrompt } from './prompts'
 
 /** Allowed tone enum values (mirrors Zod schema; used for post-normalize). */
@@ -37,12 +38,15 @@ export type HoldingMeta = { symbol: string; assetType: string; name: string }
 export async function analyzeNewsImpact(
   news: Record<string, string[]>,
   holdings: HoldingMeta[]
-): Promise<Record<string, HoldingNewsImpactEntry>> {
+): Promise<{
+  impact: Record<string, HoldingNewsImpactEntry>
+  usage: TokenUsage | null
+}> {
   const withNews = holdings.filter(
     h => Array.isArray(news[h.symbol]) && news[h.symbol].length > 0
   )
   if (withNews.length === 0) {
-    return {}
+    return { impact: {}, usage: null }
   }
 
   // Restrict normalize to symbols we actually asked about
@@ -60,7 +64,7 @@ export async function analyzeNewsImpact(
     const { generateObject } = await import('ai')
     const { xai } = await import('@ai-sdk/xai')
 
-    const { object } = await generateObject({
+    const { object, usage } = await generateObject({
       model: xai('grok-4.3'),
       schema: holdingNewsImpactSchema,
       temperature: 0.2,
@@ -69,11 +73,18 @@ export async function analyzeNewsImpact(
       prompt: buildImpactUserPrompt(block),
     })
 
-    return normalizeImpact(object.impact, bySymbol)
+    return {
+      impact: normalizeImpact(object.impact, bySymbol),
+      usage: {
+        promptTokens: usage?.promptTokens,
+        completionTokens: usage?.completionTokens,
+        totalTokens: usage?.totalTokens,
+      },
+    }
   } catch (e) {
     // Caller treats empty impact as optional UI; news path continues
     console.error('News impact analysis failed', e)
-    return {}
+    return { impact: {}, usage: null }
   }
 }
 

@@ -63,7 +63,7 @@ The return value to the orchestrator is text plus a tool trace. `transactionSave
 
 The agent builds `brief` with `buildNewsBrief`, keeps at most three bullets and three impact points per symbol, and sorts names that have bullets and a negative tone first. The orchestrator is told to prefer `brief`. Cache flags stay on the server output. The tool result the model sees is redacted in the orchestrator and is not a lecture about storage.
 
-The child run's model field is the string `pipeline`, because the cost is the pipeline's own model calls, not a `generateText` loop in this file.
+The child run's model field is the string `pipeline`, because the cost is the pipeline's own model calls, not a `generateText` loop in this file. When chat started the fetch, those search and impact rows are children of that chat. The dashboard button leaves them as their own rows.
 
 ## Tax Agent
 
@@ -88,15 +88,16 @@ The child run's model field is the string `pipeline`, because the cost is the pi
 1. Require a session, a non-empty book, and `XAI_API_KEY`.
 2. Load `user_ai_insights` where `feature_type = portfolio_insights`.
 3. If `portfolioHash` still matches `computePortfolioHash` of the transactions, return the stored bullets and skip the model.
-4. Otherwise apply the global 60-second cooldown on `profiles.last_ai_call_at`. Admins skip it. During the wait, a stored package is returned when one exists.
-5. Build a compact text summary of the book and call `generateObject` (schema `aiInsightsSchema`, at most six bullets). The model id is in that action (currently `grok-4.3`).
-6. Upsert `{ insights, portfolioHash }` and bump `last_ai_call_at`.
+4. Otherwise check the AI allowance. A non-admin at the cap is refused before the cooldown and before the model.
+5. Apply the global 60-second cooldown on `profiles.last_ai_call_at`. Admins skip it. During the wait, a stored package is returned when one exists.
+6. Build a compact text summary of the book and call `generateObject` (schema `aiInsightsSchema`, at most six bullets). The model id is in that action (currently `grok-4.3`). That call writes one `portfolio_insights` usage row. When chat started the call, that row is a child of the chat. The chat child trace does not copy those tokens.
+7. Upsert `{ insights, portfolioHash }` and bump `last_ai_call_at`.
 
 Dry-run does not call the action's write path. The agent reads the stored row and says when nothing is stored yet. `packageUpdated` is true only when a new row was written. `statusNote` carries the calm line (unchanged book, rate limit, dry-run).
 
 ## CSV import
 
-`parseCsvWithAI` in `app/actions/ai/csv-import/parseCsvWithAI.ts` is the other model call. It is a Server Action on the import screen, not an orchestrator specialist, and it does not write an `agent_runs` child.
+`parseCsvWithAI` in `app/actions/ai/csv-import/parseCsvWithAI.ts` is the other model call. It is a Server Action on the import screen, not an orchestrator specialist. It writes its own `csv_import` usage row for the session user. The allowance is checked before the 60-second cooldown.
 
 **What it is for.** Turn a broker or exchange CSV the user already capped at 200 data rows into rows that match `csvAiParseSchema`.
 
@@ -123,7 +124,7 @@ The user reviews the parsed rows. A cash row can be USD, EUR, USDT, or USDC. The
 
 ## Observability and eval
 
-`lib/agentObservability/` records runs, redacts tool payloads, prices tokens in `cost.ts`, and scores eval cases. Admin reads go through `app/actions/agentObservability.ts`. The parent orchestrator row lists invoked specialists and stores `meta.user_text`, `meta.assistant_text`, `meta.route`, and `meta.policy_signals`. The admin detail shows those as Asked, Reply, Route, and any true signal. The analyst child stores its reply and signals. Child rows point at `parent_run_id`.
+`lib/agentObservability/` records runs, redacts tool payloads, prices tokens in `cost.ts`, and scores eval cases. Admin reads go through `app/actions/agentRuns.ts`, `app/actions/agentOverview.ts`, `app/actions/agentEval.ts`, and `app/actions/aiUserStats.ts`. The admin check is `requireAdmin` in `lib/requireAdmin.ts`. The parent orchestrator row lists invoked specialists and stores `meta.user_text`, `meta.assistant_text`, `meta.route`, and `meta.policy_signals`. The admin detail shows those as Asked, Reply, Route, and any true signal. The analyst child stores its reply and signals. Child rows point at `parent_run_id`.
 
 Overview counts every `agent_runs` row in the last 30 days, parents and children together. When that window is empty it uses the latest 500 rows and says the figures are older. The Runs list is parent rows only and has no date cutoff.
 

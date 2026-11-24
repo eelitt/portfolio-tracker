@@ -82,13 +82,13 @@ export default function UserManagementModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col gap-3">
+      <DialogContent className="sm:max-w-4xl max-h-[85vh] flex flex-col gap-3">
         <DialogHeader>
           <div className="flex items-start justify-between gap-3 pr-8">
             <div className="space-y-1.5">
               <DialogTitle>User management</DialogTitle>
               <DialogDescription>
-                Grant admin privileges or app access. List reloads after each change.
+                Grant admin privileges or app access. Estimated AI spend is USD. List reloads after each change.
               </DialogDescription>
             </div>
             <Button

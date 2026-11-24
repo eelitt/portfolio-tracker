@@ -13,16 +13,67 @@
  * Tool objects stay minimal — extra tool fields previously correlated with origin 520s.
  */
 
+import type { TokenUsage } from '@/lib/agentObservability'
+
+export type XaiSearchSuccess = { text: string; usage: TokenUsage }
+
+/** Thrown after every attempt fails. `usage` sums any attempt that returned a body. */
+export class XaiSearchError extends Error {
+  usage: TokenUsage
+  constructor(message: string, usage: TokenUsage) {
+    super(message)
+    this.name = 'XaiSearchError'
+    this.usage = usage
+  }
+}
+
+function emptyUsage(): TokenUsage {
+  return { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
+}
+
+function addUsage(left: TokenUsage, right: TokenUsage): TokenUsage {
+  return {
+    promptTokens: (left.promptTokens ?? 0) + (right.promptTokens ?? 0),
+    completionTokens: (left.completionTokens ?? 0) + (right.completionTokens ?? 0),
+    totalTokens: (left.totalTokens ?? 0) + (right.totalTokens ?? 0),
+  }
+}
+
+function usageFromXaiBody(data: unknown): TokenUsage {
+  if (!data || typeof data !== 'object') return emptyUsage()
+  const root = data as Record<string, unknown>
+  const raw = root.usage
+  if (!raw || typeof raw !== 'object') return emptyUsage()
+  const usage = raw as Record<string, unknown>
+  const prompt = numberField(usage, 'prompt_tokens', 'input_tokens')
+  const completion = numberField(usage, 'completion_tokens', 'output_tokens')
+  const total = numberField(usage, 'total_tokens')
+  return {
+    promptTokens: prompt,
+    completionTokens: completion,
+    totalTokens: total || prompt + completion,
+  }
+}
+
+function numberField(source: Record<string, unknown>, ...keys: string[]): number {
+  for (const key of keys) {
+    const value = source[key]
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+  }
+  return 0
+}
+
 /**
- * Run live search and return the model’s final text (expected JSON news map).
- * Throws if every attempt fails (caller maps to user-facing error).
+ * Run live search and return the model’s final text (expected JSON news map)
+ * plus token usage from every attempt that returned a JSON body.
+ * Throws XaiSearchError if every attempt fails.
  */
 export async function callXaiResponsesWithSearch(params: {
   system: string
   prompt: string
   fromDate: string
   toDate: string
-}): Promise<string> {
+}): Promise<XaiSearchSuccess> {
   const apiKey = process.env.XAI_API_KEY
   if (!apiKey) {
     throw new Error('XAI_API_KEY missing')
@@ -34,7 +85,7 @@ export async function callXaiResponsesWithSearch(params: {
   // /responses + tools has been flaky with a separate system role; merge into one user message
   const combinedUser = `${params.system}\n\n${params.prompt}`
 
-  const attempts: Array<() => Promise<string>> = [
+  const attempts: Array<() => Promise<XaiSearchSuccess>> = [
     // Primary: Responses API (docs default for agentic tools)
     () =>
       postXaiJson(
@@ -79,18 +130,21 @@ export async function callXaiResponsesWithSearch(params: {
   ]
 
   let lastError: unknown
+  let spent = emptyUsage()
   for (const attempt of attempts) {
     try {
-      return await attempt()
+      const result = await attempt()
+      return { text: result.text, usage: addUsage(spent, result.usage) }
     } catch (e) {
       lastError = e
+      if (e instanceof XaiSearchError) spent = addUsage(spent, e.usage)
       console.error('xAI live-search attempt failed', e)
     }
   }
 
-  throw lastError instanceof Error
-    ? lastError
-    : new Error('Live news search failed')
+  const message =
+    lastError instanceof Error ? lastError.message : 'Live news search failed'
+  throw new XaiSearchError(message, spent)
 }
 
 function sleep(ms: number): Promise<void> {
@@ -105,7 +159,7 @@ async function postXaiJson(
   url: string,
   body: Record<string, unknown>,
   extractText: (data: unknown) => string
-): Promise<string> {
+): Promise<XaiSearchSuccess> {
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -120,16 +174,17 @@ async function postXaiJson(
     const errBody = await res.text().catch(() => '')
     const snippet = errBody.replace(/\s+/g, ' ').slice(0, 280)
     console.error('xAI request error', url, res.status, snippet)
-    throw new Error(`xAI request failed (${res.status})`)
+    throw new XaiSearchError(`xAI request failed (${res.status})`, emptyUsage())
   }
 
   const data = await res.json()
+  const usage = usageFromXaiBody(data)
   const text = extractText(data)
   if (!text) {
     console.error('xAI empty text payload', url, JSON.stringify(data).slice(0, 1500))
-    throw new Error('Empty response from xAI')
+    throw new XaiSearchError('Empty response from xAI', usage)
   }
-  return text
+  return { text, usage }
 }
 
 /**

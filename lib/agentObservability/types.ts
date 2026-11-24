@@ -45,6 +45,10 @@ export type AgentRunRow = {
   created_at: string
   finished_at: string | null
   user_id: string
+  /**
+   * Auth email for the admin Runs view. Not a column. Null when Auth has no email.
+   */
+  user_email?: string | null
   feature: string
   schema_version: number
   status: AgentRunStatus

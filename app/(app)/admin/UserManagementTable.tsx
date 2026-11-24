@@ -4,8 +4,10 @@ import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import {
   updateUserAccessFlags,
+  updateUserAiAllowance,
   type AdminUserRow,
 } from '@/app/actions/admin'
+import { formatEstimatedUsd } from '@/lib/aiUsage/decide'
 
 interface UserManagementTableProps {
   users: AdminUserRow[]
@@ -21,6 +23,7 @@ export default function UserManagementTable({
   disabled = false,
 }: UserManagementTableProps) {
   const [pendingKey, setPendingKey] = useState<string | null>(null)
+  const [allowanceDraft, setAllowanceDraft] = useState<Record<string, string>>({})
   const [, startTransition] = useTransition()
 
   const applyToggle = (
@@ -55,6 +58,44 @@ export default function UserManagementTable({
     })
   }
 
+  const applyAllowance = (user: AdminUserRow, resetPeriod: boolean) => {
+    const key = `${user.id}:allowance`
+    const raw = allowanceDraft[user.id]
+    const typed =
+      raw === undefined || raw.trim() === '' ? undefined : Number(raw)
+    const allowanceUsd =
+      typed !== undefined && typed !== user.allowanceUsd ? typed : undefined
+    if (!resetPeriod && allowanceUsd === undefined) {
+      toast.error('No changes provided')
+      return
+    }
+    setPendingKey(key)
+    startTransition(async () => {
+      const result = await updateUserAiAllowance({
+        userId: user.id,
+        allowanceUsd,
+        resetPeriod,
+      })
+      if (result.error) {
+        toast.error(result.error)
+        setPendingKey(null)
+        return
+      }
+      toast.success(resetPeriod ? 'Allowance window reset' : 'Allowance updated')
+      setAllowanceDraft((prev) => {
+        const next = { ...prev }
+        delete next[user.id]
+        return next
+      })
+      try {
+        await onReload()
+      } catch {
+        toast.error('Updated, but failed to refresh the list')
+      }
+      setPendingKey(null)
+    })
+  }
+
   if (users.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-8 text-center">
@@ -73,6 +114,8 @@ export default function UserManagementTable({
             <th className="px-4 py-3 font-medium">Email</th>
             <th className="px-4 py-3 font-medium w-28">Admin</th>
             <th className="px-4 py-3 font-medium w-36">Access to app</th>
+            <th className="px-4 py-3 font-medium">This period</th>
+            <th className="px-4 py-3 font-medium">Allowance (USD)</th>
             <th className="px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">
               User ID
             </th>
@@ -128,6 +171,51 @@ export default function UserManagementTable({
                       applyToggle(user.id, 'accessToApp', e.target.checked)
                     }
                   />
+                </td>
+                <td className="px-4 py-3 tabular-nums">
+                  {user.windowSpentUsd == null
+                    ? '—'
+                    : formatEstimatedUsd(user.windowSpentUsd)}
+                </td>
+                <td className="px-4 py-3">
+                  {user.admin ? (
+                    <span className="text-xs text-muted-foreground">No cap</span>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        inputMode="decimal"
+                        className="h-8 w-24 rounded-md border border-border bg-background px-2 text-sm"
+                        aria-label={`Allowance for ${user.email}`}
+                        value={allowanceDraft[user.id] ?? String(user.allowanceUsd)}
+                        disabled={tableLocked || rowBusy}
+                        onChange={(e) =>
+                          setAllowanceDraft((prev) => ({
+                            ...prev,
+                            [user.id]: e.target.value,
+                          }))
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="text-xs underline disabled:opacity-50"
+                        disabled={tableLocked || rowBusy}
+                        onClick={() => applyAllowance(user, false)}
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs underline disabled:opacity-50"
+                        disabled={tableLocked || rowBusy}
+                        onClick={() => applyAllowance(user, true)}
+                      >
+                        Reset
+                      </button>
+                    </div>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-xs text-muted-foreground font-mono hidden sm:table-cell">
                   <span className="truncate inline-block max-w-[10rem]" title={user.id}>

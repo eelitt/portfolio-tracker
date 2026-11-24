@@ -44,23 +44,35 @@ export async function startAgentRun(
     }
 
     const service = createServiceClient()
+    let parentRunId = input.parentRunId ?? null
+    if (parentRunId) {
+      const { data: parent, error: parentError } = await service
+        .from('agent_runs')
+        .select('user_id')
+        .eq('id', parentRunId)
+        .maybeSingle()
+      if (parentError || !parent || parent.user_id !== input.userId) {
+        console.error('startAgentRun dropped parent: not owned by this user')
+        parentRunId = null
+      }
+    }
+    const meta: AgentRunMeta = {
+      ...(input.meta ?? {}),
+      ...(input.agentRole ? { agent_role: input.agentRole } : {}),
+    }
+    if (parentRunId) meta.parent_run_id = parentRunId
+    else delete meta.parent_run_id
     const row: Record<string, unknown> = {
       user_id: input.userId,
       feature: input.feature,
       schema_version: AGENT_RUN_SCHEMA_VERSION,
       status: 'running' satisfies AgentRunStatus,
       model: input.model ?? null,
-      meta: {
-        ...(input.meta ?? {}),
-        ...(input.agentRole ? { agent_role: input.agentRole } : {}),
-        ...(input.parentRunId
-          ? { parent_run_id: input.parentRunId }
-          : {}),
-      },
+      meta,
       tools: [],
     }
-    if (input.parentRunId) {
-      row.parent_run_id = input.parentRunId
+    if (parentRunId) {
+      row.parent_run_id = parentRunId
     }
     if (input.agentRole) {
       row.agent_role = input.agentRole

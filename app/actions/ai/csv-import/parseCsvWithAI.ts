@@ -12,6 +12,8 @@ import { getCurrentUser, isCurrentUserAdmin } from '@/lib/user'
 import { tryConsumeAiCooldown } from '@/app/actions/ai/storage'
 import { normalizeCsvImport } from '@/lib/csvImport'
 import { csvAiParseSchema, type CsvParsedTransactions } from '@/lib/schemas'
+import { checkAiAllowance } from '@/lib/aiUsage/allowance'
+import { recordModelUsage } from '@/lib/aiUsage/recordModelCall'
 
 export async function parseCsvWithAI(
   csvContent: string
@@ -38,6 +40,11 @@ export async function parseCsvWithAI(
     return { error: 'The selected file appears to be empty or invalid.' }
   }
 
+  const allowance = await checkAiAllowance(user.id)
+  if (!allowance.allowed) {
+    return { error: allowance.message }
+  }
+
   // Rate limit (same 60s cooldown as other AI features; admins skip for testing)
   if (!(await isCurrentUserAdmin())) {
     const slot = await tryConsumeAiCooldown(user.id)
@@ -55,7 +62,7 @@ export async function parseCsvWithAI(
     const { generateObject } = await import('ai')
     const { xai } = await import('@ai-sdk/xai')
 
-    const { object } = await generateObject({
+    const { object, usage } = await generateObject({
       model: xai('grok-4.3'),
       schema: csvAiParseSchema,
       system: `You are a precise financial CSV parser. Return only data that matches the schema.
@@ -75,6 +82,18 @@ export async function parseCsvWithAI(
 CSV content:
 ${safeContent}`,
       maxTokens: 2000,
+    })
+
+    await recordModelUsage({
+      userId: user.id,
+      feature: 'csv_import',
+      model: 'grok-4.3',
+      usage: {
+        promptTokens: usage?.promptTokens,
+        completionTokens: usage?.completionTokens,
+        totalTokens: usage?.totalTokens,
+      },
+      subject: 'CSV import',
     })
 
     return { data: normalizeCsvImport(object) }

@@ -5,7 +5,7 @@
 'use client'
 
 import { format } from 'date-fns'
-import type { AgentOverviewStats } from '@/app/actions/agentObservability'
+import type { AgentOverviewStats } from '@/lib/agentObservability/overviewRows'
 
 function pct(n: number) {
   return `${(n * 100).toFixed(1)}%`

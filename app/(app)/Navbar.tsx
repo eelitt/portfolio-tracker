@@ -14,6 +14,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { LogOut, Settings, Sun, Moon, Target, Sparkles, DollarSign, Euro, Download, Upload, Eye, EyeOff, Calculator, Orbit} from 'lucide-react'
 import { usePrivacyMode } from './privacy/PrivacyModeProvider'
+import AiUsageMenu from './AiUsageMenu'
 import ImportTransactionsModal from './dashboard/transactions/ImportTransactionsModal'
 import SettingsModal from './SettingsModal'
 import TaxEstimatorModal from './tax/TaxEstimatorModal'
@@ -99,6 +100,7 @@ export default function Navbar({
   const [currentCurrency, setCurrentCurrency] = useState<PreferredCurrency>(
     preferredCurrency || 'USD'
   )
+  const [accountOpen, setAccountOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [taxEstimatorOpen, setTaxEstimatorOpen] = useState(false)
 
@@ -241,7 +243,7 @@ export default function Navbar({
           </Button>
 
           {/* User Dropdown */}
-          <DropdownMenu>
+          <DropdownMenu onOpenChange={setAccountOpen}>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="group flex h-9 items-center gap-2 px-2 hover:bg-accent data-[state=open]:border-gold">
                 <Avatar className="h-8 w-8 transition-transform duration-200 ease-out after:border-gold after:mix-blend-normal group-hover:scale-110 group-data-[state=open]:scale-110 motion-reduce:transform-none dark:after:mix-blend-normal">
@@ -254,7 +256,7 @@ export default function Navbar({
                 </span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="center" className="w-52 shadow-lg rounded-md border">
+            <DropdownMenuContent align="center" className="w-72 shadow-lg rounded-md border">
               <div className="px-3 py-2 text-sm text-muted-foreground truncate">
                 {user?.email}
               </div>
@@ -299,6 +301,8 @@ export default function Navbar({
                 {hideMoney && <span className="ml-auto text-xs">✓</span>}
               </DropdownMenuItem>
 
+              <DropdownMenuSeparator />
+              <AiUsageMenu hideMoney={hideMoney} open={accountOpen} />
               <DropdownMenuSeparator />
 
               <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">

@@ -34,6 +34,7 @@ import {
 } from '@/lib/aiTools/buildUserContext'
 import { resolveDryRun } from '@/lib/aiTools'
 import { persistAnalystChatTurn } from '@/app/actions/ai/portfolio-analyst/chatHistoryActions'
+import { checkAiAllowance } from '@/lib/aiUsage/allowance'
 
 /** News + analyst can exceed 60s on cold paths. */
 export const maxDuration = 180
@@ -110,6 +111,11 @@ export async function POST(req: Request) {
       bodyDryRun: bodyObj.dryRun === true,
       lastUserText: sanitized.lastUserText,
     })
+
+    const allowance = await checkAiAllowance(user.id)
+    if (!allowance.allowed) {
+      return new Response(allowance.message, { status: 402 })
+    }
 
     // Dry-run still paced (outer LLM cost); same soft limit as normal chat
     const rate = await checkAndConsumeAnalystRateLimit(user.id)

@@ -25,6 +25,9 @@ import {
 import { computePortfolioHash } from '@/lib/calculatePortfolio'
 import { aiInsightsSchema } from '@/lib/schemas'
 import { formatCurrency } from '@/lib/currency'
+import { checkAiAllowance } from '@/lib/aiUsage/allowance'
+import { recordModelUsage } from '@/lib/aiUsage/recordModelCall'
+import type { TokenUsage } from '@/lib/agentObservability'
 
 /** user_ai_insights.feature_type for this feature (one row per user). */
 const FEATURE_TYPE = 'portfolio_insights'
@@ -37,6 +40,7 @@ export type PortfolioInsightsResult =
       message?: string
       /** True only when a new row was written (not hash/rate-limit reuse). */
       packageUpdated?: boolean
+      usage?: TokenUsage
       error?: undefined
     }
   | { error: string; insights?: undefined; packageUpdated?: undefined }
@@ -59,8 +63,13 @@ function normalizeInsights(insights: unknown): string[] {
 /**
  * Generate (or return cached) portfolio analysis for the current user.
  * Hash short-circuit when transactions unchanged; 60s global AI cooldown otherwise.
+ * A model call writes one portfolio_insights row. The chat child trace does not
+ * copy that usage, so the dollar is stored once.
  */
-export async function generatePortfolioInsights(): Promise<PortfolioInsightsResult> {
+export async function generatePortfolioInsights(options?: {
+  /** Orchestrator run when chat started this call. Omitted from the insights page. */
+  logParentRunId?: string | null
+}): Promise<PortfolioInsightsResult> {
   const user = await getCurrentUser()
   if (!user) {
     return { error: 'Not authenticated' }
@@ -89,6 +98,11 @@ export async function generatePortfolioInsights(): Promise<PortfolioInsightsResu
       }
     }
 
+    const allowance = await checkAiAllowance(user.id)
+    if (!allowance.allowed) {
+      return { error: allowance.message }
+    }
+
     // Shared with CSV import and holding news (admins skip). The update is the gate.
     if (!(await isCurrentUserAdmin())) {
       const slot = await tryConsumeAiCooldown(user.id)
@@ -113,7 +127,7 @@ export async function generatePortfolioInsights(): Promise<PortfolioInsightsResu
 
     const summary = await buildPortfolioSummary(data)
 
-    const { object } = await generateObject({
+    const { object, usage } = await generateObject({
       model: xai('grok-4.3'),
       schema: aiInsightsSchema,
       temperature: 0.2,
@@ -139,6 +153,20 @@ Focus on risks, concentration, and potential improvements.`,
       maxTokens: 250,
     })
 
+    const tokenUsage: TokenUsage = {
+      promptTokens: usage?.promptTokens,
+      completionTokens: usage?.completionTokens,
+      totalTokens: usage?.totalTokens,
+    }
+    await recordModelUsage({
+      userId: user.id,
+      feature: FEATURE_TYPE,
+      model: 'grok-4.3',
+      usage: tokenUsage,
+      parentRunId: options?.logParentRunId,
+      subject: 'Portfolio insights',
+    })
+
     await saveAIInsight(user.id, FEATURE_TYPE, {
       insights: object.insights,
       portfolioHash: currentHash,
@@ -148,6 +176,7 @@ Focus on risks, concentration, and potential improvements.`,
       insights: object.insights,
       packageUpdated: true,
       cachedAt: new Date().toISOString(),
+      usage: tokenUsage,
     }
   } catch (e) {
     console.error('Portfolio insights error', e)

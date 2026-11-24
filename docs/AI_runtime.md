@@ -130,6 +130,30 @@ The nested analyst `generateText` is the part that costs a second model call on 
 
 The raw responses client is the exception. It exists because the SDK tool call for live search was failing on that route, not because a second HTTP style is better in general. New model calls should use `streamText`, `generateText`, or `generateObject` unless that specific provider path breaks again.
 
+## AI usage rows and the allowance
+
+`estimateCostUsd` is the only conversion from tokens to dollars. The number is stored on the row at finish time. A later rate change does not rewrite old rows.
+
+These calls write usage for the session user:
+
+| Call | Row |
+|---|---|
+| Orchestrator chat | Parent `portfolio_orchestrator`, with `result.usage` |
+| Portfolio analyst | Child row, with `result.usage` |
+| Portfolio insights | One `portfolio_insights` row from `generatePortfolioInsights` when the model runs. The analysis child trace does not copy that usage. A chat turn stores that row as a child of the chat. The insights page and the summary popover leave it as its own row |
+| News impact | `holding_news_impact` when the impact model runs. A chat turn stores it as a child of the chat |
+| Live news search | `holding_news_search`, including usage from a failed attempt that returned a body. A chat turn stores it as a child of the chat |
+| CSV import | `csv_import` |
+| Admin eval | The admin's `agent_runs` row, with `meta.eval_case_id` |
+
+A hash match, a news cache hit, Finnhub company news, and the tax estimate do not call a model and do not need a usage row.
+
+The Runs table and the run detail show the caller's auth email. The email is read when the admin opens the log. It is not stored on `agent_runs`. A user with no email is shown as the user id. A row with no question stores a short subject: portfolio insights, CSV import, or the news symbols. The table is the newest 50 parent rows that match the caller, feature, status, and local date filters. A filter left on All, or a date left empty, does not limit that side.
+
+The Users tab is one row per auth user. The period, all-time, and eval dollars are the allowance sum. The other columns count existing `agent_runs` rows. Clicking a row opens Runs for that caller and clears the other Runs filters.
+
+`checkAiAllowance` runs once before the model on the chat request, on insights after the hash miss, on CSV import, before a crypto live search, and before news impact when that search did not already check. Finnhub news does not check. Children of a chat turn are not refused on their own. A stored sum still under the allowance starts the entry. The gate does not estimate the next call. A non-admin whose stored window sum is at or over `ai_allowance_usd` is refused with the window end. A failed usage read refuses the call. Admins are not capped. Eval rows stay out of that sum. The account menu shows an admin's eval dollars on a separate line. Cooldowns still apply, and their copy stays the cooldown copy.
+
 ## Gaps
 
 These are observations. None of them are scheduled work.

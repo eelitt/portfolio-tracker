@@ -166,6 +166,8 @@ Chat history is **one rolling thread per user** in `user_ai_insights` (`feature_
 
 Admin: `agent_runs` (tokens, cost, confirm flags, parent/child). The orchestrator parent also stores `meta.user_text`, `meta.assistant_text`, `meta.route`, and `meta.policy_signals`. Overview is the last 30 days, or the latest rows when that window is empty. Analyst eval fixtures inject a portfolio. Orchestrator eval fixtures only check routing. Neither writes real txs (`evalMode` / dry-run). The eval route streams per-case progress. What a pass means is [AI_eval.md](./AI_eval.md).
 
+`estimateCostUsd` in `lib/agentObservability/cost.ts` is the only token-to-dollar conversion. The allowance gate is `checkAiAllowance` in `lib/aiUsage/allowance.ts`. It runs on the server before a user-facing model entry (chat, insights, CSV import, and a news fetch that would call the model). It sums stored `estimated_cost_usd` for that user inside the current 30-day window and skips eval rows. A non-admin at or over `profiles.ai_allowance_usd` does not get the model call. Admins are not capped. The account menu reads the same snapshot and does not query `agent_runs` from the browser. Formula: [calculation_logic.md](./calculation_logic.md).
+
 ---
 
 ## Plan (targets), not a third book
@@ -202,7 +204,7 @@ Optional benchmarks (SPY, URTH, BTC) overlay that chart as **price** series from
 
 Unit tests under `lib/tests/` are the architecture’s proof for **money and gates**, not for CSS.
 
-They are supposed to fail if: weighted-average / remaining basis / oversell cap changes; a future row joins the spot average or a future fill writes Available Cash; a snapshot stores notional instead of equity; a transaction row's P&L diverges from that holding; missing quote invents −100% P&L; mixed-currency P&L is scaled; cash nets raw faces; HMO applies to a loss; confirm accepts a jailbreak sentence; type weights do not sum to 100; excess/TE uses fill-forward or a single overlapping point; contribution % is shown when book Δ is 0; a cash deposit is treated as TWR; TWR invents a return when base MV is 0; an unpriced spot snapshot is drawn as a loss on the cost-basis chart, or cash or a future joins that sum.
+They are supposed to fail if: weighted-average / remaining basis / oversell cap changes; a future row joins the spot average or a future fill writes Available Cash; a snapshot stores notional instead of equity; a transaction row's P&L diverges from that holding; missing quote invents −100% P&L; mixed-currency P&L is scaled; cash nets raw faces; HMO applies to a loss; confirm accepts a jailbreak sentence; type weights do not sum to 100; excess/TE uses fill-forward or a single overlapping point; contribution % is shown when book Δ is 0; a cash deposit is treated as TWR; TWR invents a return when base MV is 0; an unpriced spot snapshot is drawn as a loss on the cost-basis chart, or cash or a future joins that sum; another user's spend or an eval row fills the AI allowance; a non-admin under the allowance is refused; an admin is capped; a failed usage read is treated as allowed.
 
 They are **not** supposed to prove RLS. User A vs user B is a policy + integration concern.
 
@@ -244,9 +246,11 @@ They are **not** supposed to prove RLS. User A vs user B is a policy + integrati
 | Analyst, news, analysis, tax, CSV agents | `app/actions/ai/` (`portfolio-analyst`, `holding-news`, `portfolio-insights`, `tax`, `csv-import`) |
 | AI insights UI | `app/(app)/ai-insights/` |
 | Child-agent runs | `lib/agents/` |
-| Run logs | `lib/agentObservability/` |
+| Run logs | `lib/agentObservability/`. Admin reads: `app/actions/agentRuns.ts`, `app/actions/agentOverview.ts`. Overview counts are `summarizeOverview`. |
+| AI allowance | `lib/aiUsage/`, `app/actions/aiUsage.ts` |
 | Admin UI (no page route) | `app/(app)/admin/` |
-| Agent eval | `lib/agentEval/`, `app/api/admin/agent-eval/route.ts`, `AI_eval.md` |
+| Agent eval | `lib/agentEval/`, `app/api/admin/agent-eval/route.ts`, `app/actions/agentEval.ts`, `AI_eval.md` |
+| Per-user AI usage | `app/actions/aiUserStats.ts` |
 | Server actions | `app/actions/` |
 | Chat route | `app/api/portfolio-analyst/route.ts` |
 | Plan UI | `app/(app)/plan/` |

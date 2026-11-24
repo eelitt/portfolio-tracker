@@ -5,6 +5,7 @@
 'use client'
 
 import type { AgentRunRow } from '@/lib/agentObservability'
+import { callerLabel } from '@/lib/agentObservability/caller'
 import { readOrchestratorRoute } from '@/lib/agentObservability/routeMeta'
 import { format } from 'date-fns'
 
@@ -49,11 +50,13 @@ export default function AgentRunsTable({
   selectedId,
   onSelect,
   loading,
+  emptyLabel,
 }: {
   runs: AgentRunRow[]
   selectedId: string | null
   onSelect: (id: string) => void
   loading: boolean
+  emptyLabel?: string
 }) {
   if (loading && runs.length === 0) {
     return (
@@ -66,7 +69,7 @@ export default function AgentRunsTable({
   if (runs.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-6 text-center">
-        No agent runs yet.
+        {emptyLabel ?? 'No agent runs yet.'}
       </p>
     )
   }
@@ -77,6 +80,7 @@ export default function AgentRunsTable({
         <thead className="sticky top-0 bg-background border-b border-border">
           <tr className="text-muted-foreground">
             <th className="px-2 py-1.5 font-medium">When</th>
+            <th className="px-2 py-1.5 font-medium">Caller</th>
             <th className="px-2 py-1.5 font-medium">Feature</th>
             <th className="px-2 py-1.5 font-medium">Status</th>
             <th className="px-2 py-1.5 font-medium">Tools</th>
@@ -95,6 +99,9 @@ export default function AgentRunsTable({
             >
               <td className="px-2 py-1.5 whitespace-nowrap tabular-nums">
                 {format(new Date(r.created_at), 'MMM d HH:mm')}
+              </td>
+              <td className="px-2 py-1.5 truncate max-w-[10rem]" title={callerLabel(r.user_email, r.user_id)}>
+                {callerLabel(r.user_email, r.user_id)}
               </td>
               <td className="px-2 py-1.5 font-mono truncate max-w-[8rem]">
                 {r.feature}
@@ -134,11 +141,15 @@ export function AgentRunDetail({
   const route = readOrchestratorRoute(run.meta?.route)
   const asked = metaText(run.meta, 'user_text')
   const reply = metaText(run.meta, 'assistant_text')
+  const subject = metaText(run.meta, 'subject')
   const signals = trueSignals(run.meta)
+  const caller = callerLabel(run.user_email, run.user_id)
 
   return (
     <div className="space-y-2 text-xs overflow-y-auto min-h-0 flex-1 p-1">
       <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+        <span className="text-muted-foreground">Caller</span>
+        <span className="break-all">{caller}</span>
         <span className="text-muted-foreground">Model</span>
         <span className="font-mono">{run.model ?? '—'}</span>
         <span className="text-muted-foreground">Role</span>
@@ -168,6 +179,13 @@ export function AgentRunDetail({
           </>
         ) : null}
       </div>
+
+      {subject && !asked ? (
+        <div>
+          <h4 className="font-medium text-muted-foreground pt-1">Subject</h4>
+          <p className="break-words">{subject}</p>
+        </div>
+      ) : null}
 
       {asked ? (
         <div>
@@ -225,6 +243,7 @@ export function AgentRunDetail({
           <ul className="space-y-1 mt-1">
             {childrenRuns.map((c) => {
               const childReply = metaText(c.meta, 'assistant_text')
+              const childSubject = metaText(c.meta, 'subject')
               const childSignals = trueSignals(c.meta)
               return (
                 <li
@@ -243,6 +262,9 @@ export function AgentRunDetail({
                         : ''}
                     </span>
                   </div>
+                  {childSubject ? (
+                    <p className="break-words text-muted-foreground">{childSubject}</p>
+                  ) : null}
                   {childSignals.length > 0 ? (
                     <p className="text-amber-400 break-words">
                       Signals: {childSignals.join(', ')}

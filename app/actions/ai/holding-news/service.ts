@@ -16,7 +16,10 @@ import {
   getLatestAIInsight,
 } from '@/app/actions/ai/storage'
 import type { HoldingNewsImpactEntry } from '@/lib/schemas'
-import { callXaiResponsesWithSearch } from './xaiLiveSearch'
+import { callXaiResponsesWithSearch, XaiSearchError } from './xaiLiveSearch'
+import { checkAiAllowance } from '@/lib/aiUsage/allowance'
+import { recordModelUsage } from '@/lib/aiUsage/recordModelCall'
+import { newsLogSubject } from '@/lib/agentObservability/caller'
 import { analyzeNewsImpact } from './analyzeImpact'
 import { saveHoldingNewsPackage } from './persist'
 import { fetchFinnhubCompanyNewsBullets } from './finnhubCompanyNews'
@@ -74,6 +77,8 @@ export type RunHoldingNewsOptions = {
   universe?: NewsUniverse
   /** Skip 24h cooldown (admin or internal agent with bypass). */
   skipCooldown?: boolean
+  /** Orchestrator run when chat started this fetch. Omitted from the dashboard button. */
+  logParentRunId?: string | null
 }
 
 export type RunHoldingNewsOutcome = HoldingNewsResult & {
@@ -228,7 +233,8 @@ export async function runHoldingNews(
       stored,
       featureType,
       universe === 'watchlist',
-      admin
+      admin,
+      options.logParentRunId ?? null
     )
     if ('error' in live && live.error) {
       return { ...live, fromCache: false, updatedCache: false }
@@ -296,10 +302,28 @@ async function runLiveHoldingNewsFetch(
   previousStored: ReturnType<typeof parseHoldingNewsStored>,
   featureType: string,
   replacePackage: boolean,
-  skipAiCooldown: boolean
+  skipAiCooldown: boolean,
+  logParentRunId: string | null
 ): Promise<HoldingNewsResult> {
   if (holdings.length === 0) {
     return { error: 'No non-cash holdings to fetch news for.' }
+  }
+
+  let allowanceMessage: string | undefined
+  let modelGate: Awaited<ReturnType<typeof checkAiAllowance>> | null = null
+  const allowModel = async (): Promise<boolean> => {
+    if (!modelGate) modelGate = await checkAiAllowance(userId)
+    if (!modelGate.allowed) allowanceMessage = modelGate.message
+    return modelGate.allowed
+  }
+
+  const needsSearch =
+    Boolean(process.env.XAI_API_KEY) &&
+    holdings.some((h) => h.assetType === 'crypto')
+  if (needsSearch && !(await allowModel())) {
+    if (!holdings.some((h) => isEquityAssetType(h.assetType))) {
+      return { error: allowanceMessage ?? 'AI allowance used for this period.' }
+    }
   }
 
   if (!skipAiCooldown) {
@@ -321,7 +345,13 @@ async function runLiveHoldingNewsFetch(
       : null
   const pass1Window = computeNewsWindow(lookbackFrom)
 
-  const incoming1 = await fetchNewsForHoldings(holdings, pass1Window)
+  const incoming1 = await fetchNewsForHoldings(
+    userId,
+    holdings,
+    pass1Window,
+    needsSearch ? await allowModel() : false,
+    logParentRunId
+  )
   let merge = mergeHoldingNews(previousNews, incoming1, symbols)
 
   const extendedSymbols = symbolsEligibleForExtendedLookback(
@@ -340,7 +370,13 @@ async function runLiveHoldingNewsFetch(
     const pass2Window = computeNewsWindowDays(
       HOLDING_NEWS_EXTENDED_LOOKBACK_DAYS
     )
-    const incoming2 = await fetchNewsForHoldings(extendedHoldings, pass2Window)
+    const incoming2 = await fetchNewsForHoldings(
+      userId,
+      extendedHoldings,
+      pass2Window,
+      needsSearch ? await allowModel() : false,
+      logParentRunId
+    )
     merge = mergeHoldingNews(merge.news, incoming2, symbols)
     windowFrom = pass2Window.fromDate
     windowTo = pass2Window.toDate
@@ -369,19 +405,32 @@ async function runLiveHoldingNewsFetch(
       (merge.changedSymbols.includes(s) || !previousImpact[s])
   )
 
-  if (needImpact.length > 0 && process.env.XAI_API_KEY) {
+  if (needImpact.length > 0 && process.env.XAI_API_KEY && (await allowModel())) {
     const impactHoldings = holdings.filter((h) => needImpact.includes(h.symbol))
     const newsForImpact: Record<string, string[]> = {}
     for (const s of needImpact) {
       newsForImpact[s] = merge.news[s] ?? []
     }
     const freshImpact = await analyzeNewsImpact(newsForImpact, impactHoldings)
-    Object.assign(impact, freshImpact)
+    Object.assign(impact, freshImpact.impact)
+    await recordModelUsage({
+      userId,
+      feature: 'holding_news_impact',
+      model: 'grok-4.3',
+      usage: freshImpact.usage,
+      status: freshImpact.usage ? 'success' : 'error',
+      errorSummary: freshImpact.usage ? null : 'News impact returned no usage',
+      parentRunId: logParentRunId,
+      subject: newsLogSubject(needImpact),
+    })
   }
 
   const contentFetchedAt =
     merge.changedSymbols.length > 0 ? nowIso : previousContentFetchedAt
   let message = buildHoldingNewsMergeMessage(merge)
+  if (allowanceMessage) {
+    message = message ? `${message} ${allowanceMessage}` : allowanceMessage
+  }
   if (extendedSymbols.length > 0) {
     const extra =
       extendedSymbols.length === 1
@@ -437,8 +486,11 @@ async function runLiveHoldingNewsFetch(
 }
 
 async function fetchNewsForHoldings(
+  userId: string,
   holdings: NewsHolding[],
-  window: { fromDate: string; toDate: string; lookbackDays: number }
+  window: { fromDate: string; toDate: string; lookbackDays: number },
+  modelsAllowed: boolean,
+  logParentRunId: string | null
 ): Promise<Record<string, string[]>> {
   const equities = holdings.filter((h) => isEquityAssetType(h.assetType))
   const cryptos = holdings.filter((h) => h.assetType === 'crypto')
@@ -458,10 +510,15 @@ async function fetchNewsForHoldings(
   }
 
   if (cryptos.length > 0) {
-    if (!process.env.XAI_API_KEY) {
+    if (!process.env.XAI_API_KEY || !modelsAllowed) {
       for (const h of cryptos) out[h.symbol] = []
     } else {
-      const cryptoNews = await liveSearchCryptoNews(cryptos, window)
+      const cryptoNews = await liveSearchCryptoNews(
+        userId,
+        cryptos,
+        window,
+        logParentRunId
+      )
       Object.assign(out, cryptoNews)
     }
   }
@@ -476,26 +533,50 @@ async function fetchNewsForHoldings(
 }
 
 async function liveSearchCryptoNews(
+  userId: string,
   holdings: NewsHolding[],
-  window: { fromDate: string; toDate: string; lookbackDays: number }
+  window: { fromDate: string; toDate: string; lookbackDays: number },
+  logParentRunId: string | null
 ): Promise<Record<string, string[]>> {
   const symbols = holdings.map((h) => h.symbol)
   const holdingsSummary = holdings
     .map((h) => `- ${h.symbol} (${h.assetType}) — ${h.name}`)
     .join('\n')
 
-  const rawText = await callXaiResponsesWithSearch({
-    system: buildHoldingNewsSystemPrompt(),
-    prompt: buildHoldingNewsUserPrompt({
+  try {
+    const searched = await callXaiResponsesWithSearch({
+      system: buildHoldingNewsSystemPrompt(),
+      prompt: buildHoldingNewsUserPrompt({
+        fromDate: window.fromDate,
+        toDate: window.toDate,
+        lookbackDays: window.lookbackDays,
+        holdingsSummary,
+      }),
       fromDate: window.fromDate,
       toDate: window.toDate,
-      lookbackDays: window.lookbackDays,
-      holdingsSummary,
-    }),
-    fromDate: window.fromDate,
-    toDate: window.toDate,
-  })
-
-  const parsed = parseHoldingNewsJson(rawText)
-  return normalizeHoldingNews(parsed, symbols, holdings)
+    })
+    await recordModelUsage({
+      userId,
+      feature: 'holding_news_search',
+      model: 'grok-4.3',
+      usage: searched.usage,
+      parentRunId: logParentRunId,
+      subject: newsLogSubject(symbols),
+    })
+    const parsed = parseHoldingNewsJson(searched.text)
+    return normalizeHoldingNews(parsed, symbols, holdings)
+  } catch (e) {
+    const usage = e instanceof XaiSearchError ? e.usage : null
+    await recordModelUsage({
+      userId,
+      feature: 'holding_news_search',
+      model: 'grok-4.3',
+      usage,
+      status: 'error',
+      errorSummary: e instanceof Error ? e.message : 'Live news search failed',
+      parentRunId: logParentRunId,
+      subject: newsLogSubject(symbols),
+    })
+    throw e
+  }
 }
