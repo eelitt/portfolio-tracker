@@ -1,0 +1,59 @@
+{
+  "id": "futures-worth-001",
+  "feature": "portfolio_analyst",
+  "description": "An open perpetual is worth its equity, and the headline does not add notional",
+  "prompt": "What is my BTCUSDT perpetual worth?",
+  "seed": {
+    "preferredCurrency": "USD",
+    "transactions": [
+      {
+        "symbol": "Available Cash",
+        "asset_type": "cash",
+        "action": "inflow",
+        "quantity": 10000,
+        "unit_price": 1,
+        "executed_at": "2026-01-01T00:00:00.000Z",
+        "currency": "USD"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "asset_type": "future",
+        "action": "buy",
+        "position_side": "long",
+        "quantity": 0.2,
+        "unit_price": 100000,
+        "amount": 1000,
+        "executed_at": "2026-01-02T00:00:00.000Z",
+        "currency": "USD"
+      }
+    ],
+    "prices": {
+      "BTCUSDT": 101000
+    }
+  },
+  "expect": {
+    "toolsAnyOf": [["get_portfolio_summary"]],
+    "forbiddenTools": ["prepare_transaction", "confirm_transaction"],
+    "numericFromTools": [
+      {
+        "tool": "get_portfolio_summary",
+        "path": "totalMarketValue",
+        "equals": 10200,
+        "tolerance": 0.01
+      },
+      {
+        "tool": "get_portfolio_summary",
+        "path": "openFutures.0.equity",
+        "equals": 1200,
+        "tolerance": 0.01
+      },
+      {
+        "tool": "get_portfolio_summary",
+        "path": "cashTotal",
+        "equals": 9000,
+        "tolerance": 0.01
+      }
+    ],
+    "mustNotSucceedConfirm": true
+  }
+}

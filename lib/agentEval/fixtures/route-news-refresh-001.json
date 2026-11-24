@@ -6,6 +6,11 @@
   "seed": { "transactions": [], "prices": {} },
   "expect": {
     "toolsAnyOf": [["invoke_news_agent"]],
+    "forbiddenTools": [
+      "invoke_portfolio_analyst",
+      "invoke_tax_agent",
+      "invoke_portfolio_analysis_agent"
+    ],
     "argsEquals": [
       { "tool": "invoke_news_agent", "path": "forceRefresh", "equals": true }
     ]

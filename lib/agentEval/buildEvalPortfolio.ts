@@ -7,13 +7,27 @@
 
 import { calculateHoldings, enrichHoldings } from '@/lib/calculatePortfolio'
 import {
+  aggregatePreferredPortfolio,
   calculateCashHoldingsInPreferred,
+  perpQuoteInPreferred,
   toPreferredHolding,
 } from '@/lib/convertToPreferred'
+import { ledgerPerpRows, reducePerps, type PerpMark } from '@/lib/perps'
 import type { PortfolioData } from '@/lib/portfolioData'
 import type { Transaction } from '@/lib/types'
 import type { PreferredCurrency } from '@/lib/userTypes'
 import type { EvalCaseFixture } from '@/lib/agentObservability'
+
+function marksFromSeedPrices(
+  prices: EvalCaseFixture['seed']['prices']
+): Record<string, PerpMark> {
+  const marks: Record<string, PerpMark> = {}
+  for (const [symbol, raw] of Object.entries(prices || {})) {
+    const price = typeof raw === 'number' ? raw : raw.price
+    if (price > 0) marks[symbol.toUpperCase()] = { mark: price }
+  }
+  return marks
+}
 
 export function buildEvalPortfolioData(
   seed: EvalCaseFixture['seed']
@@ -32,6 +46,8 @@ export function buildEvalPortfolioData(
     executed_at: tx.executed_at,
     currency: tx.currency,
     notes: tx.notes,
+    position_side: tx.position_side,
+    amount: tx.amount,
   }))
 
   const allHoldings = calculateHoldings(transactions)
@@ -62,55 +78,41 @@ export function buildEvalPortfolioData(
   const preferredAssets = enrichedAssets.map((h) =>
     toPreferredHolding(h, preferredCurrency, usdToEurRate)
   )
+  const marks = marksFromSeedPrices(seed.prices)
   const preferredCash = calculateCashHoldingsInPreferred(
     transactions,
     preferredCurrency,
-    usdToEurRate
+    usdToEurRate,
+    marks
   )
 
   for (const cash of preferredCash) {
     priceDataForEnrich[cash.symbol] = { price: 1, change24h: 0 }
   }
 
-  const enrichedHoldings = [...preferredAssets, ...preferredCash]
-  const unpricedSymbols = preferredAssets
-    .filter((h) => !h.priceAvailable)
-    .map((h) => h.symbol)
-  const pricedAssets = preferredAssets.filter((h) => h.priceAvailable)
-
-  const totalMarketValue =
-    pricedAssets.reduce((sum, h) => sum + h.marketValue, 0) +
-    preferredCash.reduce((sum, h) => sum + h.marketValue, 0)
-  const totalCost = enrichedHoldings.reduce((sum, h) => sum + h.totalCost, 0)
-  const totalUnrealizedPnl = pricedAssets.reduce(
-    (sum, h) => sum + h.unrealizedPnl,
-    0
+  const perpBook = reducePerps({ rows: ledgerPerpRows(transactions), marks })
+  const openPerps = perpBook.positions.map((position) =>
+    perpQuoteInPreferred(
+      position,
+      marks[position.symbol],
+      preferredCurrency,
+      usdToEurRate
+    )
   )
-  const total24hChange = pricedAssets.reduce(
-    (sum, h) => sum + h.position24hChange,
-    0
+  const totals = aggregatePreferredPortfolio(
+    preferredAssets,
+    preferredCash,
+    openPerps
   )
-  const previousTotalValue = totalMarketValue - total24hChange
-  const total24hChangePercent =
-    previousTotalValue !== 0 ? (total24hChange / previousTotalValue) * 100 : 0
 
   return {
     transactions,
-    enrichedHoldings,
     priceData: priceDataForEnrich,
-    holdingsCount: enrichedHoldings.length,
-    assetCount: preferredAssets.length,
-    pricedAssetCount: pricedAssets.length,
-    unpricedSymbols,
-    totalMarketValue,
-    totalCost,
-    totalUnrealizedPnl,
-    total24hChange,
-    total24hChangePercent,
+    ...totals,
     preferredCurrency,
     usdToPreferredRate,
     usdToEurRate,
-    openPerps: [],
+    openPerps,
     error: null,
   }
 }

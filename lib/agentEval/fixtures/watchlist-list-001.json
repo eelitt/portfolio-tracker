@@ -1,0 +1,21 @@
+{
+  "id": "watchlist-list-001",
+  "feature": "portfolio_analyst",
+  "description": "A watchlist question lists symbols and does not add or remove",
+  "prompt": "What's on my watchlist?",
+  "seed": {
+    "preferredCurrency": "USD",
+    "transactions": [],
+    "prices": {}
+  },
+  "expect": {
+    "toolsAnyOf": [["list_watchlist"]],
+    "forbiddenTools": [
+      "add_watchlist_item",
+      "remove_watchlist_item",
+      "prepare_transaction",
+      "confirm_transaction"
+    ],
+    "mustNotCallConfirm": true
+  }
+}

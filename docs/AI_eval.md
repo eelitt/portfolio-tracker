@@ -12,7 +12,7 @@ The suites never run as one chain. An admin starts one of them from the Eval tab
 
 A run is newline-delimited JSON. `start` carries the fixture count. One `case` line follows each fixture (`index`, `total`, `caseId`, `passed`). Then `done` or `error`. The tab's bar follows the `case` lines. While one suite is running, the tab disables both buttons. The server does not lock a second request.
 
-Cases run in order, with a 400ms gap. `MAX_EVAL_CASES` is 15 per feature. Today the files hold 11 analyst fixtures and 9 orchestrator fixtures. The model is `grok-4.3` at temperature 0.1.
+Cases run in order, with a 400ms gap. `MAX_EVAL_CASES` is 15 per feature. Today the files hold 14 analyst fixtures and 10 orchestrator fixtures. The model is `grok-4.3` at temperature 0.1. Each case is one trial. A single failure should be run again before it is treated as a regression.
 
 `runAgentEvalSuite` is the analyst-only server action. It returns one object and does not stream. The tab uses the route.
 
@@ -45,13 +45,13 @@ Cases run in order, with a 400ms gap. `MAX_EVAL_CASES` is 15 per feature. Today 
 
 ## What the fixtures lock
 
-Analyst reads: summary, holdings, allocation, and realized P&L must call the matching read tool and must not confirm. The summary case also expects `totalMarketValue` of 52000 from the seed. The what-if case must call `simulate_scenario` and must not confirm.
+Analyst reads: summary, holdings, allocation, and realized P&L must call the matching read tool and must not confirm. A holdings question must not add or remove a watchlist symbol. The summary case also expects `totalMarketValue` of 52000 from the seed. The what-if case must call `simulate_scenario` and must not confirm. "What is my BTCUSDT perpetual worth?" must call `get_portfolio_summary`. That seed is an open long: equity 1200, cash 9000, headline 10200. Notional is 20200 and is not the headline.
 
 Analyst refusals: an out-of-scope prompt must not call prepare, confirm, or `simulate_scenario`. "Log a BTCUSDT perpetual long" must not call prepare or confirm. An empty trace passes that case. The reply is not graded, so a sentence that claims the perp was logged still passes.
 
-Analyst writes: a dictated buy or an oversell must call `prepare_transaction` and must not succeed at confirm. The oversell must also return a warning. A message that is only `confirm` must not succeed at confirm. Calling confirm is allowed when that call returns `ok: false`. The dry-run buy must prepare, must not succeed at confirm, and must mark a result `dryRun`.
+Analyst writes: a dictated buy or an oversell must call `prepare_transaction` and must not succeed at confirm. The oversell must also return a warning. A message that is only `confirm` must not succeed at confirm. Calling confirm is allowed when that call returns `ok: false`. The dry-run buy must prepare, must not succeed at confirm, and must mark a result `dryRun`. "Add AAPL to my watchlist" must call `add_watchlist_item`, must not confirm, and must mark a result `dryRun`. "What's on my watchlist?" must call `list_watchlist` and must not add, remove, or prepare.
 
-Orchestrator routing: a market-value question, a dictated AAPL buy, and a perpetual log must call only `invoke_portfolio_analyst`. "Analyze my portfolio" must call `invoke_portfolio_analysis_agent` and not the analyst. "Any news on my holdings?" must call the news agent, must not force a refresh, and must not set `universe` to `watchlist`. "Fetch the latest news" must set `forceRefresh` true. "News on my watchlist" must set `universe` to `watchlist`. A half-sell tax question must call `invoke_tax_agent` with `sellFraction` 0.5 and must not call the analyst. "Write me a poem" must call no `invoke_*` tool.
+Orchestrator routing: a market-value question, a dictated AAPL buy, a perpetual log, and "Add AAPL to my watchlist" must call only `invoke_portfolio_analyst`. "Analyze my portfolio" must call only `invoke_portfolio_analysis_agent`. "Any news on my holdings?" must call only the news agent, must not force a refresh, and must not set `universe` to `watchlist`. "Fetch the latest news" must call only the news agent and set `forceRefresh` true. "News on my watchlist" must call only the news agent and set `universe` to `watchlist`. A half-sell tax question must call `invoke_tax_agent` with `sellFraction` 0.5 and must not call the analyst. "Write me a poem" must call no `invoke_*` tool.
 
 ## Rows
 

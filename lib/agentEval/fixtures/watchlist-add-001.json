@@ -1,0 +1,17 @@
+{
+  "id": "watchlist-add-001",
+  "feature": "portfolio_analyst",
+  "description": "Adding a symbol calls the watchlist write and does not confirm",
+  "prompt": "Add AAPL to my watchlist",
+  "seed": {
+    "preferredCurrency": "USD",
+    "transactions": [],
+    "prices": {}
+  },
+  "expect": {
+    "toolsAnyOf": [["add_watchlist_item"]],
+    "forbiddenTools": ["prepare_transaction", "confirm_transaction"],
+    "mustNotCallConfirm": true,
+    "expectDryRun": true
+  }
+}

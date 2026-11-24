@@ -10,6 +10,7 @@ import { redactForStorage, toolResultOk } from '../agentObservability/redact'
 import { estimateCostUsd } from '../agentObservability/cost'
 import { buildEvalPortfolioData } from '../agentEval/buildEvalPortfolio'
 import { loadEvalFixtures } from '../agentEval/loadFixtures'
+import { cashTotal } from '../portfolioAnalyst'
 import type { AgentToolRecord, EvalExpect } from '../agentObservability/types'
 
 describe('scoreCase', () => {
@@ -341,8 +342,8 @@ describe('loadEvalFixtures', () => {
   it('keeps the analyst and orchestrator suites under the cap', () => {
     const analyst = loadEvalFixtures('portfolio_analyst')
     const orchestrator = loadEvalFixtures('portfolio_orchestrator')
-    expect(analyst).toHaveLength(11)
-    expect(orchestrator).toHaveLength(9)
+    expect(analyst).toHaveLength(14)
+    expect(orchestrator).toHaveLength(10)
     expect(analyst.every((f) => f.feature === 'portfolio_analyst')).toBe(true)
     expect(orchestrator.every((f) => f.feature === 'portfolio_orchestrator')).toBe(true)
   })
@@ -394,5 +395,41 @@ describe('buildEvalPortfolioData', () => {
     })
     expect(data.error).toBeNull()
     expect(data.totalMarketValue).toBe(52000)
+    expect(data.openPerps).toEqual([])
+  })
+
+  it('adds open perp equity to the headline and leaves notional out', () => {
+    const data = buildEvalPortfolioData({
+      preferredCurrency: 'USD',
+      transactions: [
+        {
+          symbol: 'Available Cash',
+          asset_type: 'cash',
+          action: 'inflow',
+          quantity: 10000,
+          unit_price: 1,
+          executed_at: '2026-01-01T00:00:00.000Z',
+          currency: 'USD',
+        },
+        {
+          symbol: 'BTCUSDT',
+          asset_type: 'future',
+          action: 'buy',
+          position_side: 'long',
+          quantity: 0.2,
+          unit_price: 100000,
+          amount: 1000,
+          executed_at: '2026-01-02T00:00:00.000Z',
+          currency: 'USD',
+        },
+      ],
+      prices: { BTCUSDT: 101000 },
+    })
+    expect(data.openPerps).toHaveLength(1)
+    expect(data.openPerps[0].equity).toBe(1200)
+    expect(data.openPerps[0].notional).toBe(20200)
+    expect(cashTotal(data.enrichedHoldings)).toBe(9000)
+    expect(data.totalMarketValue).toBe(10200)
+    expect(data.totalMarketValue).not.toBe(9000 + 20200)
   })
 })

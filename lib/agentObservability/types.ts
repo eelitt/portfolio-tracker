@@ -120,13 +120,27 @@ export type EvalCaseFixture = {
   seed: {
     transactions: Array<{
       symbol: string
-      asset_type: 'stock' | 'etf' | 'crypto' | 'cash'
-      action: 'buy' | 'sell' | 'inflow' | 'outflow'
-      quantity: number
-      unit_price: number
+      asset_type: 'stock' | 'etf' | 'crypto' | 'cash' | 'future'
+      action:
+        | 'buy'
+        | 'sell'
+        | 'inflow'
+        | 'outflow'
+        | 'funding'
+        | 'fee'
+        | 'margin_add'
+        | 'margin_remove'
+      /** Null on a future funding, fee, or margin row. */
+      quantity: number | null
+      /** Null on a future funding, fee, or margin row. */
+      unit_price: number | null
       executed_at: string
-      currency?: 'USD' | 'EUR'
+      currency?: 'USD' | 'EUR' | 'USDT' | 'USDC'
       notes?: string
+      /** Set on a future row. */
+      position_side?: 'long' | 'short'
+      /** Margin, funding, or fee on a future row. */
+      amount?: number | null
     }>
     preferredCurrency?: 'USD' | 'EUR'
     /** Symbol → USD mark (or { price, change24h }). */

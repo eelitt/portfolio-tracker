@@ -15,6 +15,9 @@ import prepareNoConfirm001 from './fixtures/prepare-no-confirm-001.json'
 import confirmBlocked001 from './fixtures/confirm-blocked-001.json'
 import softWarnSell001 from './fixtures/soft-warn-sell-001.json'
 import dryRunLog001 from './fixtures/dry-run-log-001.json'
+import watchlistAdd001 from './fixtures/watchlist-add-001.json'
+import watchlistList001 from './fixtures/watchlist-list-001.json'
+import futuresWorth001 from './fixtures/futures-worth-001.json'
 import routeValue001 from './fixtures/route-value-001.json'
 import routeAnalysis001 from './fixtures/route-analysis-001.json'
 import routeNews001 from './fixtures/route-news-001.json'
@@ -22,6 +25,7 @@ import routeWatchlistNews001 from './fixtures/route-watchlist-news-001.json'
 import routeNewsRefresh001 from './fixtures/route-news-refresh-001.json'
 import routeTaxHalf001 from './fixtures/route-tax-half-001.json'
 import routeLog001 from './fixtures/route-log-001.json'
+import routeWatchlist001 from './fixtures/route-watchlist-001.json'
 import routeFutureLog001 from './fixtures/route-future-log-001.json'
 import routeRefuse001 from './fixtures/route-refuse-001.json'
 
@@ -37,6 +41,9 @@ const ALL: EvalCaseFixture[] = [
   confirmBlocked001 as EvalCaseFixture,
   softWarnSell001 as EvalCaseFixture,
   dryRunLog001 as EvalCaseFixture,
+  watchlistAdd001 as EvalCaseFixture,
+  watchlistList001 as EvalCaseFixture,
+  futuresWorth001 as EvalCaseFixture,
   routeValue001 as EvalCaseFixture,
   routeAnalysis001 as EvalCaseFixture,
   routeNews001 as EvalCaseFixture,
@@ -44,6 +51,7 @@ const ALL: EvalCaseFixture[] = [
   routeNewsRefresh001 as EvalCaseFixture,
   routeTaxHalf001 as EvalCaseFixture,
   routeLog001 as EvalCaseFixture,
+  routeWatchlist001 as EvalCaseFixture,
   routeFutureLog001 as EvalCaseFixture,
   routeRefuse001 as EvalCaseFixture,
 ]

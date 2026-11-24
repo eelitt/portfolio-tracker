@@ -6,6 +6,10 @@
   "seed": { "transactions": [], "prices": {} },
   "expect": {
     "toolsAnyOf": [["invoke_portfolio_analysis_agent"]],
-    "forbiddenTools": ["invoke_portfolio_analyst"]
+    "forbiddenTools": [
+      "invoke_portfolio_analyst",
+      "invoke_news_agent",
+      "invoke_tax_agent"
+    ]
   }
 }

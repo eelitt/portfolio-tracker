@@ -32,7 +32,11 @@
   },
   "expect": {
     "toolsAnyOf": [["get_holdings"], ["get_holdings", "get_portfolio_summary"]],
-    "forbiddenTools": ["confirm_transaction"],
+    "forbiddenTools": [
+      "confirm_transaction",
+      "add_watchlist_item",
+      "remove_watchlist_item"
+    ],
     "mustNotSucceedConfirm": true
   }
 }
