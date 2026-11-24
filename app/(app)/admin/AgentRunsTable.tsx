@@ -126,11 +126,39 @@ export default function AgentRunsTable({
 export function AgentRunDetail({
   run,
   childrenRuns = [],
+  parentRun = null,
+  loading = false,
+  missing = false,
+  parentLoading = false,
 }: {
   run: AgentRunRow | null
   childrenRuns?: AgentRunRow[]
+  /** Parent chat row when this run is a specialist child. */
+  parentRun?: AgentRunRow | null
+  /** True while the selected row is still being read. */
+  loading?: boolean
+  /** True when that read failed and there is no row to show. */
+  missing?: boolean
+  /** True while the parent question is still being read. */
+  parentLoading?: boolean
 }) {
   if (!run) {
+    if (loading) {
+      return (
+        <div className="space-y-2 p-2">
+          <p className="text-xs text-muted-foreground">Opening run…</p>
+          <div className="skeleton-block h-3 w-2/3" />
+          <div className="skeleton-block h-3 w-full" />
+        </div>
+      )
+    }
+    if (missing) {
+      return (
+        <p className="text-xs text-muted-foreground p-2">
+          This run could not be loaded.
+        </p>
+      )
+    }
     return (
       <p className="text-xs text-muted-foreground p-2">
         Select a run to inspect tools and usage.
@@ -139,6 +167,7 @@ export function AgentRunDetail({
   }
 
   const route = readOrchestratorRoute(run.meta?.route)
+  const parentAsked = parentRun ? metaText(parentRun.meta, 'user_text') : ''
   const asked = metaText(run.meta, 'user_text')
   const reply = metaText(run.meta, 'assistant_text')
   const subject = metaText(run.meta, 'subject')
@@ -146,7 +175,7 @@ export function AgentRunDetail({
   const caller = callerLabel(run.user_email, run.user_id)
 
   return (
-    <div className="space-y-2 text-xs overflow-y-auto min-h-0 flex-1 p-1">
+    <div className="space-y-2 text-xs overflow-y-auto min-h-0 flex-1 p-1 animate-in fade-in-0 duration-200 motion-reduce:animate-none">
       <div className="grid grid-cols-2 gap-x-3 gap-y-1">
         <span className="text-muted-foreground">Caller</span>
         <span className="break-all">{caller}</span>
@@ -187,10 +216,16 @@ export function AgentRunDetail({
         </div>
       ) : null}
 
-      {asked ? (
+      {parentLoading || parentAsked || asked ? (
         <div>
           <h4 className="font-medium text-muted-foreground pt-1">Asked</h4>
-          <p className="break-words whitespace-pre-wrap">{asked}</p>
+          {parentLoading ? (
+            <div className="skeleton-block mt-1 h-4 w-full" />
+          ) : (
+            <p className="break-words whitespace-pre-wrap animate-in fade-in-0 duration-200 motion-reduce:animate-none">
+              {parentAsked || asked}
+            </p>
+          )}
         </div>
       ) : null}
 

@@ -10,6 +10,7 @@ import 'server-only'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { getCurrentUser } from '@/lib/user'
 import { estimateCostUsd } from './cost'
+import { slimToolRecordForStorage } from './redact'
 import { deriveConfirmMeta } from './score'
 import {
   AGENT_RUN_SCHEMA_VERSION,
@@ -118,6 +119,12 @@ export type FinishAgentRunInput = {
  */
 export async function finishAgentRun(input: FinishAgentRunInput): Promise<void> {
   try {
+    const sessionUser = await getCurrentUser()
+    if (!sessionUser) {
+      console.error('finishAgentRun refused: no session')
+      return
+    }
+
     const confirmMeta = deriveConfirmMeta(input.tools)
     // Caller meta wins on key collisions (e.g. eval_case_id).
     const meta: AgentRunMeta = {
@@ -132,7 +139,7 @@ export async function finishAgentRun(input: FinishAgentRunInput): Promise<void> 
     const update: Record<string, unknown> = {
       finished_at: new Date().toISOString(),
       status: input.status,
-      tools: input.tools,
+      tools: input.tools.map(slimToolRecordForStorage),
       meta,
       duration_ms: input.durationMs ?? null,
       step_count: input.stepCount ?? input.tools.length,
@@ -156,6 +163,7 @@ export async function finishAgentRun(input: FinishAgentRunInput): Promise<void> 
       .from('agent_runs')
       .update(update)
       .eq('id', input.runId)
+      .eq('user_id', sessionUser.id)
 
     if (error) {
       console.error('finishAgentRun failed:', error.message)

@@ -10,7 +10,7 @@ The suites never run as one chain. An admin starts one of them from the Eval tab
 
 `POST /api/admin/agent-eval` with an empty body, or `{ feature: "portfolio_analyst" }`, runs the analyst suite. `{ feature: "portfolio_orchestrator" }` runs the routing suite. Any other feature is a 400. A missing user is 401. A non-admin is 403. Those three are one JSON error, not a stream.
 
-A run is newline-delimited JSON. `start` carries the fixture count. One `case` line follows each fixture (`index`, `total`, `caseId`, `passed`). Then `done` or `error`. The tab's bar follows the `case` lines. While one suite is running, the tab disables both buttons. The server does not lock a second request.
+A run is newline-delimited JSON. `start` carries the fixture count. One `case` line follows each fixture (`index`, `total`, `caseId`, `passed`). Then `done` or `error`. The tab's bar follows the `case` lines. While one suite is running, the tab disables both buttons. The server allows one `running` suite. A second start gets "An eval suite is already running." A `running` row older than 6 minutes is marked failed so a crashed suite does not block the next one. A thrown provider error is logged by name and returned as "Eval suite failed."
 
 Cases run in order, with a 400ms gap. `MAX_EVAL_CASES` is 15 per feature. Today the files hold 14 analyst fixtures and 10 orchestrator fixtures. The model is `grok-4.3` at temperature 0.1. Each case is one trial. A single failure should be run again before it is treated as a regression.
 
@@ -20,7 +20,7 @@ Cases run in order, with a 400ms gap. `MAX_EVAL_CASES` is 15 per feature. Today 
 
 `generateText` uses `PORTFOLIO_ANALYST_SYSTEM_PROMPT`, the fixture prompt as the only user message, and `maxSteps` 5. The book is `buildEvalPortfolioData(fixture.seed)`, not the admin's book. `lastUserText` is that prompt.
 
-`evalMode` is on. Confirm does not insert. A confirm that passes the phrase gate still returns `ok: false` with `failureMode` `eval_mode_no_persist`. A fixture with `mode: "dryRun"` also sets dry-run, so confirm is blocked before that.
+`evalMode` is on. Confirm does not insert. A confirm that passes the phrase gate still returns `ok: false` with `failureMode` `eval_mode_no_persist`. A fixture with `mode: "dryRun"` also sets dry-run, so confirm is blocked before that. Plan and performance tools return `eval_mode_no_live_data` and do not read the admin's profile, goals, policy, or snapshots.
 
 ## Orchestrator call
 
@@ -42,6 +42,8 @@ Cases run in order, with a 400ms gap. `MAX_EVAL_CASES` is 15 per feature. Today 
 | `expectDryRun` | Some tool result has `dryRun: true`. |
 | `argsEquals` | The first call of that tool has that arg path, and it equals the value. A missing path fails. |
 | `argsNot` | Fail only when that path is present and equals the value. A missing path passes. |
+
+The Overview tool list marks a registry tool `no eval` when no fixture expects that tool to be called. A name that appears only in `forbiddenTools` does not count. `confirm_transaction` counts when a fixture sets `mustNotSucceedConfirm` or `mustNotCallConfirm`. That read includes every fixture in `loadFixtures.ts`, including any past the live cap of 15.
 
 ## What the fixtures lock
 

@@ -12,7 +12,11 @@ import { getCurrentUser, isCurrentUserAdmin } from '@/lib/user'
 import { tryConsumeAiCooldown } from '@/app/actions/ai/storage'
 import { normalizeCsvImport } from '@/lib/csvImport'
 import { csvAiParseSchema, type CsvParsedTransactions } from '@/lib/schemas'
-import { checkAiAllowance } from '@/lib/aiUsage/allowance'
+import {
+  checkAiAllowance,
+  endAiEntry,
+  tryBeginAiEntry,
+} from '@/lib/aiUsage/allowance'
 import { recordModelUsage } from '@/lib/aiUsage/recordModelCall'
 
 export async function parseCsvWithAI(
@@ -45,6 +49,11 @@ export async function parseCsvWithAI(
     return { error: allowance.message }
   }
 
+  const entry = await tryBeginAiEntry(user.id)
+  if (!entry.ok) return { error: entry.message }
+
+  let calledModel = false
+  try {
   // Rate limit (same 60s cooldown as other AI features; admins skip for testing)
   if (!(await isCurrentUserAdmin())) {
     const slot = await tryConsumeAiCooldown(user.id)
@@ -58,10 +67,10 @@ export async function parseCsvWithAI(
   // Truncate just in case (client should have already capped)
   const safeContent = csvContent.slice(0, 50000)
 
-  try {
     const { generateObject } = await import('ai')
     const { xai } = await import('@ai-sdk/xai')
 
+    calledModel = true
     const { object, usage } = await generateObject({
       model: xai('grok-4.3'),
       schema: csvAiParseSchema,
@@ -98,10 +107,26 @@ ${safeContent}`,
 
     return { data: normalizeCsvImport(object) }
   } catch (e) {
-    console.error('AI CSV parse error', e)
+    console.error(
+      'AI CSV parse error:',
+      e instanceof Error ? e.name : 'Error'
+    )
+    if (calledModel) {
+      await recordModelUsage({
+        userId: user.id,
+        feature: 'csv_import',
+        model: 'grok-4.3',
+        usage: null,
+        status: 'error',
+        errorSummary: 'CSV import failed',
+        subject: 'CSV import',
+      })
+    }
     return {
       error:
         'Failed to parse CSV with AI. The file format may be unsupported or the content too complex. You can still add transactions manually.',
     }
+  } finally {
+    await endAiEntry(user.id, entry.token)
   }
 }

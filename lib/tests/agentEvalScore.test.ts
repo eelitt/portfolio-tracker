@@ -6,7 +6,12 @@
 
 import { describe, it, expect } from 'vitest'
 import { scoreCase, deriveConfirmMeta, toolRecordsFromStepResults } from '../agentObservability/score'
-import { redactForStorage, toolResultOk } from '../agentObservability/redact'
+import {
+  redactForStorage,
+  redactSecrets,
+  slimToolRecordForStorage,
+  toolResultOk,
+} from '../agentObservability/redact'
 import { estimateCostUsd } from '../agentObservability/cost'
 import { buildEvalPortfolioData } from '../agentEval/buildEvalPortfolio'
 import { loadEvalFixtures } from '../agentEval/loadFixtures'
@@ -310,11 +315,35 @@ describe('redactForStorage', () => {
   it('truncates long strings and redacts notes', () => {
     const out = redactForStorage({
       notes: 'secret note',
+      apiKey: 'secret-key',
       text: 'a'.repeat(600),
     }) as Record<string, unknown>
     expect(out.notes).toBe('[redacted]')
+    expect(out.apiKey).toBe('[redacted]')
     expect(String(out.text).endsWith('…')).toBe(true)
     expect(String(out.text).length).toBeLessThan(510)
+  })
+})
+
+describe('stored run text', () => {
+  it('replaces key-shaped tokens and drops tool result bodies', () => {
+    const text = 'use sk-livekeyvalue1234 and AKIAIOSFODNN7EXAMPLE now'
+    expect(redactSecrets(text)).not.toContain('sk-live')
+    expect(redactSecrets(text)).not.toContain('AKIA')
+    expect(redactSecrets('a'.repeat(64))).toBe('a'.repeat(64))
+    expect(redactSecrets('a1'.repeat(24))).toBe('[redacted]')
+    const slim = slimToolRecordForStorage({
+      name: 'get_holdings',
+      ok: true,
+      args: {
+        symbol: 'AAPL',
+        notes: 'secret',
+        sourceText: 'a'.repeat(200),
+      },
+      result: { totalMarketValue: 52000 },
+    })
+    expect(slim.args).toEqual({ symbol: 'AAPL' })
+    expect(slim).not.toHaveProperty('result')
   })
 })
 

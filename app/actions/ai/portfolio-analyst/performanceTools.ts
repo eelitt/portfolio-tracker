@@ -29,7 +29,7 @@ import { toolDescription, toolFailure } from '@/lib/aiTools'
 import type { AnalystToolCtx } from './toolContext'
 
 export function createPerformanceTools(ctx: AnalystToolCtx) {
-  const { load, loadFailed } = ctx
+  const { load, loadFailed, evalMode } = ctx
 
   return {
     get_relative_performance: tool({
@@ -45,6 +45,12 @@ export function createPerformanceTools(ctx: AnalystToolCtx) {
           .describe('Same windows as the Performance chart. Default daily.'),
       }),
       execute: async (args) => {
+        if (evalMode) {
+          return toolFailure(
+            'eval_mode_no_live_data',
+            'Eval mode does not read the signed-in profile, goals, or snapshots.'
+          )
+        }
         const loaded = await load()
         if (!loaded.ok) return loadFailed(loaded.error)
 

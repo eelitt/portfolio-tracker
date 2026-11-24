@@ -10,12 +10,37 @@ const MAX_KEYS = 40
 
 const SENSITIVE_KEYS = new Set([
   'notes',
-  'sourceText',
+  'sourcetext',
   'email',
   'password',
   'token',
   'authorization',
+  'apikey',
+  'api_key',
+  'secret',
+  'accesstoken',
+  'access_token',
+  'refreshtoken',
+  'refresh_token',
+  'cookie',
 ])
+
+const SECRET_PATTERNS = [
+  /sk-[A-Za-z0-9_-]{12,}/g,
+  /xai-[A-Za-z0-9_-]{12,}/g,
+  /Bearer\s+[A-Za-z0-9._\-+/=]{12,}/gi,
+  /\bAKIA[0-9A-Z]{16}\b/g,
+  /\b(?=[0-9a-fA-F]*[0-9])(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]{40,}\b/g,
+]
+
+/** Replace key-shaped tokens. The rest of the text stays. */
+export function redactSecrets(text: string): string {
+  let out = text
+  for (const pattern of SECRET_PATTERNS) {
+    out = out.replace(pattern, '[redacted]')
+  }
+  return out
+}
 
 /** Deep-redact / truncate a value before persisting to agent_runs. */
 export function redactForStorage(value: unknown, depth = 0): unknown {
@@ -46,7 +71,7 @@ export function redactForStorage(value: unknown, depth = 0): unknown {
         out._truncated = `+${entries.length - MAX_KEYS} keys`
         break
       }
-      if (SENSITIVE_KEYS.has(k)) {
+      if (SENSITIVE_KEYS.has(k.toLowerCase())) {
         out[k] = '[redacted]'
       } else {
         out[k] = redactForStorage(v, depth + 1)
@@ -86,4 +111,56 @@ export function toolResultOk(result: unknown): { ok: boolean; error?: string } {
     return { ok: false, error: msg || 'ok: false' }
   }
   return { ok: true }
+}
+
+const MAX_STORED_ARG = 80
+const MAX_STORED_ARG_KEYS = 8
+const MAX_STORED_STRINGS = 12
+
+/**
+ * What agent_runs.tools keeps. Name, ok, a short error, and short scalar args.
+ * Result bodies stay in memory for scoring and are not stored.
+ */
+export function slimToolRecordForStorage(tool: {
+  name: string
+  args: Record<string, unknown>
+  ok: boolean
+  error?: string
+  latency_ms?: number
+  result?: unknown
+}): {
+  name: string
+  args: Record<string, unknown>
+  ok: boolean
+  error?: string
+  latency_ms?: number
+} {
+  const args: Record<string, unknown> = {}
+  let kept = 0
+  for (const [key, value] of Object.entries(tool.args)) {
+    if (kept >= MAX_STORED_ARG_KEYS) break
+    if (SENSITIVE_KEYS.has(key.toLowerCase())) continue
+    if (typeof value === 'string') {
+      if (value.length > MAX_STORED_ARG) continue
+      args[key] = redactSecrets(value)
+    } else if (typeof value === 'number' || typeof value === 'boolean') {
+      args[key] = value
+    } else if (
+      Array.isArray(value) &&
+      value.length <= MAX_STORED_STRINGS &&
+      value.every((item) => typeof item === 'string' && item.length <= 32)
+    ) {
+      args[key] = value
+    } else {
+      continue
+    }
+    kept += 1
+  }
+  return {
+    name: tool.name,
+    args,
+    ok: tool.ok,
+    ...(tool.error ? { error: tool.error.slice(0, 300) } : {}),
+    ...(tool.latency_ms != null ? { latency_ms: tool.latency_ms } : {}),
+  }
 }

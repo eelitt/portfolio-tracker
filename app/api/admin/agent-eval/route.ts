@@ -88,9 +88,11 @@ export async function POST(req: Request) {
             send({ type: 'error', error: 'Eval returned no result' })
           }
         } catch (e) {
-          const msg = e instanceof Error ? e.message : 'unknown'
-          console.error('agent-eval route error:', msg)
-          send({ type: 'error', error: msg })
+          console.error(
+            'agent-eval route error:',
+            e instanceof Error ? e.name : 'Error'
+          )
+          send({ type: 'error', error: 'Eval suite failed.' })
         } finally {
           controller.close()
         }
@@ -104,8 +106,10 @@ export async function POST(req: Request) {
       },
     })
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'unknown'
-    console.error('agent-eval route error:', msg)
-    return Response.json({ error: msg }, { status: 500 })
+    console.error(
+      'agent-eval route error:',
+      e instanceof Error ? e.name : 'Error'
+    )
+    return Response.json({ error: 'Eval suite failed.' }, { status: 500 })
   }
 }

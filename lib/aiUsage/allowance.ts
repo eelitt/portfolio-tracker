@@ -6,17 +6,17 @@
 import 'server-only'
 
 import { createServiceClient } from '@/lib/supabase/admin'
-import { getCurrentUser } from '@/lib/user'
+import { getCurrentUser, isCurrentUserAdmin } from '@/lib/user'
 import {
+  AI_ENTRY_BUSY_MESSAGE,
+  AI_ENTRY_STALE_MS,
   AI_USAGE_READ_FAILED_MESSAGE,
   DEFAULT_AI_ALLOWANCE_USD,
   allowanceRefusalMessage,
   decideAiAllowance,
   effectivePeriodStart,
-  isEvalMeta,
   periodEndsAt,
-  sumUsage,
-  type UsageRow,
+  usageTotalsFromRpc,
   type UsageTotals,
 } from './decide'
 
@@ -35,30 +35,10 @@ export type AllowanceGate =
   | { allowed: true }
   | { allowed: false; message: string }
 
-type RunRow = {
-  user_id: string
-  created_at: string
-  prompt_tokens: number | null
-  completion_tokens: number | null
-  estimated_cost_usd: number | string | null
-  meta: unknown
-}
-
 function asNumber(value: number | string | null | undefined): number | null {
   if (value == null) return null
   const n = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(n) ? n : null
-}
-
-function toUsageRow(row: RunRow): UsageRow {
-  return {
-    userId: row.user_id,
-    createdAt: row.created_at,
-    promptTokens: asNumber(row.prompt_tokens),
-    completionTokens: asNumber(row.completion_tokens),
-    estimatedCostUsd: asNumber(row.estimated_cost_usd),
-    eval: isEvalMeta(row.meta),
-  }
 }
 
 /**
@@ -106,19 +86,16 @@ export async function readAiUsageSnapshot(
       }
     }
 
-    const { data: runs, error: runsError } = await service
-      .from('agent_runs')
-      .select(
-        'user_id, created_at, prompt_tokens, completion_tokens, estimated_cost_usd, meta'
-      )
-      .eq('user_id', userId)
-
-    if (runsError || !runs) {
-      console.error('AI usage read failed:', runsError?.message ?? 'no rows')
+    const { data: totals, error: totalsError } = await service.rpc(
+      'ai_usage_totals',
+      { p_user_id: userId, p_since: periodStartedAt }
+    )
+    const summed = usageTotalsFromRpc(totals)
+    if (totalsError || !summed) {
+      console.error('AI usage read failed:', totalsError?.code ?? 'bad totals')
       return null
     }
 
-    const rows = (runs as RunRow[]).map(toUsageRow)
     const start = new Date(periodStartedAt)
     const allowanceUsd =
       asNumber(profile.ai_allowance_usd as number | string | null) ??
@@ -129,10 +106,10 @@ export async function readAiUsageSnapshot(
       allowanceUsd,
       periodStartedAt,
       periodEndsAt: periodEndsAt(start).toISOString(),
-      window: sumUsage(rows, userId, start, 'product'),
-      allTime: sumUsage(rows, userId, null, 'product'),
-      evalWindow: sumUsage(rows, userId, start, 'eval'),
-      evalAllTime: sumUsage(rows, userId, null, 'eval'),
+      window: summed.window,
+      allTime: summed.allTime,
+      evalWindow: summed.evalWindow,
+      evalAllTime: summed.evalAllTime,
     }
   } catch (e) {
     console.error(
@@ -173,4 +150,78 @@ export async function checkAiAllowance(userId: string): Promise<AllowanceGate> {
   }
 
   return { allowed: true }
+}
+
+export type AiEntrySlot =
+  | { ok: true; token: string | null }
+  | { ok: false; message: string }
+
+/**
+ * One in-flight model entry for a non-admin.
+ * Admins skip the slot. A slot older than four minutes is taken again.
+ */
+export async function tryBeginAiEntry(userId: string): Promise<AiEntrySlot> {
+  const session = await getCurrentUser()
+  if (!session || session.id !== userId) {
+    return { ok: false, message: 'Not authenticated' }
+  }
+  if (await isCurrentUserAdmin()) {
+    return { ok: true, token: null }
+  }
+
+  try {
+    const service = createServiceClient()
+    const token = new Date().toISOString()
+    const staleBefore = new Date(Date.now() - AI_ENTRY_STALE_MS).toISOString()
+    const { data, error } = await service
+      .from('profiles')
+      .update({
+        ai_entry_started_at: token,
+        updated_at: token,
+      })
+      .eq('id', userId)
+      .or(
+        `ai_entry_started_at.is.null,ai_entry_started_at.lt."${staleBefore}"`
+      )
+      .select('ai_entry_started_at')
+
+    if (error) {
+      console.error('AI entry lock failed:', error.code ?? 'update')
+      return { ok: false, message: AI_USAGE_READ_FAILED_MESSAGE }
+    }
+    if (!data || data.length === 0) {
+      return { ok: false, message: AI_ENTRY_BUSY_MESSAGE }
+    }
+    return { ok: true, token }
+  } catch (e) {
+    console.error(
+      'AI entry lock error:',
+      e instanceof Error ? e.name : 'Error'
+    )
+    return { ok: false, message: AI_USAGE_READ_FAILED_MESSAGE }
+  }
+}
+
+/** Clear the slot only when it is still the one this entry took. */
+export async function endAiEntry(
+  userId: string,
+  token: string | null
+): Promise<void> {
+  if (!token) return
+  try {
+    const service = createServiceClient()
+    const { error } = await service
+      .from('profiles')
+      .update({ ai_entry_started_at: null })
+      .eq('id', userId)
+      .eq('ai_entry_started_at', token)
+    if (error) {
+      console.error('AI entry release failed:', error.code ?? 'update')
+    }
+  } catch (e) {
+    console.error(
+      'AI entry release error:',
+      e instanceof Error ? e.name : 'Error'
+    )
+  }
 }

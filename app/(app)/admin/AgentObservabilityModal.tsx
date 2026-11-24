@@ -21,7 +21,10 @@ import { getAgentRun, listAgentRuns, listChildAgentRuns } from '@/app/actions/ag
 import { getLatestEvalRun, listEvalCases } from '@/app/actions/agentEval'
 import { listAiUserStats, type AiUserStatRow } from '@/app/actions/aiUserStats'
 import type { AgentRunRow, AgentRunStatus } from '@/lib/agentObservability'
-import type { AgentOverviewStats } from '@/lib/agentObservability/overviewRows'
+import type {
+  AgentOverviewStats,
+  OverviewPreset,
+} from '@/lib/agentObservability/overviewRows'
 import {
   RUN_FILTER_FEATURES,
   localDayBound,
@@ -106,7 +109,9 @@ export default function AgentObservabilityModal({
 }: AgentObservabilityModalProps) {
   const [tab, setTab] = useState<Tab>('overview')
   const [loading, setLoading] = useState(false)
+  const [overviewPreset, setOverviewPreset] = useState<OverviewPreset>('month')
   const [overview, setOverview] = useState<AgentOverviewStats | null>(null)
+  const [overviewLoading, setOverviewLoading] = useState(false)
   const [overviewError, setOverviewError] = useState<string | null>(null)
   const [runs, setRuns] = useState<AgentRunRow[]>([])
   const [runsLoading, setRunsLoading] = useState(false)
@@ -119,7 +124,13 @@ export default function AgentObservabilityModal({
   const [toDate, setToDate] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedRun, setSelectedRun] = useState<AgentRunRow | null>(null)
+  const [runDetailStatus, setRunDetailStatus] = useState<
+    'idle' | 'loading' | 'ready' | 'missing'
+  >('idle')
+  const [parentLoading, setParentLoading] = useState(false)
   const [childRuns, setChildRuns] = useState<AgentRunRow[]>([])
+  const [parentRun, setParentRun] = useState<AgentRunRow | null>(null)
+  const pinnedRunId = useRef<string | null>(null)
   const [fixtures, setFixtures] = useState<
     Array<{ id: string; description: string; feature: string }>
   >([])
@@ -130,6 +141,26 @@ export default function AgentObservabilityModal({
   const [evalProgress, setEvalProgress] = useState<EvalRunProgress | null>(null)
 
   const runsRequest = useRef(0)
+  const overviewRequest = useRef(0)
+  const loadOverview = useCallback(async (which: OverviewPreset) => {
+    const request = ++overviewRequest.current
+    setOverviewLoading(true)
+    try {
+      const ov = await getAgentOverview(which)
+      if (request !== overviewRequest.current) return
+      if (ov.error) {
+        toast.error(ov.error)
+        setOverviewError(ov.error)
+        setOverview(null)
+      } else {
+        setOverviewError(null)
+        setOverview(ov.data ?? null)
+      }
+    } finally {
+      if (request === overviewRequest.current) setOverviewLoading(false)
+    }
+  }, [])
+
   const loadRuns = useCallback(async () => {
     const request = ++runsRequest.current
     setRunsLoading(true)
@@ -152,21 +183,11 @@ export default function AgentObservabilityModal({
 
   const loadAll = useCallback(async () => {
     setLoading(true)
-    const [ov, cases, latest, users] = await Promise.all([
-      getAgentOverview(30),
+    const [cases, latest, users] = await Promise.all([
       listEvalCases(),
       getLatestEvalRun(),
       listAiUserStats(),
     ])
-
-    if (ov.error) {
-      toast.error(ov.error)
-      setOverviewError(ov.error)
-      setOverview(null)
-    } else {
-      setOverviewError(null)
-      setOverview(ov.data ?? null)
-    }
 
     if (cases.error) toast.error(cases.error)
     else setFixtures(cases.data ?? [])
@@ -190,6 +211,14 @@ export default function AgentObservabilityModal({
     if (!open) return
     void loadAll()
   }, [open, loadAll])
+
+  useEffect(() => {
+    if (!open) return
+    setOverviewLoading(true)
+    setOverview(null)
+    setOverviewError(null)
+    void loadOverview(overviewPreset)
+  }, [open, overviewPreset, loadOverview])
 
   useEffect(() => {
     if (!open) return
@@ -224,8 +253,24 @@ export default function AgentObservabilityModal({
     fromDate !== '' ||
     toDate !== ''
 
+  const openOverviewRun = useCallback((runId: string) => {
+    pinnedRunId.current = runId
+    setSelectedId(runId)
+    setTab('runs')
+  }, [])
+
+  const selectRunFromList = useCallback((runId: string) => {
+    pinnedRunId.current = null
+    setSelectedId(runId)
+  }, [])
+
+  useEffect(() => {
+    pinnedRunId.current = null
+  }, [callerUserId, featureFilter, statusFilter, fromDate, toDate])
+
   useEffect(() => {
     if (!selectedId) return
+    if (pinnedRunId.current === selectedId) return
     if (!runs.some((r) => r.id === selectedId)) setSelectedId(null)
   }, [selectedId, runs])
 
@@ -233,13 +278,38 @@ export default function AgentObservabilityModal({
     if (!selectedId) {
       setSelectedRun(null)
       setChildRuns([])
+      setParentRun(null)
+      setRunDetailStatus('idle')
+      setParentLoading(false)
       return
     }
     let cancelled = false
+    setParentRun(null)
+    setParentLoading(false)
     const cached = runs.find((r) => r.id === selectedId)
-    if (cached) setSelectedRun(cached)
+    if (cached) {
+      setSelectedRun(cached)
+      setRunDetailStatus('ready')
+    } else {
+      setSelectedRun(null)
+      setRunDetailStatus('loading')
+    }
     void getAgentRun(selectedId).then((res) => {
-      if (!cancelled && res.data) setSelectedRun(res.data)
+      if (cancelled) return
+      if (!res.data) {
+        if (!cached) setRunDetailStatus('missing')
+        return
+      }
+      setSelectedRun(res.data)
+      setRunDetailStatus('ready')
+      const parentId = res.data.parent_run_id
+      if (!parentId) return
+      setParentLoading(true)
+      void getAgentRun(parentId).then((parentRes) => {
+        if (cancelled) return
+        setParentLoading(false)
+        if (parentRes.data) setParentRun(parentRes.data)
+      })
     })
     void listChildAgentRuns(selectedId).then((res) => {
       if (!cancelled) setChildRuns(res.data ?? [])
@@ -312,7 +382,7 @@ export default function AgentObservabilityModal({
       toast.success(
         `Eval done: ${outcome.done.passed}/${outcome.done.total} passed (${(outcome.done.durationMs / 1000).toFixed(1)}s)`
       )
-      await Promise.all([loadAll(), loadRuns()])
+      await Promise.all([loadAll(), loadOverview(overviewPreset), loadRuns()])
       setTab('eval')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Eval request failed')
@@ -320,7 +390,7 @@ export default function AgentObservabilityModal({
       setRunningFeature(null)
       setEvalProgress(null)
     }
-  }, [fixtures, loadAll, loadRuns])
+  }, [fixtures, loadAll, loadOverview, loadRuns, overviewPreset])
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
@@ -347,6 +417,7 @@ export default function AgentObservabilityModal({
               className="shrink-0"
               onClick={() => {
                 void loadAll()
+                void loadOverview(overviewPreset)
                 void loadRuns()
               }}
               disabled={loading || runningFeature != null}
@@ -381,12 +452,15 @@ export default function AgentObservabilityModal({
           {tab === 'overview' && (
             <AgentOverviewTab
               stats={overview}
-              loading={loading}
+              loading={overviewLoading}
               error={overviewError}
+              preset={overviewPreset}
+              onPreset={setOverviewPreset}
+              onOpenRun={openOverviewRun}
             />
           )}
           {tab === 'runs' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-h-0 flex-1 overflow-hidden">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-h-0 flex-1 overflow-hidden animate-in fade-in-0 slide-in-from-right-2 duration-200 motion-reduce:animate-none">
               <div className="min-h-0 flex flex-col gap-2 overflow-hidden">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 shrink-0">
                   <FilterSelect
@@ -451,7 +525,7 @@ export default function AgentObservabilityModal({
                 <AgentRunsTable
                   runs={runs}
                   selectedId={selectedId}
-                  onSelect={setSelectedId}
+                  onSelect={selectRunFromList}
                   loading={loading || runsLoading}
                   emptyLabel={
                     filtersActive ? 'No runs match these filters.' : undefined
@@ -462,7 +536,15 @@ export default function AgentObservabilityModal({
                 <div className="px-2 py-1.5 text-xs font-medium border-b border-border bg-muted/30">
                   Detail
                 </div>
-                <AgentRunDetail run={selectedRun} childrenRuns={childRuns} />
+                <AgentRunDetail
+                  key={selectedId ?? 'none'}
+                  run={selectedRun}
+                  childrenRuns={childRuns}
+                  parentRun={parentRun}
+                  loading={runDetailStatus === 'loading'}
+                  missing={runDetailStatus === 'missing'}
+                  parentLoading={parentLoading}
+                />
               </div>
             </div>
           )}

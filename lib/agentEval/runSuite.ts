@@ -31,6 +31,9 @@ import { loadEvalFixtures } from './loadFixtures'
 import type { EvalSuiteProgress } from './progress'
 
 const MODEL_ID = 'grok-4.3'
+const EVAL_RUNNING_STALE_MS = 6 * 60 * 1000
+const EVAL_BUSY_MESSAGE = 'An eval suite is already running.'
+const EVAL_FAILED_MESSAGE = 'Eval suite failed.'
 const ANALYST_FEATURE = 'portfolio_analyst'
 const ORCHESTRATOR_FEATURE = 'portfolio_orchestrator'
 
@@ -136,7 +139,7 @@ async function runModelCase(
       tools: collected,
     }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'unknown'
+    console.error('eval case failed:', e instanceof Error ? e.name : 'Error')
     if (runId) {
       await finishAgentRun({
         runId,
@@ -144,7 +147,7 @@ async function runModelCase(
         tools: collected,
         model: MODEL_ID,
         durationMs: Date.now() - startedAt,
-        errorSummary: msg.slice(0, 500),
+        errorSummary: 'Model call failed.',
         meta: { eval_case_id: fixture.id },
       })
     }
@@ -155,7 +158,7 @@ async function runModelCase(
       passed: false,
       scores,
       agentRunId: runId,
-      errorSummary: msg.slice(0, 500),
+      errorSummary: 'Model call failed.',
       tools: collected,
     }
   }
@@ -221,6 +224,12 @@ async function runEvalSuite(
 
   const service = createServiceClient()
   const suiteStarted = Date.now()
+  const staleBefore = new Date(Date.now() - EVAL_RUNNING_STALE_MS).toISOString()
+  await service
+    .from('agent_eval_runs')
+    .update({ status: 'failed', summary: { stale: true } })
+    .eq('status', 'running')
+    .lt('created_at', staleBefore)
 
   const { data: evalRun, error: insertErr } = await service
     .from('agent_eval_runs')
@@ -235,8 +244,13 @@ async function runEvalSuite(
     .single()
 
   if (insertErr || !evalRun?.id) {
+    const busy =
+      insertErr?.code === '23505' ||
+      (insertErr?.message ?? '').includes('agent_eval_runs_one_running')
     return {
-      error: insertErr?.message || 'Failed to create eval run row (migration applied?)',
+      error: busy
+        ? EVAL_BUSY_MESSAGE
+        : 'Failed to create eval run row (migration applied?)',
     }
   }
 
@@ -299,20 +313,20 @@ async function runEvalSuite(
       },
     }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'unknown'
+    console.error('eval suite failed:', e instanceof Error ? e.name : 'Error')
     await service
       .from('agent_eval_runs')
       .update({
         status: 'failed',
         duration_ms: Date.now() - suiteStarted,
-        summary: { error: msg },
+        summary: { error: EVAL_FAILED_MESSAGE },
         passed: results.filter((r) => r.passed).length,
         failed: results.length - results.filter((r) => r.passed).length,
         total_cases: results.length,
       })
       .eq('id', evalRunId)
 
-    return { error: msg }
+    return { error: EVAL_FAILED_MESSAGE }
   }
 }
 

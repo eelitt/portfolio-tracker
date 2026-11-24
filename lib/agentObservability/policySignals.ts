@@ -3,6 +3,7 @@
  */
 
 import { textHasPromptCanary } from '@/lib/aiTools/promptCanary'
+import { redactSecrets } from './redact'
 
 export const ASSISTANT_TEXT_MAX = 2_000
 
@@ -15,7 +16,7 @@ export type PolicySignals = {
 }
 
 export function clipAssistantText(text: string): string {
-  return text.trim().slice(0, ASSISTANT_TEXT_MAX)
+  return redactSecrets(text.trim().slice(0, ASSISTANT_TEXT_MAX))
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

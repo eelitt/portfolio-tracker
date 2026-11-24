@@ -6,6 +6,11 @@
 export const DEFAULT_AI_ALLOWANCE_USD = 1
 export const AI_USAGE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
 export const MAX_AI_ALLOWANCE_USD = 999_999
+/** A slot older than this is free. The next entry can start. */
+export const AI_ENTRY_STALE_MS = 4 * 60 * 1000
+
+export const AI_ENTRY_BUSY_MESSAGE =
+  'An AI request is already running. Wait for it to finish.'
 
 export type UsageTotals = {
   promptTokens: number
@@ -75,6 +80,59 @@ export function sumUsage(
     totals.estimatedUsd += row.estimatedCostUsd ?? 0
   }
   return totals
+}
+
+/**
+ * True while a non-admin entry still holds the slot.
+ * A missing or unreadable timestamp is free. Age equal to the stale window stays busy.
+ */
+export function aiEntryIsBusy(startedAt: string | null, now: Date): boolean {
+  if (!startedAt) return false
+  const started = new Date(startedAt).getTime()
+  if (Number.isNaN(started)) return false
+  return now.getTime() - started <= AI_ENTRY_STALE_MS
+}
+
+export type UsageSnapshotTotals = {
+  window: UsageTotals
+  allTime: UsageTotals
+  evalWindow: UsageTotals
+  evalAllTime: UsageTotals
+}
+
+function usageNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value)
+    return Number.isFinite(n) ? n : null
+  }
+  return null
+}
+
+function totalsFromKeys(
+  row: Record<string, unknown>,
+  prefix: string
+): UsageTotals | null {
+  const promptTokens = usageNumber(row[`${prefix}_prompt`])
+  const completionTokens = usageNumber(row[`${prefix}_completion`])
+  const estimatedUsd = usageNumber(row[`${prefix}_usd`])
+  if (promptTokens == null || completionTokens == null || estimatedUsd == null) {
+    return null
+  }
+  return { promptTokens, completionTokens, estimatedUsd }
+}
+
+/** Map the `ai_usage_totals` jsonb object. Null when a required sum is missing. */
+export function usageTotalsFromRpc(value: unknown): UsageSnapshotTotals | null {
+  const row = Array.isArray(value) ? value[0] : value
+  if (!row || typeof row !== 'object') return null
+  const record = row as Record<string, unknown>
+  const window = totalsFromKeys(record, 'product_window')
+  const allTime = totalsFromKeys(record, 'product_all')
+  const evalWindow = totalsFromKeys(record, 'eval_window')
+  const evalAllTime = totalsFromKeys(record, 'eval_all')
+  if (!window || !allTime || !evalWindow || !evalAllTime) return null
+  return { window, allTime, evalWindow, evalAllTime }
 }
 
 export function decideAiAllowance(input: {

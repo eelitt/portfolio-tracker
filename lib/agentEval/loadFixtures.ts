@@ -64,6 +64,11 @@ export function loadEvalFixtures(feature = 'portfolio_analyst'): EvalCaseFixture
   return ALL.filter((f) => f.feature === feature).slice(0, MAX_EVAL_CASES)
 }
 
+/** Every fixture expect, including cases past the live suite cap. */
+export function allEvalExpects(): EvalCaseFixture['expect'][] {
+  return ALL.map((fixture) => fixture.expect)
+}
+
 /** Lightweight list for the admin Eval tab (no seed payloads). */
 export function listEvalFixtureMeta(feature = 'portfolio_analyst'): Array<{
   id: string

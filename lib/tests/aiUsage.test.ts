@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  AI_ENTRY_STALE_MS,
   AI_USAGE_WINDOW_MS,
+  aiEntryIsBusy,
   allowanceLeft,
   allowanceRefusalMessage,
   decideAiAllowance,
   effectivePeriodStart,
   parseAllowanceUsd,
   sumUsage,
+  usageTotalsFromRpc,
   type UsageRow,
 } from '../aiUsage/decide'
 
@@ -22,6 +25,40 @@ function row(partial: Partial<UsageRow> & Pick<UsageRow, 'userId'>): UsageRow {
     ...partial,
   }
 }
+
+describe('AI entry slot', () => {
+  it('treats a missing timestamp as free and a 4 minute slot as busy', () => {
+    expect(aiEntryIsBusy(null, now)).toBe(false)
+    expect(aiEntryIsBusy('not-a-date', now)).toBe(false)
+    const taken = new Date(now.getTime() - AI_ENTRY_STALE_MS).toISOString()
+    expect(aiEntryIsBusy(taken, now)).toBe(true)
+    const stale = new Date(now.getTime() - AI_ENTRY_STALE_MS - 1).toISOString()
+    expect(aiEntryIsBusy(stale, now)).toBe(false)
+  })
+})
+
+describe('AI usage totals', () => {
+  it('reads the sql sums and rejects a missing field', () => {
+    const totals = usageTotalsFromRpc({
+      product_window_prompt: 1,
+      product_window_completion: 2,
+      product_window_usd: '0.25',
+      product_all_prompt: 3,
+      product_all_completion: 4,
+      product_all_usd: 1.5,
+      eval_window_prompt: 0,
+      eval_window_completion: 0,
+      eval_window_usd: 0,
+      eval_all_prompt: 9,
+      eval_all_completion: 1,
+      eval_all_usd: 0.5,
+    })
+    expect(totals?.window.estimatedUsd).toBe(0.25)
+    expect(totals?.allTime.estimatedUsd).toBe(1.5)
+    expect(totals?.evalAllTime.promptTokens).toBe(9)
+    expect(usageTotalsFromRpc({ product_window_prompt: 1 })).toBeNull()
+  })
+})
 
 describe('AI allowance decision', () => {
   it('refuses a non-admin at the allowance and allows a fraction under it', () => {

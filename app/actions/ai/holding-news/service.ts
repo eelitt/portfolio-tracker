@@ -17,7 +17,11 @@ import {
 } from '@/app/actions/ai/storage'
 import type { HoldingNewsImpactEntry } from '@/lib/schemas'
 import { callXaiResponsesWithSearch, XaiSearchError } from './xaiLiveSearch'
-import { checkAiAllowance } from '@/lib/aiUsage/allowance'
+import {
+  checkAiAllowance,
+  endAiEntry,
+  tryBeginAiEntry,
+} from '@/lib/aiUsage/allowance'
 import { recordModelUsage } from '@/lib/aiUsage/recordModelCall'
 import { newsLogSubject } from '@/lib/agentObservability/caller'
 import { analyzeNewsImpact } from './analyzeImpact'
@@ -225,17 +229,32 @@ export async function runHoldingNews(
     const windowBase: CachedInsight | null =
       cached && stored && typeof stored.windowFrom === 'string' ? cached : null
 
-    const live = await runLiveHoldingNewsFetch(
-      userId,
-      holdingsPreview,
-      windowBase,
-      cached,
-      stored,
-      featureType,
-      universe === 'watchlist',
-      admin,
-      options.logParentRunId ?? null
-    )
+    const parentRunId = options.logParentRunId ?? null
+    let entryToken: string | null = null
+    if (!parentRunId && process.env.XAI_API_KEY) {
+      const entry = await tryBeginAiEntry(userId)
+      if (!entry.ok) return { error: entry.message }
+      entryToken = entry.token
+    }
+
+    let live: HoldingNewsResult
+    try {
+      live = await runLiveHoldingNewsFetch(
+        userId,
+        holdingsPreview,
+        windowBase,
+        cached,
+        stored,
+        featureType,
+        universe === 'watchlist',
+        admin,
+        parentRunId
+      )
+    } finally {
+      if (!parentRunId && process.env.XAI_API_KEY) {
+        await endAiEntry(userId, entryToken)
+      }
+    }
     if ('error' in live && live.error) {
       return { ...live, fromCache: false, updatedCache: false }
     }
@@ -248,7 +267,10 @@ export async function runHoldingNews(
     }
     return { ...live, fromCache: false, updatedCache: true }
   } catch (e) {
-    console.error('Holding news error', e)
+    console.error(
+      'Holding news error:',
+      e instanceof Error ? e.name : 'Error'
+    )
     const msg = e instanceof Error ? e.message : ''
     if (
       msg.includes('xAI request failed') ||

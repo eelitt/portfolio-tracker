@@ -25,7 +25,11 @@ import {
 import { computePortfolioHash } from '@/lib/calculatePortfolio'
 import { aiInsightsSchema } from '@/lib/schemas'
 import { formatCurrency } from '@/lib/currency'
-import { checkAiAllowance } from '@/lib/aiUsage/allowance'
+import {
+  checkAiAllowance,
+  endAiEntry,
+  tryBeginAiEntry,
+} from '@/lib/aiUsage/allowance'
 import { recordModelUsage } from '@/lib/aiUsage/recordModelCall'
 import type { TokenUsage } from '@/lib/agentObservability'
 
@@ -84,6 +88,7 @@ export async function generatePortfolioInsights(options?: {
     return { error: 'AI service is not configured.' }
   }
 
+  let calledModel = false
   try {
     const cached = await getLatestAIInsight(user.id, FEATURE_TYPE)
     // Hash of transactions: same holdings activity → same analysis, skip LLM cost
@@ -103,6 +108,15 @@ export async function generatePortfolioInsights(options?: {
       return { error: allowance.message }
     }
 
+    const childOfChat = Boolean(options?.logParentRunId)
+    let entryToken: string | null = null
+    if (!childOfChat) {
+      const entry = await tryBeginAiEntry(user.id)
+      if (!entry.ok) return { error: entry.message }
+      entryToken = entry.token
+    }
+
+    try {
     // Shared with CSV import and holding news (admins skip). The update is the gate.
     if (!(await isCurrentUserAdmin())) {
       const slot = await tryConsumeAiCooldown(user.id)
@@ -127,6 +141,7 @@ export async function generatePortfolioInsights(options?: {
 
     const summary = await buildPortfolioSummary(data)
 
+    calledModel = true
     const { object, usage } = await generateObject({
       model: xai('grok-4.3'),
       schema: aiInsightsSchema,
@@ -178,8 +193,26 @@ Focus on risks, concentration, and potential improvements.`,
       cachedAt: new Date().toISOString(),
       usage: tokenUsage,
     }
+    } finally {
+      if (!childOfChat) await endAiEntry(user.id, entryToken)
+    }
   } catch (e) {
-    console.error('Portfolio insights error', e)
+    console.error(
+      'Portfolio insights error:',
+      e instanceof Error ? e.name : 'Error'
+    )
+    if (calledModel) {
+      await recordModelUsage({
+        userId: user.id,
+        feature: FEATURE_TYPE,
+        model: 'grok-4.3',
+        usage: null,
+        status: 'error',
+        errorSummary: 'Portfolio insights failed',
+        parentRunId: options?.logParentRunId,
+        subject: 'Portfolio insights',
+      })
+    }
     return { error: 'Failed to generate insights. Please try again later.' }
   }
 }

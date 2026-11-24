@@ -76,7 +76,7 @@ The pack does not include the chat thread, a market value, a holding count, or t
 
 ### Parent run
 
-`startAgentRun` writes a parent `agent_runs` row before streaming. `onStepFinish` records each `invoke_*` result. `onFinish` stores token usage, duration, step count, and the invoked tool names. It also stores `meta.user_text` (the sanitized question, at most 4,000 characters), `meta.assistant_text` (the reply, at most 2,000 characters), `meta.route` (invoke order, with task, universe, mode, refresh, and symbols), and `meta.policy_signals`. Those signals flag a policy-token leak, a reply with no specialist, a watchlist write, a prepare, and an analyst answer with an empty tool list. Specialist briefs are not copied into `meta.route`. The leak scan reads the specialist text and briefs before the stored tool copy is truncated. A stream error finishes the row as `error` and still writes the question, the route, and the signals gathered so far. The admin run detail shows Asked, Reply, Route, and any true signal. The analyst child row stores its reply and its own signals. Recording is best-effort and must not fail the user's answer. Child rows are started inside each specialist (`lib/agents/runChildAgent.ts`).
+`startAgentRun` writes a parent `agent_runs` row before streaming. `onStepFinish` records each `invoke_*` result. `onFinish` stores token usage, duration, step count, and the invoked tool names. It also stores `meta.user_text` (the sanitized question, at most 4,000 characters), `meta.assistant_text` (the reply, at most 2,000 characters), `meta.route` (invoke order, with task, universe, mode, refresh, and symbols), and `meta.policy_signals`. Those signals flag a policy-token leak, a reply with no specialist, a watchlist write, a prepare, and an analyst answer with an empty tool list. Specialist briefs are not copied into `meta.route`. The leak scan reads the full specialist text and briefs. What the stored tool list keeps is [AI_runtime.md](./AI_runtime.md). A stream error finishes the row as `error` and still writes the question, the route, and the signals gathered so far. The admin run detail shows Asked, Reply, Route, and any true signal. The analyst child row stores its reply and its own signals. Recording is best-effort and must not fail the user's answer. Child rows are started inside each specialist (`lib/agents/runChildAgent.ts`).
 
 ## Routing
 
@@ -112,7 +112,7 @@ Disclaimers stay narrow. News-only answers skip the portfolio-figures line. Tax 
 
 **Dry-run flags on the way out.** News `packageUpdated` is forced false. Analyst `transactionSaved` and `watchlistChanged` are forced false. Analysis `packageUpdated` is forced false. Each payload can carry `dryRun: true`.
 
-**Redaction.** The model receives the specialist payload, including the full brief or analyst text. `redactForStorage` applies only to the copy stored on the run, so a long answer is not cut before the orchestrator writes it.
+**Redaction.** The model receives the specialist payload, including the full brief or analyst text. The stored run keeps a slim tool list. The long answer is not cut before the orchestrator writes it. What the row keeps is [AI_runtime.md](./AI_runtime.md).
 
 **What the model still must not do.** Report a number, a headline, or a tax amount that no tool returned. Mention cache internals. Lecture about a cooldown unless `statusNote` is present or the user asked when the data was last updated. Claim a write during dry-run.
 

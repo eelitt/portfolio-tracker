@@ -28,14 +28,22 @@ async function planPerpsForUser(openPerps: PlanPerp[]): Promise<PlanPerp[]> {
   return openPerps
 }
 
+function evalLiveDataStub() {
+  return toolFailure(
+    'eval_mode_no_live_data',
+    'Eval mode does not read the signed-in profile, goals, or snapshots.'
+  )
+}
+
 export function createPlanTools(ctx: AnalystToolCtx) {
-  const { load, loadFailed } = ctx
+  const { load, loadFailed, evalMode } = ctx
 
   return {
     get_target_allocation: tool({
       description: toolDescription('get_target_allocation'),
       parameters: z.object({}),
       execute: async () => {
+        if (evalMode) return evalLiveDataStub()
         const loaded = await load()
         if (!loaded.ok) return loadFailed(loaded.error)
         const policy = await getAllocationPolicy()
@@ -77,6 +85,7 @@ export function createPlanTools(ctx: AnalystToolCtx) {
           .describe('For new_cash: amount of new cash in preferred currency'),
       }),
       execute: async (args) => {
+        if (evalMode) return evalLiveDataStub()
         const loaded = await load()
         if (!loaded.ok) return loadFailed(loaded.error)
         const policy = await getAllocationPolicy()
@@ -111,6 +120,7 @@ export function createPlanTools(ctx: AnalystToolCtx) {
       description: toolDescription('suggest_allocation_mix'),
       parameters: z.object({}),
       execute: async () => {
+        if (evalMode) return evalLiveDataStub()
         const profile = await getCurrentUserProfile()
         if (!profile) {
           return toolFailure('not_authenticated', 'Not signed in.')
@@ -151,6 +161,7 @@ export function createPlanTools(ctx: AnalystToolCtx) {
           .describe('Override months to target (instead of the goal date)'),
       }),
       execute: async (args) => {
+        if (evalMode) return evalLiveDataStub()
         const loaded = await load()
         if (!loaded.ok) return loadFailed(loaded.error)
 

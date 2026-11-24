@@ -3,6 +3,7 @@
  * Stores the question and which invoke_* ran. Not specialist prose.
  */
 
+import { redactSecrets } from './redact'
 import type { AgentToolRecord } from './types'
 
 /** Same cap as the sanitized last user message (ANALYST_MAX_LAST_USER_CHARS). */
@@ -20,7 +21,7 @@ export type OrchestratorRouteEntry = {
 
 /** Trimmed question stored on the parent agent_runs row. Empty becomes ''. */
 export function clipOrchestratorUserText(text: string): string {
-  return text.trim().slice(0, ORCHESTRATOR_USER_TEXT_MAX)
+  return redactSecrets(text.trim().slice(0, ORCHESTRATOR_USER_TEXT_MAX))
 }
 
 function stringList(value: unknown): string[] | undefined {
