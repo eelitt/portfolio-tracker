@@ -164,7 +164,7 @@ News handoff is a parsed slim payload (`parseNewsContextHandoff`). The analyst m
 
 Chat history is **one rolling thread per user** in `user_ai_insights` (`feature_type = portfolio_analyst_chat`): last 20 user/assistant text messages (same cap as request sanitizer). Tool payloads are not stored. The sidebar hydrates on open; **New chat** clears the blob. `buildUserContext` does not duplicate this thread.
 
-Admin: `agent_runs` (tokens, cost, confirm flags, parent/child). The orchestrator parent also stores `meta.user_text`, `meta.assistant_text`, `meta.route`, and `meta.policy_signals`. Overview is the last 30 days, or the latest rows when that window is empty. Analyst eval fixtures inject a portfolio. Orchestrator eval fixtures only check routing. Neither writes real txs (`evalMode` / dry-run). The eval route streams per-case progress.
+Admin: `agent_runs` (tokens, cost, confirm flags, parent/child). The orchestrator parent also stores `meta.user_text`, `meta.assistant_text`, `meta.route`, and `meta.policy_signals`. Overview is the last 30 days, or the latest rows when that window is empty. Analyst eval fixtures inject a portfolio. Orchestrator eval fixtures only check routing. Neither writes real txs (`evalMode` / dry-run). The eval route streams per-case progress. What a pass means is [AI_eval.md](./AI_eval.md).
 
 ---
 
@@ -246,7 +246,7 @@ They are **not** supposed to prove RLS. User A vs user B is a policy + integrati
 | Child-agent runs | `lib/agents/` |
 | Run logs | `lib/agentObservability/` |
 | Admin UI (no page route) | `app/(app)/admin/` |
-| Agent eval | `lib/agentEval/`, `app/api/admin/agent-eval/route.ts` |
+| Agent eval | `lib/agentEval/`, `app/api/admin/agent-eval/route.ts`, `AI_eval.md` |
 | Server actions | `app/actions/` |
 | Chat route | `app/api/portfolio-analyst/route.ts` |
 | Plan UI | `app/(app)/plan/` |
